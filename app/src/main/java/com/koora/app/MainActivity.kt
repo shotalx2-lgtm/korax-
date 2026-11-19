@@ -375,6 +375,10 @@ private fun KooraApp(context: Context) {
     var loading by remember { mutableStateOf(true) }
     var favorites by remember { mutableStateOf(store.favorites()) }
 
+    val backStack by nav.currentBackStackEntryAsState()
+    val currentRoute = backStack?.destination?.route ?: "home"
+    val showBottomBar = currentRoute in setOf("home", "matches", "explore", "favorites", "settings")
+
     LaunchedEffect(Unit) {
         loading = true
         data = repository.loadAll()
@@ -398,9 +402,6 @@ private fun KooraApp(context: Context) {
         store.saveFavorites(updated)
     }
 
-    val backStack by nav.currentBackStackEntryAsState()
-    val currentRoute = backStack?.destination?.route ?: "home"
-    val showBottomBar = currentRoute in setOf("home", "matches", "explore", "favorites", "settings")
 
     Scaffold(
         containerColor = Ink,
