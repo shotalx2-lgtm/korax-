@@ -135,7 +135,12 @@ private data class FootballRecord(
     val away: String? = null,
     val score: String? = null,
     val status: String? = null,
-    val kickoff: String? = null
+    val kickoff: String? = null,
+    val facts: List<Pair<String, String>> = emptyList(),
+    val events: List<String> = emptyList(),
+    val lineups: List<String> = emptyList(),
+    val statistics: List<Pair<String, String>> = emptyList(),
+    val description: String? = null
 ) {
     val favoriteKey: String get() = "$kind:$id"
 }
@@ -244,6 +249,63 @@ private class KooraRepository {
         val image = json.optString("imageUrl", "").ifBlank {
             json.optString("logoUrl", "").ifBlank { nestedImage(json, "homeTeam") }
         }.takeIf { it.startsWith("https://") }
+        val factKeys = listOf(
+            "country" to "الدولة", "nationality" to "الجنسية", "position" to "المركز",
+            "date_of_birth" to "تاريخ الميلاد", "age" to "العمر", "height" to "الطول",
+            "weight" to "الوزن", "shirt_number" to "رقم القميص", "founded" to "سنة التأسيس",
+            "stadium" to "الملعب", "capacity" to "السعة", "name" to "الاسم",
+            "starting_at" to "موعد المباراة", "round" to "الجولة", "type" to "النوع"
+        )
+        val facts = factKeys.mapNotNull { (key, label) ->
+            val value = json.opt(key)
+            when (value) {
+                null, JSONObject.NULL -> null
+                is JSONObject -> null
+                is JSONArray -> null
+                else -> value.toString().takeIf { it.isNotBlank() && it != "null" }?.let { label to it }
+            }
+        }.distinctBy { it.first }.take(12)
+
+        val eventArray = json.optJSONArray("events") ?: json.optJSONArray("matchEvents") ?: JSONArray()
+        val events = (0 until eventArray.length()).mapNotNull { i ->
+            val event = eventArray.optJSONObject(i) ?: return@mapNotNull null
+            val minute = event.optString("minute", event.optString("time", event.optString("display_time", "")))
+            val typeObj = event.optJSONObject("type")
+            val type = event.optString("type_name", typeObj?.optString("name").orEmpty()).ifBlank { "حدث" }
+            val player = event.optJSONObject("player")?.optString("name").orEmpty()
+                .ifBlank { event.optString("player_name", "") }
+            val team = event.optJSONObject("team")?.optString("name").orEmpty()
+            listOf(minute, type, player, team).filter { it.isNotBlank() }.joinToString(" • ")
+                .takeIf { it.isNotBlank() }
+        }.take(40)
+
+        val lineupArray = json.optJSONArray("lineups") ?: json.optJSONArray("lineup") ?: JSONArray()
+        val lineups = (0 until lineupArray.length()).mapNotNull { i ->
+            val item = lineupArray.optJSONObject(i) ?: return@mapNotNull null
+            val player = item.optJSONObject("player")?.optString("name").orEmpty()
+                .ifBlank { item.optString("player_name", item.optString("name", "")) }
+            val team = item.optJSONObject("team")?.optString("name").orEmpty()
+            val position = item.optString("position_name", item.optString("position", ""))
+            listOf(player, position, team).filter { it.isNotBlank() }.joinToString(" • ")
+                .takeIf { it.isNotBlank() }
+        }.take(44)
+
+        val statsArray = json.optJSONArray("statistics") ?: JSONArray()
+        val statistics = (0 until statsArray.length()).mapNotNull { i ->
+            val item = statsArray.optJSONObject(i) ?: return@mapNotNull null
+            val typeObj = item.optJSONObject("type")
+            val label = item.optString("name", typeObj?.optString("name").orEmpty())
+                .ifBlank { item.optString("type_name", "") }
+            val valueObj = item.optJSONObject("data")
+            val value = valueObj?.optString("value").orEmpty()
+                .ifBlank { item.optString("value", "") }
+            if (label.isBlank() || value.isBlank()) null else label to value
+        }.take(30)
+
+        val description = json.optString("description", "").ifBlank {
+            json.optString("summary", "").ifBlank { json.optString("short_description", "") }
+        }.takeIf { it.isNotBlank() }
+
         return FootballRecord(
             id = json.optString("id", json.optString("externalId", "")),
             kind = kind,
@@ -254,7 +316,12 @@ private class KooraRepository {
             away = away.ifBlank { null },
             score = score.ifBlank { null },
             status = json.optString("status", "").ifBlank { null },
-            kickoff = json.optString("startTime", json.optString("utcDate", "")).ifBlank { null }
+            kickoff = json.optString("startTime", json.optString("utcDate", json.optString("starting_at", ""))).ifBlank { null },
+            facts = facts,
+            events = events,
+            lineups = lineups,
+            statistics = statistics,
+            description = description
         )
     }
 
