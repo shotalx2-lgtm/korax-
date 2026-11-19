@@ -837,10 +837,9 @@ private fun DetailScreen(
     var loading by remember { mutableStateOf(initial == null) }
     var selectedSection by remember(kind, id) { mutableStateOf("overview") }
     LaunchedEffect(kind, id) {
-        if (record == null) {
-            record = repository.detail(kind, id)
-            loading = false
-        }
+        val detailedRecord = repository.detail(kind, id)
+        if (detailedRecord != null) record = detailedRecord
+        loading = false
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
