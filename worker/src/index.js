@@ -243,7 +243,7 @@ async function providerRequest(path, params, env) {
   const response = await fetch(url, {
     headers: {
       "accept": "application/json",
-      "authorization": "Bearer " + env.SPORTMONKS_API_TOKEN,
+      "Authorization": env.SPORTMONKS_API_TOKEN,
     },
     signal: AbortSignal.timeout(12000),
   });
