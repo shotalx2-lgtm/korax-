@@ -562,7 +562,7 @@ private fun KooraApp(context: Context) {
                 val kind = entry.arguments?.getString("kind").orEmpty()
                 val id = entry.arguments?.getString("id").orEmpty()
                 val record = data.all.firstOrNull { it.kind == kind && it.id == id }
-                DetailScreen(record, kind, id, repository, favorites, ::toggleFavorite) {
+                DetailScreen(record, kind, id, repository, nav, favorites, ::toggleFavorite) {
                     nav.popBackStack()
                 }
             }
@@ -828,6 +828,7 @@ private fun DetailScreen(
     kind: String,
     id: String,
     repository: KooraRepository,
+    nav: NavHostController,
     favorites: Set<String>,
     onFavorite: (FootballRecord) -> Unit,
     onBack: () -> Unit
@@ -912,23 +913,57 @@ private fun DetailScreen(
                         FilterChip(selected = selectedSection == "events", onClick = { selectedSection = "events" }, label = { Text("الأحداث") })
                         FilterChip(selected = selectedSection == "lineups", onClick = { selectedSection = "lineups" }, label = { Text("التشكيل") })
                     }
+                    if (item.kind == "team") {
+                        FilterChip(selected = selectedSection == "squad", onClick = { selectedSection = "squad" }, label = { Text("اللاعبون") })
+                    }
                     FilterChip(selected = selectedSection == "stats", onClick = { selectedSection = "stats" }, label = { Text("الإحصائيات") })
                 }
                 Spacer(Modifier.height(12.dp))
                 when (selectedSection) {
                     "events" -> {
                         if (item.events.isEmpty()) EmptyPanel("لا توجد أحداث متاحة", "ستظهر الأهداف والبطاقات والتبديلات عندما يرسلها مصدر المباراة.")
-                        else item.events.forEachIndexed { index, event -> DetailLine(index + 1, event, "حدث المباراة") }
+                        else item.events.forEach { event -> MatchEventRow(event, nav) }
                     }
                     "lineups" -> {
                         if (item.lineups.isEmpty()) EmptyPanel("التشكيل غير متاح بعد", "لا نعرض تشكيلاً متوقعاً على أنه رسمي. ستظهر الأسماء بعد تأكيدها من المصدر.")
-                        else item.lineups.forEachIndexed { index, player -> DetailLine(index + 1, player, "لاعب") }
+                        else item.lineups.forEach { player -> LinkedPlayerRow(player, nav) }
+                    }
+                    "squad" -> {
+                        if (item.relatedPlayers.isEmpty()) EmptyPanel("قائمة اللاعبين غير متاحة", "ستظهر قائمة الفريق عندما تكون متوفرة في مصدر النادي.")
+                        else item.relatedPlayers.forEach { player -> LinkedPlayerRow(player, nav) }
                     }
                     "stats" -> {
                         if (item.statistics.isEmpty()) EmptyPanel("الإحصائيات غير متاحة", "ستظهر الأرقام مثل الاستحواذ والتسديدات والتمريرات عندما يوفرها مصدر البيانات.")
                         else item.statistics.forEach { (label, value) -> FactRow(label, value) }
                     }
                     else -> {
+                        if (item.kind == "player" && item.linkedTeamId.isNotBlank()) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Panel),
+                                shape = RoundedCornerShape(16.dp),
+                                modifier = Modifier.fillMaxWidth().clickable { nav.navigate("detail/team/${item.linkedTeamId}") }
+                            ) {
+                                Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    if (item.linkedTeamImage != null) {
+                                        AsyncImage(model = item.linkedTeamImage, contentDescription = item.linkedTeamName, modifier = Modifier.size(38.dp).clip(CircleShape))
+                                    } else {
+                                        Icon(Icons.Filled.SportsSoccer, contentDescription = null, tint = Gold)
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text("النادي الحالي", color = Muted, style = MaterialTheme.typography.labelSmall)
+                                        Text(item.linkedTeamName, color = Bright, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    Text("›", color = Gold, style = MaterialTheme.typography.headlineSmall)
+                                }
+                            }
+                            Spacer(Modifier.height(10.dp))
+                        }
+                        if (item.kind == "team" && item.relatedPlayers.isNotEmpty()) {
+                            SectionHeader("قائمة الفريق", "عرض في تبويب اللاعبين") { selectedSection = "squad" }
+                            item.relatedPlayers.take(6).forEach { player -> LinkedPlayerRow(player, nav) }
+                            Spacer(Modifier.height(10.dp))
+                        }
                         if (!item.description.isNullOrBlank()) {
                             Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
                                 Text(item.description, color = Bright, modifier = Modifier.padding(16.dp))
@@ -951,6 +986,71 @@ private fun FactRow(label: String, value: String) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, color = Muted, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
             Text(value, color = Bright, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun LinkedPlayerRow(player: LinkedPlayer, nav: NavHostController) {
+    val clickable = player.id.isNotBlank()
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Panel),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp)
+            .then(if (clickable) Modifier.clickable { nav.navigate("detail/player/${player.id}") } else Modifier)
+    ) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (player.imageUrl != null) {
+                AsyncImage(model = player.imageUrl, contentDescription = player.name, modifier = Modifier.size(42.dp).clip(CircleShape))
+            } else {
+                Surface(color = Panel2, shape = CircleShape) {
+                    Icon(Icons.Filled.Star, contentDescription = null, tint = Gold, modifier = Modifier.padding(10.dp).size(22.dp))
+                }
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(Modifier.weight(1f)) {
+                Text(player.name, color = Bright, fontWeight = FontWeight.SemiBold)
+                val meta = listOf(player.position, player.shirtNumber.takeIf { it.isNotBlank() }?.let { "#$it" }, player.teamName)
+                    .filterNotNull().filter { it.isNotBlank() }.joinToString(" • ")
+                if (meta.isNotBlank()) Text(meta, color = Muted, style = MaterialTheme.typography.labelSmall)
+            }
+            if (clickable) Text("›", color = Gold, style = MaterialTheme.typography.headlineSmall)
+        }
+    }
+}
+
+@Composable
+private fun MatchEventRow(event: MatchEvent, nav: NavHostController) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Panel),
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp)
+    ) {
+        Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(color = Panel2, shape = RoundedCornerShape(10.dp)) {
+                Text(event.minute.ifBlank { "—" }, color = Gold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp), fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(event.type, color = Bright, fontWeight = FontWeight.SemiBold)
+                if (event.playerName.isNotBlank()) {
+                    Text(
+                        event.playerName,
+                        color = if (event.playerId.isNotBlank()) Gold else Muted,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = if (event.playerId.isNotBlank()) Modifier.clickable { nav.navigate("detail/player/${event.playerId}") } else Modifier
+                    )
+                }
+                if (event.teamName.isNotBlank()) {
+                    Text(
+                        event.teamName,
+                        color = if (event.teamId.isNotBlank()) Gold else Muted,
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = if (event.teamId.isNotBlank()) Modifier.clickable { nav.navigate("detail/team/${event.teamId}") } else Modifier
+                    )
+                }
+                if (event.detail.isNotBlank()) Text(event.detail, color = Muted, style = MaterialTheme.typography.labelSmall)
+            }
         }
     }
 }
