@@ -85,6 +85,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import coil.compose.AsyncImage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -175,6 +176,29 @@ private class KooraRepository {
         }
     }
 
+    suspend fun refreshMatches(): List<FootballRecord>? = withContext(Dispatchers.IO) {
+        if (!configured) return@withContext null
+        try {
+            val scheduled = fetchRecordsFrom("$baseUrl/api/matches", "match")
+            val live = fetchRecordsFrom("$baseUrl/api/matches?live=1", "match")
+            (live + scheduled).distinctBy { it.id }.filter { it.id.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun fetchRecordsFrom(url: String, kind: String): List<FootballRecord> {
+        val payload = request(url)
+        val array = when (payload) {
+            is JSONArray -> payload
+            is JSONObject -> payload.optJSONArray("data") ?: JSONArray()
+            else -> JSONArray()
+        }
+        return (0 until array.length()).mapNotNull { index ->
+            array.optJSONObject(index)?.let { parseRecord(it, kind) }
+        }
+    }
+
     suspend fun detail(kind: String, id: String): FootballRecord? = withContext(Dispatchers.IO) {
         if (!configured) return@withContext null
         val path = when (kind) {
@@ -237,7 +261,8 @@ private class KooraRepository {
             "match" -> listOf(home, away).filter { it.isNotBlank() }.joinToString(" × ")
             else -> json.optString("name", json.optString("title", ""))
         }.ifBlank { "معلومة غير متاحة" }
-        val score = if (json.has("homeScore") && json.has("awayScore")) {
+        val score = if (json.has("homeScore") && json.has("awayScore") &&
+            !json.isNull("homeScore") && !json.isNull("awayScore")) {
             "${json.opt("homeScore")} - ${json.opt("awayScore")}"
         } else json.optString("score", "").ifBlank { "" }
         val competition = nestedName("competition").ifBlank { json.optString("competitionName", "") }
@@ -354,6 +379,16 @@ private fun KooraApp(context: Context) {
         loading = true
         data = repository.loadAll()
         loading = false
+    }
+
+    LaunchedEffect(currentRoute) {
+        if (currentRoute == "home" || currentRoute == "matches") {
+            while (true) {
+                delay(25_000)
+                val refreshed = repository.refreshMatches()
+                if (refreshed != null) data = data.copy(matches = refreshed)
+            }
+        }
     }
 
     fun toggleFavorite(record: FootballRecord) {
