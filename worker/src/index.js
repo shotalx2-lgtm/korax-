@@ -98,7 +98,9 @@ function normalizeEvent(event) {
   return {
     minute: event?.minute ?? event?.extra_minute ?? event?.sort_order ?? "",
     type_name: type,
+    player_id: event?.player?.id ?? event?.player_id ?? null,
     player_name: player,
+    team_id: event?.participant?.id ?? event?.team?.id ?? event?.participant_id ?? event?.team_id ?? null,
     team: team ? { name: team } : null,
     detail: event?.addition || event?.info || event?.result || "",
   };
@@ -108,10 +110,13 @@ function normalizeLineup(item) {
   const player = item?.player || {};
   const team = item?.team || item?.participant || {};
   return {
+    player_id: player?.id ?? item?.player_id ?? item?.id ?? null,
     player_name: nestedName(player) || item?.player_name || item?.name || "",
+    imageUrl: player?.image_path || item?.imageUrl || "",
     position_name: nestedName(item?.position) || item?.position_name || "",
     shirt_number: item?.jersey_number ?? item?.shirt_number ?? null,
-    team: team?.name ? { name: team.name } : null,
+    team_id: team?.id ?? item?.team_id ?? null,
+    team: team?.name ? { id: team.id ?? null, name: team.name } : null,
   };
 }
 
@@ -177,7 +182,16 @@ function normalizeTeam(team) {
     country: nestedName(team?.country),
     stadium: nestedName(team?.venue),
     founded: team?.founded ?? null,
-    players: Array.isArray(team?.players) ? team.players : [],
+    players: Array.isArray(team?.players) ? team.players.map((entry) => {
+      const player = entry?.player || entry || {};
+      return {
+        id: String(player?.id ?? entry?.player_id ?? ""),
+        name: player?.name || entry?.player_name || "",
+        imageUrl: player?.image_path || "",
+        position: nestedName(player?.position) || nestedName(entry?.position),
+        shirt_number: entry?.jersey_number ?? entry?.shirt_number ?? player?.shirt_number ?? null,
+      };
+    }).filter((player) => player.id && player.name) : [],
     coaches: Array.isArray(team?.coaches) ? team.coaches : [],
     trophies: Array.isArray(team?.trophies) ? team.trophies : [],
   };
