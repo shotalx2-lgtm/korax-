@@ -70,6 +70,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -102,6 +105,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun KooraTheme(content: @Composable () -> Unit) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = Gold,
@@ -115,6 +119,7 @@ private fun KooraTheme(content: @Composable () -> Unit) {
         ),
         content = content
     )
+    }
 }
 
 private data class FootballRecord(
@@ -521,7 +526,7 @@ private fun SettingsScreen(store: LocalStore) {
     var goals by remember { mutableStateOf(store.bool("alerts_goals", true)) }
     var starts by remember { mutableStateOf(store.bool("alerts_starts", true)) }
     var news by remember { mutableStateOf(store.bool("alerts_news", false)) }
-    var general by remember { mutableStateOf(store.bool("alerts_general", false)) }
+    var general by remember { mutableStateOf(store.bool("alerts_general", true)) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp)) {
         Header()
