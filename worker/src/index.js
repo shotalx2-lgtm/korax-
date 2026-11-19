@@ -154,7 +154,9 @@ function normalizeFixture(fixture) {
     awayScore: score.awayScore,
     scoreType: score.scoreType,
     status: stateName || "الحالة غير متاحة",
-    startTime: fixture?.starting_at || fixture?.starting_at_timestamp || "",
+    startTime: fixture?.starting_at_timestamp
+      ? new Date(Number(fixture.starting_at_timestamp) * 1000).toISOString()
+      : fixture?.starting_at || "",
     competition: fixture?.league || fixture?.competition || null,
     competitionName: nestedName(fixture?.league || fixture?.competition),
     venue: fixture?.venue || null,
