@@ -417,7 +417,10 @@ private fun KooraApp(context: Context) {
                 FavoritesScreen(data, favorites, ::toggleFavorite, nav)
             }
             composable("settings") {
-                SettingsScreen(store)
+                SettingsScreen(store, nav)
+            }
+            composable("notifications") {
+                NotificationsScreen(nav)
             }
             composable(
                 "detail/{kind}/{id}",
@@ -443,7 +446,7 @@ private fun HomeScreen(
     nav: NavHostController
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
-        Header()
+        Header(nav)
         Spacer(Modifier.height(18.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -571,17 +574,33 @@ private fun FavoritesScreen(
     onFavorite: (FootballRecord) -> Unit,
     nav: NavHostController
 ) {
+    var selectedKind by remember { mutableStateOf("all") }
     val saved = data.all.filter { favorites.contains(it.favoriteKey) }
+    val filtered = when (selectedKind) {
+        "team" -> saved.filter { it.kind == "team" }
+        "player" -> saved.filter { it.kind == "player" }
+        "competition" -> saved.filter { it.kind == "competition" }
+        else -> saved
+    }
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp)) {
-        Header()
+        Header(nav)
         Text("مفضلتك", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Bright)
-        Text("لا تحتاج إلى حساب. تُحفظ اختياراتك على هذا الجهاز.", color = Muted)
-        Spacer(Modifier.height(16.dp))
-        if (saved.isEmpty()) {
-            EmptyPanel("قائمتك لم تبدأ بعد", "افتح «اكتشف» واضغط النجمة بجانب اللاعب أو النادي أو البطولة لإضافته هنا.")
+        Text("اختياراتك محفوظة على هذا الجهاز، بدون حساب.", color = Muted)
+        Spacer(Modifier.height(14.dp))
+        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("all" to "الكل", "team" to "الأندية", "player" to "اللاعبون", "competition" to "البطولات").forEach { (value, label) ->
+                FilterChip(selected = selectedKind == value, onClick = { selectedKind = value }, label = { Text(label) })
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        if (filtered.isEmpty()) {
+            EmptyPanel(
+                if (saved.isEmpty()) "قائمتك لم تبدأ بعد" else "لا توجد عناصر في هذا القسم",
+                "افتح «اكتشف» واضغط النجمة بجانب اللاعب أو النادي أو البطولة لإضافته هنا."
+            )
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 20.dp)) {
-                items(saved, key = { it.favoriteKey }) { record ->
+                items(filtered, key = { it.favoriteKey }) { record ->
                     RecordRow(record, true, { onFavorite(record) }) {
                         nav.navigate("detail/${record.kind}/${record.id}")
                     }
@@ -592,7 +611,7 @@ private fun FavoritesScreen(
 }
 
 @Composable
-private fun SettingsScreen(store: LocalStore) {
+private fun SettingsScreen(store: LocalStore, nav: NavHostController) {
     var enabled by remember { mutableStateOf(store.bool("alerts_enabled", true)) }
     var goals by remember { mutableStateOf(store.bool("alerts_goals", true)) }
     var starts by remember { mutableStateOf(store.bool("alerts_starts", true)) }
@@ -637,6 +656,36 @@ private fun SettingsScreen(store: LocalStore) {
         Spacer(Modifier.height(18.dp))
         Text("KOORA • BEYOND FOOTBALL", color = Gold, fontWeight = FontWeight.SemiBold)
         Text("نسخة تأسيسية قيد التطوير — لا تمثل إصداراً نهائياً للنشر.", color = Muted, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun NotificationsScreen(nav: NavHostController) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
+        Header(nav)
+        Text("مركز الإشعارات", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Bright)
+        Text("تنبيهاتك المهمة في مكان واحد.", color = Muted)
+        Spacer(Modifier.height(18.dp))
+        EmptyPanel(
+            "لا توجد إشعارات جديدة",
+            "عندما يتم ربط خدمة الإشعارات، ستظهر هنا أهداف وأحداث فرقك المفضلة والأخبار التي اخترت متابعتها."
+        )
+        Spacer(Modifier.height(14.dp))
+        Card(
+            colors = CardDefaults.cardColors(containerColor = Panel),
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier.fillMaxWidth().clickable { nav.navigate("settings") }
+        ) {
+            Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Settings, contentDescription = null, tint = Gold)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("إعدادات التنبيهات", color = Bright, fontWeight = FontWeight.SemiBold)
+                    Text("اختر الأهداف وبداية المباريات والأخبار التي تريدها", color = Muted, style = MaterialTheme.typography.bodySmall)
+                }
+                Text("›", color = Gold, style = MaterialTheme.typography.headlineSmall)
+            }
+        }
     }
 }
 
@@ -790,7 +839,7 @@ private fun DetailLine(number: Int, title: String, subtitle: String) {
 }
 
 @Composable
-private fun Header() {
+private fun Header(nav: NavHostController? = null) {
     Row(
         Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -804,6 +853,9 @@ private fun Header() {
             Text("BEYOND FOOTBALL", color = Gold, style = MaterialTheme.typography.labelSmall)
         }
         Spacer(Modifier.weight(1f))
+        IconButton(onClick = { nav?.navigate("notifications") }) {
+            Icon(Icons.Filled.Notifications, contentDescription = "مركز الإشعارات", tint = Gold)
+        }
     }
 }
 
