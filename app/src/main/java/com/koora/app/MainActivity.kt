@@ -2,6 +2,7 @@ package com.koora.app
 
 import android.content.Context
 import android.os.Bundle
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
@@ -98,6 +99,7 @@ private val Bright = Color(0xFFF4F6FA)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         setContent { KooraTheme { KooraApp(applicationContext) } }
     }
@@ -647,7 +649,6 @@ private fun Header() {
             Text("BEYOND FOOTBALL", color = Gold, style = MaterialTheme.typography.labelSmall)
         }
         Spacer(Modifier.weight(1f))
-        Text("LIVE", color = Green, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
     }
 }
 
