@@ -161,6 +161,25 @@ private fun localizeMatchStatus(raw: String): String {
     }
 }
 
+private data class LinkedPlayer(
+    val id: String,
+    val name: String,
+    val imageUrl: String? = null,
+    val position: String = "",
+    val shirtNumber: String = "",
+    val teamName: String = ""
+)
+
+private data class MatchEvent(
+    val minute: String,
+    val type: String,
+    val playerId: String = "",
+    val playerName: String = "",
+    val teamId: String = "",
+    val teamName: String = "",
+    val detail: String = ""
+)
+
 private data class FootballRecord(
     val id: String,
     val kind: String,
@@ -175,8 +194,12 @@ private data class FootballRecord(
     val status: String? = null,
     val kickoff: String? = null,
     val facts: List<Pair<String, String>> = emptyList(),
-    val events: List<String> = emptyList(),
-    val lineups: List<String> = emptyList(),
+    val events: List<MatchEvent> = emptyList(),
+    val lineups: List<LinkedPlayer> = emptyList(),
+    val relatedPlayers: List<LinkedPlayer> = emptyList(),
+    val linkedTeamId: String = "",
+    val linkedTeamName: String = "",
+    val linkedTeamImage: String? = null,
     val statistics: List<Pair<String, String>> = emptyList(),
     val description: String? = null
 ) {
@@ -333,26 +356,56 @@ private class KooraRepository {
         val eventArray = json.optJSONArray("events") ?: json.optJSONArray("matchEvents") ?: JSONArray()
         val events = (0 until eventArray.length()).mapNotNull { i ->
             val event = eventArray.optJSONObject(i) ?: return@mapNotNull null
-            val minute = event.optString("minute", event.optString("time", event.optString("display_time", "")))
+            val player = event.optJSONObject("player")
+            val team = event.optJSONObject("team")
             val typeObj = event.optJSONObject("type")
-            val type = event.optString("type_name", typeObj?.optString("name").orEmpty()).ifBlank { "حدث" }
-            val player = event.optJSONObject("player")?.optString("name").orEmpty()
-                .ifBlank { event.optString("player_name", "") }
-            val team = event.optJSONObject("team")?.optString("name").orEmpty()
-            listOf(minute, type, player, team).filter { it.isNotBlank() }.joinToString(" • ")
-                .takeIf { it.isNotBlank() }
+            MatchEvent(
+                minute = event.optString("minute", event.optString("time", event.optString("display_time", ""))),
+                type = event.optString("type_name", typeObj?.optString("name").orEmpty()).ifBlank { "حدث" },
+                playerId = event.optString("player_id", player?.optString("id").orEmpty()),
+                playerName = player?.optString("name").orEmpty().ifBlank { event.optString("player_name", "") },
+                teamId = event.optString("team_id", team?.optString("id").orEmpty()),
+                teamName = team?.optString("name").orEmpty(),
+                detail = event.optString("detail", event.optString("info", ""))
+            )
         }.take(40)
 
         val lineupArray = json.optJSONArray("lineups") ?: json.optJSONArray("lineup") ?: JSONArray()
         val lineups = (0 until lineupArray.length()).mapNotNull { i ->
             val item = lineupArray.optJSONObject(i) ?: return@mapNotNull null
-            val player = item.optJSONObject("player")?.optString("name").orEmpty()
+            val player = item.optJSONObject("player")
+            val team = item.optJSONObject("team")
+            val name = player?.optString("name").orEmpty()
                 .ifBlank { item.optString("player_name", item.optString("name", "")) }
-            val team = item.optJSONObject("team")?.optString("name").orEmpty()
-            val position = item.optString("position_name", item.optString("position", ""))
-            listOf(player, position, team).filter { it.isNotBlank() }.joinToString(" • ")
-                .takeIf { it.isNotBlank() }
+            if (name.isBlank()) return@mapNotNull null
+            LinkedPlayer(
+                id = item.optString("player_id", player?.optString("id").orEmpty()),
+                name = name,
+                imageUrl = item.optString("imageUrl", player?.optString("image_path").orEmpty()).takeIf { it.startsWith("https://") },
+                position = item.optString("position_name", item.optString("position", "")),
+                shirtNumber = item.optString("shirt_number", ""),
+                teamName = team?.optString("name").orEmpty()
+            )
         }.take(44)
+
+        val playerArray = json.optJSONArray("players") ?: JSONArray()
+        val relatedPlayers = (0 until playerArray.length()).mapNotNull { i ->
+            val item = playerArray.optJSONObject(i) ?: return@mapNotNull null
+            val name = item.optString("name", "")
+            if (name.isBlank()) return@mapNotNull null
+            LinkedPlayer(
+                id = item.optString("id", ""),
+                name = name,
+                imageUrl = item.optString("imageUrl", "").takeIf { it.startsWith("https://") },
+                position = item.optString("position", ""),
+                shirtNumber = item.optString("shirt_number", "")
+            )
+        }.take(40)
+
+        val linkedTeam = json.optJSONObject("team")
+        val linkedTeamId = linkedTeam?.optString("id").orEmpty()
+        val linkedTeamName = linkedTeam?.optString("name").orEmpty()
+        val linkedTeamImage = linkedTeam?.optString("image_path")?.takeIf { it.startsWith("https://") }
 
         val statsArray = json.optJSONArray("statistics") ?: JSONArray()
         val statistics = (0 until statsArray.length()).mapNotNull { i ->
@@ -386,6 +439,10 @@ private class KooraRepository {
             facts = facts,
             events = events,
             lineups = lineups,
+            relatedPlayers = relatedPlayers,
+            linkedTeamId = linkedTeamId,
+            linkedTeamName = linkedTeamName,
+            linkedTeamImage = linkedTeamImage,
             statistics = statistics,
             description = description
         )
