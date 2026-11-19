@@ -91,6 +91,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private val Ink = Color(0xFF090B10)
 private val Panel = Color(0xFF141923)
@@ -124,6 +128,36 @@ private fun KooraTheme(content: @Composable () -> Unit) {
         ),
         content = content
     )
+    }
+}
+
+private fun formatKickoff(raw: String): String {
+    if (raw.isBlank()) return ""
+    return try {
+        val instant = if (raw.all { it.isDigit() }) {
+            Instant.ofEpochSecond(raw.toLong())
+        } else {
+            Instant.parse(raw)
+        }
+        DateTimeFormatter.ofPattern("EEE d MMM • h:mm a", Locale("ar"))
+            .withZone(ZoneId.systemDefault())
+            .format(instant)
+    } catch (_: Exception) {
+        raw
+    }
+}
+
+private fun localizeMatchStatus(raw: String): String {
+    val value = raw.lowercase(Locale.ROOT).replace("_", " ").trim()
+    return when {
+        value.contains("inplay") || value.contains("in play") || value.contains("live") -> "مباشر"
+        value.contains("half time") || value.contains("halftime") -> "استراحة"
+        value.contains("finished") || value == "ft" || value.contains("full time") -> "انتهت"
+        value.contains("not started") || value.contains("scheduled") || value.contains("ns") -> "لم تبدأ"
+        value.contains("postponed") -> "تأجلت"
+        value.contains("cancelled") || value.contains("canceled") -> "أُلغيت"
+        value.contains("suspended") -> "متوقفة"
+        else -> raw
     }
 }
 
@@ -347,8 +381,8 @@ private class KooraRepository {
             home = home.ifBlank { null },
             away = away.ifBlank { null },
             score = score.ifBlank { null },
-            status = json.optString("status", "").ifBlank { null },
-            kickoff = json.optString("startTime", json.optString("utcDate", json.optString("starting_at", ""))).ifBlank { null },
+            status = json.optString("status", "").takeIf { it.isNotBlank() }?.let(::localizeMatchStatus),
+            kickoff = formatKickoff(json.optString("startTime", json.optString("utcDate", json.optString("starting_at", "")))).ifBlank { null },
             facts = facts,
             events = events,
             lineups = lineups,
