@@ -133,6 +133,8 @@ private data class FootballRecord(
     val title: String,
     val subtitle: String = "",
     val imageUrl: String? = null,
+    val homeImageUrl: String? = null,
+    val awayImageUrl: String? = null,
     val home: String? = null,
     val away: String? = null,
     val score: String? = null,
@@ -275,6 +277,8 @@ private class KooraRepository {
         val image = json.optString("imageUrl", "").ifBlank {
             json.optString("logoUrl", "").ifBlank { json.optString("image_path", "").ifBlank { nestedImage(json, "homeTeam") } }
         }.takeIf { it.startsWith("https://") }
+        val homeImage = json.optJSONObject("homeTeam")?.let { nestedImage(json, "homeTeam") }?.takeIf { it.startsWith("https://") }
+        val awayImage = json.optJSONObject("awayTeam")?.let { nestedImage(json, "awayTeam") }?.takeIf { it.startsWith("https://") }
         val factKeys = listOf(
             "country" to "الدولة", "nationality" to "الجنسية", "position" to "المركز",
             "date_of_birth" to "تاريخ الميلاد", "age" to "العمر", "height" to "الطول",
@@ -338,6 +342,8 @@ private class KooraRepository {
             title = title,
             subtitle = subtitle,
             imageUrl = image,
+            homeImageUrl = homeImage,
+            awayImageUrl = awayImage,
             home = home.ifBlank { null },
             away = away.ifBlank { null },
             score = score.ifBlank { null },
@@ -917,16 +923,35 @@ private fun MatchCard(record: FootballRecord, onClick: () -> Unit) {
                 Text(record.status ?: "الموعد غير متاح", color = Green, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
                 if (record.subtitle.isNotBlank()) Text(record.subtitle, color = Muted, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(record.home ?: record.title, color = Bright, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(record.score ?: "—", color = Gold, fontWeight = FontWeight.Bold)
-                Text(record.away ?: "", color = Bright, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    TeamBadge(record.homeImageUrl, record.home ?: record.title)
+                    Spacer(Modifier.width(7.dp))
+                    Text(record.home ?: record.title, color = Bright, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Text(record.score ?: "— : —", color = Gold, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                    Text(record.away ?: "", color = Bright, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.width(7.dp))
+                    TeamBadge(record.awayImageUrl, record.away ?: "")
+                }
             }
             if (!record.kickoff.isNullOrBlank()) {
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(7.dp))
                 Text(record.kickoff, color = Muted, style = MaterialTheme.typography.labelSmall)
             }
+        }
+    }
+}
+
+@Composable
+private fun TeamBadge(imageUrl: String?, name: String) {
+    if (imageUrl != null) {
+        AsyncImage(model = imageUrl, contentDescription = name, modifier = Modifier.size(28.dp).clip(CircleShape))
+    } else {
+        Surface(color = Panel2, shape = CircleShape) {
+            Icon(Icons.Filled.SportsSoccer, contentDescription = name, tint = Muted, modifier = Modifier.padding(6.dp).size(16.dp))
         }
     }
 }
