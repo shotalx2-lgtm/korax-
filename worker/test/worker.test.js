@@ -21,7 +21,7 @@ test("live fixtures are normalized and returned with CORS", async () => {
   };
   globalThis.fetch = async (input, init) => {
     assert.match(String(input), /\/livescores\/inplay/);
-    assert.equal(new Headers(init.headers).get("authorization"), "Bearer unit-test-token");
+    assert.equal(new Headers(init.headers).get("authorization"), "unit-test-token");
     return new Response(JSON.stringify({
       data: [{
         id: 987,
