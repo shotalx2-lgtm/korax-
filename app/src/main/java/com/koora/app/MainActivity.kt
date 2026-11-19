@@ -4,10 +4,6 @@ import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,7 +33,6 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsSoccer
@@ -61,7 +56,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -648,9 +642,7 @@ private fun Header() {
             Text("BEYOND FOOTBALL", color = Gold, style = MaterialTheme.typography.labelSmall)
         }
         Spacer(Modifier.weight(1f))
-        Surface(shape = CircleShape, color = Panel2) {
-            Icon(Icons.Filled.Notifications, contentDescription = "الإشعارات", tint = Muted, modifier = Modifier.padding(10.dp).size(20.dp))
-        }
+        Text("LIVE", color = Green, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -693,7 +685,7 @@ private fun MatchCard(record: FootballRecord, onClick: () -> Unit) {
 @Composable
 private fun RecordRow(record: FootballRecord, favorite: Boolean, onFavorite: () -> Unit, onClick: () -> Unit) {
     Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(46.dp).clip(RoundedCornerShape(13.dp)).background(Panel2), contentAlignment = Alignment.Center) {
                 if (record.imageUrl != null) {
                     AsyncImage(model = record.imageUrl, contentDescription = record.title, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(13.dp)))
