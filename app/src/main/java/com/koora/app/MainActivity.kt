@@ -247,7 +247,7 @@ private class KooraRepository {
             else -> json.optString("country", "")
         }
         val image = json.optString("imageUrl", "").ifBlank {
-            json.optString("logoUrl", "").ifBlank { nestedImage(json, "homeTeam") }
+            json.optString("logoUrl", "").ifBlank { json.optString("image_path", "").ifBlank { nestedImage(json, "homeTeam") } }
         }.takeIf { it.startsWith("https://") }
         val factKeys = listOf(
             "country" to "الدولة", "nationality" to "الجنسية", "position" to "المركز",
@@ -327,7 +327,7 @@ private class KooraRepository {
 
     private fun nestedImage(json: JSONObject, key: String): String {
         val child = json.optJSONObject(key) ?: return ""
-        return child.optString("crest", child.optString("logoUrl", ""))
+        return child.optString("crest", child.optString("logoUrl", child.optString("image_path", "")))
     }
 }
 
@@ -651,52 +651,138 @@ private fun DetailScreen(
 ) {
     var record by remember(initial, kind, id) { mutableStateOf(initial) }
     var loading by remember { mutableStateOf(initial == null) }
+    var selectedSection by remember(kind, id) { mutableStateOf("overview") }
     LaunchedEffect(kind, id) {
         if (record == null) {
             record = repository.detail(kind, id)
             loading = false
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
             IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = "رجوع", tint = Bright) }
-            Text("التفاصيل", color = Bright, fontWeight = FontWeight.Bold)
+            Text("ملف التفاصيل", color = Bright, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            Text("KOORA", color = Gold, fontWeight = FontWeight.Black)
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(10.dp))
         when {
             loading -> LoadingBlock()
             record == null -> EmptyPanel("التفاصيل غير متاحة", "لم تصل بيانات مؤكدة لهذا العنصر من الخادم.")
             else -> {
                 val item = record!!
-                if (item.imageUrl != null) {
-                    AsyncImage(model = item.imageUrl, contentDescription = item.title, modifier = Modifier.size(108.dp).clip(RoundedCornerShape(24.dp)))
-                    Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (item.imageUrl != null) {
+                        AsyncImage(model = item.imageUrl, contentDescription = item.title, modifier = Modifier.size(76.dp).clip(RoundedCornerShape(20.dp)))
+                    } else {
+                        Surface(color = Panel2, shape = RoundedCornerShape(20.dp)) {
+                            Icon(Icons.Filled.SportsSoccer, contentDescription = null, tint = Gold, modifier = Modifier.padding(22.dp).size(32.dp))
+                        }
+                    }
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(item.title, style = MaterialTheme.typography.headlineSmall, color = Bright, fontWeight = FontWeight.Bold)
+                        if (item.subtitle.isNotBlank()) Text(item.subtitle, color = Muted, style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            when (item.kind) {
+                                "match" -> "مباراة"
+                                "team" -> "نادي / منتخب"
+                                "player" -> "لاعب"
+                                else -> "بطولة"
+                            },
+                            color = Gold,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
                 }
-                Text(item.title, style = MaterialTheme.typography.headlineMedium, color = Bright, fontWeight = FontWeight.Bold)
-                if (item.subtitle.isNotBlank()) Text(item.subtitle, color = Muted)
-                Spacer(Modifier.height(14.dp))
+                Spacer(Modifier.height(16.dp))
                 if (item.kind == "match") {
                     Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(20.dp)) {
                         Column(Modifier.fillMaxWidth().padding(18.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(item.status ?: "حالة المباراة غير متاحة", color = Green, fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.height(8.dp))
-                            Text(item.score ?: "النتيجة غير متاحة", color = Gold, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                            Text(item.score ?: "— : —", color = Gold, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                             Text(item.kickoff ?: "موعد المباراة غير متاح", color = Muted)
                         }
                     }
                 }
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(14.dp))
                 Button(
                     onClick = { onFavorite(item) },
-                    colors = ButtonDefaults.buttonColors(containerColor = if (favorites.contains(item.favoriteKey)) Panel2 else Gold, contentColor = if (favorites.contains(item.favoriteKey)) Bright else Ink),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (favorites.contains(item.favoriteKey)) Panel2 else Gold,
+                        contentColor = if (favorites.contains(item.favoriteKey)) Bright else Ink
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(if (favorites.contains(item.favoriteKey)) Icons.Filled.Star else Icons.Outlined.StarBorder, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text(if (favorites.contains(item.favoriteKey)) "إزالة من المفضلة" else "إضافة إلى المفضلة")
                 }
-                Spacer(Modifier.height(18.dp))
-                EmptyPanel("معلومات موثوقة فقط", "ستظهر بقية التفاصيل مثل التشكيلات والأحداث والإحصائيات عندما يوفرها مصدر البيانات. لن نخترع معلومات غير متاحة.")
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(selected = selectedSection == "overview", onClick = { selectedSection = "overview" }, label = { Text("نظرة عامة") })
+                    if (item.kind == "match") {
+                        FilterChip(selected = selectedSection == "events", onClick = { selectedSection = "events" }, label = { Text("الأحداث") })
+                        FilterChip(selected = selectedSection == "lineups", onClick = { selectedSection = "lineups" }, label = { Text("التشكيل") })
+                    }
+                    FilterChip(selected = selectedSection == "stats", onClick = { selectedSection = "stats" }, label = { Text("الإحصائيات") })
+                }
+                Spacer(Modifier.height(12.dp))
+                when (selectedSection) {
+                    "events" -> {
+                        if (item.events.isEmpty()) EmptyPanel("لا توجد أحداث متاحة", "ستظهر الأهداف والبطاقات والتبديلات عندما يرسلها مصدر المباراة.")
+                        else item.events.forEachIndexed { index, event -> DetailLine(index + 1, event, "حدث المباراة") }
+                    }
+                    "lineups" -> {
+                        if (item.lineups.isEmpty()) EmptyPanel("التشكيل غير متاح بعد", "لا نعرض تشكيلاً متوقعاً على أنه رسمي. ستظهر الأسماء بعد تأكيدها من المصدر.")
+                        else item.lineups.forEachIndexed { index, player -> DetailLine(index + 1, player, "لاعب") }
+                    }
+                    "stats" -> {
+                        if (item.statistics.isEmpty()) EmptyPanel("الإحصائيات غير متاحة", "ستظهر الأرقام مثل الاستحواذ والتسديدات والتمريرات عندما يوفرها مصدر البيانات.")
+                        else item.statistics.forEach { (label, value) -> FactRow(label, value) }
+                    }
+                    else -> {
+                        if (!item.description.isNullOrBlank()) {
+                            Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(16.dp)) {
+                                Text(item.description, color = Bright, modifier = Modifier.padding(16.dp))
+                            }
+                            Spacer(Modifier.height(10.dp))
+                        }
+                        if (item.facts.isEmpty()) EmptyPanel("لا توجد معلومات إضافية", "نحافظ على دقة المحتوى؛ لن نملأ الصفحة بمعلومات غير متوفرة.")
+                        else item.facts.forEach { (label, value) -> FactRow(label, value) }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(28.dp))
+    }
+}
+
+@Composable
+private fun FactRow(label: String, value: String) {
+    Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, color = Muted, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Text(value, color = Bright, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+@Composable
+private fun DetailLine(number: Int, title: String, subtitle: String) {
+    Card(colors = CardDefaults.cardColors(containerColor = Panel), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 7.dp)) {
+        Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(color = Panel2, shape = CircleShape) {
+                Text(number.toString(), color = Gold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp), fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(title, color = Bright, fontWeight = FontWeight.Medium)
+                Text(subtitle, color = Muted, style = MaterialTheme.typography.labelSmall)
             }
         }
     }
