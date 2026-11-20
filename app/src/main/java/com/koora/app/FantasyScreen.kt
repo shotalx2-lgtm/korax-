@@ -116,8 +116,10 @@ private class FantasyLocalStore(context: Context) {
             players.put(JSONObject().put("id", p.id).put("name", p.name).put("club", p.club)
                 .put("position", p.position).put("price", p.price).put("points", p.points))
         }
-        val owned = JSONArray().also { array -> state.ownedIds.forEach(array::put) }
-        val log = JSONArray().also { array -> state.transferLog.forEach(array::put) }
+        val owned = JSONArray()
+        state.ownedIds.forEach { owned.put(it) }
+        val log = JSONArray()
+        state.transferLog.forEach { log.put(it) }
         val root = JSONObject()
             .put("catalogue", players)
             .put("owned", owned)
@@ -148,6 +150,16 @@ fun FantasyScreen() {
     fun commit(next: FantasyState) {
         state = next
         store.save(next)
+    }
+
+    fun adjustPoints(player: FantasyPlayer, delta: Int) {
+        val updated = state.catalogue.map { current ->
+            if (current.id == player.id) current.copy(points = (current.points + delta).coerceIn(-1000, 1000)) else current
+        }
+        commit(state.copy(
+            catalogue = updated,
+            transferLog = (listOf("تعديل نقاط ${player.name}: ${if (delta > 0) "+" else ""}$delta") + state.transferLog).take(50)
+        ))
     }
 
     val owned = state.owned()
@@ -310,7 +322,11 @@ fun FantasyScreen() {
                             Text(player.name, color = FxText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                             Text("${player.club} • ${positionLabel(player.position)}", color = FxMuted, fontSize = 10.sp)
                         }
-                        Text(player.points.toString() + " نقطة", color = FxGold, fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Text(player.points.toString() + " نقطة", color = FxGold, fontWeight = FontWeight.Bold)
+                            Text("−1", color = FxMuted, modifier = Modifier.clickable { adjustPoints(player, -1) }.padding(5.dp))
+                            Text("+1", color = FxGreen, modifier = Modifier.clickable { adjustPoints(player, 1) }.padding(5.dp))
+                        }
                     }
                 }
                 if (owned.isNotEmpty()) {
