@@ -1,22 +1,22 @@
-# KOORA — Beyond Football
+# KORAX — Fantasy & Football News
 
-Android football companion app. The default launcher experience is the design-first edition.
+KORAX is an Arabic-first Android football companion with a locally persisted fantasy-team manager and live football headlines from public RSS feeds.
 
-## Design-first edition
-- Modern light interface in blue, green and white.
-- Arabic-first layout, five primary destinations and clean empty states.
-- No fabricated match scores, teams, fixtures, player profiles or statistics.
-- No login required.
-- News screen reads public football RSS feeds from BBC Sport and Sky Sports directly on the device and opens each article at its publisher. Feed availability can vary by publisher/network; full articles remain on the source website.
+## Included in this build
+- Native Android application using Kotlin and Jetpack Compose.
+- Arabic news headlines fetched from BBC Sport Football and Sky Sports RSS feeds; articles open at their original publishers.
+- Local fantasy squad management: 100m starting budget, 15-player squad limits, position quotas, a three-player-per-club cap, buying and selling, formations, captain and vice-captain selection, local points totals and transfer history.
+- Fantasy roster and market entries persist on the device across app restarts.
+- Clear empty states when no verified sports data is configured; the application does not create fake live scores, injuries, players or match statistics.
 
-## Limits of this APK
-This is a **design preview with working RSS headlines**, not the full live-football release. Match data, teams, players, competitions, push notifications, and remote favorites are intentionally not populated. The original data-connected implementation remains in `MainActivity.kt` for the next integration phase.
+## Important fantasy limitations
+The fantasy manager in this build is a **single-device local mode**. Market players, prices and points must be entered by the user from competition-approved data. It is not yet a connected multi-user fantasy service: accounts, Google sign-in, remote leagues, head-to-head matchmaking, cloud synchronization, administrator roles, official match-event scoring, automatic substitutions, chips, paid subscriptions and push notifications still require a deployed secure backend and service credentials.
 
-## News feeds
-- BBC Sport Football: https://feeds.bbci.co.uk/sport/football/rss.xml
-- Sky Sports Football: https://www.skysports.com/rss/11095
+## Football data backend
+The repository includes a Cloudflare Worker adapter for Sportmonks. Provider credentials must be configured as a Cloudflare Worker secret named `SPORTMONKS_API_TOKEN`; never embed that token in the Android APK. The Worker must be deployed and its HTTPS base URL supplied as `KOORA_API_BASE_URL` at Android build time. Provider plan coverage and image redistribution rights must be verified before public use.
 
-The app displays headlines and short feed summaries with source attribution and links to the original article. It does not republish full article text.
+## Build
+The GitHub Actions workflow builds a debug APK on pushes to `main` and uploads it as the `KORAX-debug-apk` workflow artifact.
 
 ## Repository
 https://github.com/shotalx2-lgtm/korax-
