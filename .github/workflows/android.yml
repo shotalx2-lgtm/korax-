@@ -1,4 +1,4 @@
-name: Android build
+name: KORAX Android build
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -20,7 +20,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - name: Test KOORA API worker
+      - name: Test football data worker
         working-directory: worker
         run: |
           npm run check
@@ -40,10 +40,27 @@ jobs:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
-      - name: Upload APK
+      - name: Prepare public APK asset
+        run: cp app/build/outputs/apk/debug/app-debug.apk KORAX-Android.apk
+      - name: Publish tested APK as a GitHub prerelease
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-build-${{ github.run_number }}
+          name: KORAX Android build ${{ github.run_number }}
+          body: |
+            Automated KORAX Android debug build.
+
+            This build includes the local fantasy manager and RSS-based news.
+            The multi-user fantasy backend, live fantasy scoring, account system and push notifications are not yet deployed.
+          prerelease: true
+          draft: false
+          make_latest: false
+          files: KORAX-Android.apk
+      - name: Upload APK workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: KORAX-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: KORAX-Android.apk
           if-no-files-found: error
           retention-days: 14
