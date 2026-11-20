@@ -90,8 +90,8 @@ private fun KooraVisualApp() {
                 val tabs = listOf(
                     Triple("home", "الرئيسية", Icons.Filled.Home),
                     Triple("matches", "المباريات", Icons.Filled.CalendarMonth),
+                    Triple("fantasy", "الفانتازيا", Icons.Filled.SportsSoccer),
                     Triple("news", "الأخبار", Icons.Filled.Search),
-                    Triple("explore", "استكشف", Icons.Filled.Explore),
                     Triple("more", "المزيد", Icons.Filled.Settings)
                 )
                 tabs.forEach { (key, label, icon) ->
@@ -108,12 +108,13 @@ private fun KooraVisualApp() {
             when (tab) {
                 "home" -> HomeScreen({ tab = "news" }, { tab = "matches" }, { tab = "more" })
                 "matches" -> MatchesScreen()
+                "fantasy" -> FantasyScreen()
                 "news" -> NewsScreen()
                 "explore" -> ExploreScreen()
                 "favorites" -> SimpleScreen("المفضلة", "قائمتك فارغة حاليًا", "أضف أنديتك ولاعبيك وبطولاتك المفضلة بعد توصيل دليل البيانات.", "♡")
                 "notifications" -> SimpleScreen("مركز الإشعارات", "لا توجد إشعارات بعد", "سيتم تفعيل تنبيهات المباريات والأندية المفضلة بعد ربط خدمة الإشعارات.", "🔔")
                 "settings" -> SettingsScreen()
-                else -> MoreScreen({ tab = "favorites" }, { tab = "notifications" }, { tab = "settings" })
+                else -> MoreScreen({ tab = "explore" }, { tab = "favorites" }, { tab = "notifications" }, { tab = "settings" })
             }
         }
     }
@@ -127,7 +128,7 @@ private fun Header(onNotifications: (() -> Unit)? = null) {
         }
         Spacer(Modifier.width(10.dp))
         Column {
-            Text("KOORA", color = Navy, fontSize = 21.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+            Text("KORAX", color = Navy, fontSize = 21.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
             Text("BEYOND FOOTBALL", color = Green, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
         }
         Spacer(Modifier.weight(1f))
@@ -154,7 +155,7 @@ private fun HomeScreen(onNews: () -> Unit, onMatches: () -> Unit, onMore: () -> 
             ) {
                 Column {
                     Surface(color = Color.White.copy(alpha = 0.18f), shape = RoundedCornerShape(30.dp)) {
-                        Text("KOORA • BEYOND FOOTBALL", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                        Text("KORAX • BEYOND FOOTBALL", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp))
                     }
                     Spacer(Modifier.height(18.dp))
@@ -290,18 +291,19 @@ private fun ExploreScreen() {
 }
 
 @Composable
-private fun MoreScreen(onFavorites: () -> Unit, onNotifications: () -> Unit, onSettings: () -> Unit) {
+private fun MoreScreen(onExplore: () -> Unit, onFavorites: () -> Unit, onNotifications: () -> Unit, onSettings: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Header()
         Column(Modifier.padding(horizontal = 20.dp)) {
             Text("المزيد", color = Navy, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold)
-            Text("إعدادات وتجربة KOORA", color = Muted, fontSize = 12.sp)
+            Text("إعدادات وتجربة KORAX", color = Muted, fontSize = 12.sp)
             Spacer(Modifier.height(18.dp))
+            MoreRow("استكشف", "الأندية واللاعبون والبطولات", "🌍", onExplore)
             MoreRow("المفضلة", "الأندية واللاعبون والبطولات التي تتابعها", "♡", onFavorites)
             MoreRow("مركز الإشعارات", "كل التنبيهات في مكان واحد", "🔔", onNotifications)
             MoreRow("الإعدادات", "تحكم في تفضيلات التطبيق", "⚙️", onSettings)
             Spacer(Modifier.height(18.dp))
-            EmptyCard("✨", "KOORA • BEYOND FOOTBALL", "تجربة كرة قدم منظمة بمعلومات من مصادرها الحقيقية عند ربط الخدمات.")
+            EmptyCard("✨", "KORAX • BEYOND FOOTBALL", "تجربة كرة قدم منظمة بمعلومات من مصادرها الحقيقية عند ربط الخدمات.")
         }
     }
 }
@@ -355,7 +357,7 @@ private fun SettingsScreen() {
                 }
             }
             Spacer(Modifier.height(14.dp))
-            EmptyCard("ℹ️", "عن التطبيق", "KOORA – BEYOND FOOTBALL\nنسخة واجهة وتصميم مع أخبار RSS مباشرة. بيانات المباريات غير مفعّلة في هذه النسخة.")
+            EmptyCard("ℹ️", "عن التطبيق", "KORAX – BEYOND FOOTBALL\nنسخة واجهة وتصميم مع أخبار RSS مباشرة. بيانات المباريات غير مفعّلة في هذه النسخة.")
         }
     }
 }
@@ -403,7 +405,7 @@ private object NewsRepository {
         val connection = (URL(feed.url).openConnection() as HttpURLConnection).apply {
             connectTimeout = 9000
             readTimeout = 9000
-            setRequestProperty("User-Agent", "KOORA-Android/0.1")
+            setRequestProperty("User-Agent", "KORAX-Android/0.2")
             setRequestProperty("Accept", "application/rss+xml, application/xml, text/xml, */*")
         }
         try {
@@ -548,7 +550,7 @@ private fun NewsCard(article: NewsArticle, onClick: () -> Unit) {
             } else {
                 Box(Modifier.fillMaxWidth().height(66.dp).background(Brush.horizontalGradient(listOf(PaleBlue, PaleGreen))),
                     contentAlignment = Alignment.CenterStart) {
-                    Text("KOORA  •  FOOTBALL NEWS", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
+                    Text("KORAX  •  FOOTBALL NEWS", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
                         modifier = Modifier.padding(horizontal = 17.dp))
                 }
             }
