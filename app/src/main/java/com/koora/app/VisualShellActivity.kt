@@ -342,7 +342,8 @@ private fun NewsCard(article: NewsItem, onOpen: () -> Unit, onComment: () -> Uni
 
 @Composable
 private fun CommentsDialog(article: NewsItem, close: () -> Unit) {
-    val store = remember { LocalComments(LocalContext.current) }
+    val context = LocalContext.current
+    val store = remember(context) { LocalComments(context) }
     var draft by remember(article.url) { mutableStateOf("") }
     var comments by remember(article.url) { mutableStateOf(store.read(article.url)) }
     AlertDialog(onDismissRequest = close, title = { Text("التعليقات", color = KText, fontWeight = FontWeight.Bold) },
