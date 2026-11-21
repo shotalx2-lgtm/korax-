@@ -282,11 +282,116 @@ function getOne(payload) {
   return Array.isArray(data) ? data[0] || null : data || null;
 }
 
+
+const ARABIC_NEWS_FEEDS = [
+  { source: "اليوم السابع", url: "https://www.youm7.com/rss/SectionRss?SectionID=298" },
+  { source: "الإخبارية", url: "https://alikhbariya.net/feeds/topics/football.xml" },
+  { source: "أخبار Google", url: "https://news.google.com/rss/search?q=%D9%83%D8%B1%D8%A9+%D8%A7%D9%84%D9%82%D8%AF%D9%85&hl=ar&gl=EG&ceid=EG:ar" },
+];
+
+function decodeXml(value) {
+  return String(value || "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1")
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&");
+}
+
+function xmlText(block, name) {
+  const tag = name.replace(/:/g, "\\:");
+  const match = block.match(new RegExp(
+    "<(?:[\\w.-]+:)?" + tag + "\\b[^>]*>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?" + tag + "\\s*>",
+    "i"
+  ));
+  return match ? decodeXml(match[1]).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+}
+
+function xmlLink(block) {
+  const match = block.match(/<(?:[\w.-]+:)?link\b([^>]*)>([\s\S]*?)<\/(?:[\w.-]+:)?link\s*>/i)
+    || block.match(/<(?:[\w.-]+:)?link\b([^>]*)\/?>/i);
+  if (!match) return "";
+  const href = match[1].match(/\bhref=["']([^"']+)["']/i)?.[1];
+  return decodeXml(href || match[2] || "").trim();
+}
+
+function xmlImage(block) {
+  const candidates = [
+    /<(?:media:content|media:thumbnail|content)\b[^>]*\burl=["']([^"']+)["']/i,
+    /<enclosure\b[^>]*\burl=["']([^"']+)["'][^>]*\btype=["']image\//i,
+    /<img\b[^>]*\bsrc=["']([^"']+)["']/i,
+  ];
+  for (const pattern of candidates) {
+    const value = block.match(pattern)?.[1];
+    if (value) {
+      const url = decodeXml(value).trim();
+      if (url.startsWith("https://")) return url;
+    }
+  }
+  return "";
+}
+
+function parseArabicRss(xml, source) {
+  const blocks = String(xml || "").match(/<(?:item|entry)\b[\s\S]*?<\/(?:item|entry)>/gi) || [];
+  return blocks.slice(0, 50).map((block) => {
+    const title = xmlText(block, "title");
+    const rawDescription = block.match(/<(?:description|summary|content:encoded)\b[^>]*>([\s\S]*?)<\/(?:description|summary|content:encoded)\s*>/i)?.[1] || "";
+    const summary = decodeXml(rawDescription).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 360);
+    const link = xmlLink(block) || xmlText(block, "guid");
+    const publishedAt = xmlText(block, "pubDate") || xmlText(block, "published") || xmlText(block, "updated") || xmlText(block, "dc:date");
+    const imageUrl = xmlImage(block) || xmlImage(rawDescription);
+    if (!title || !/[\u0600-\u06FF]/.test(title) || !link.startsWith("https://")) return null;
+    return { id: link, title, summary, url: link, source, publishedAt, imageUrl: imageUrl || null };
+  }).filter(Boolean);
+}
+
+async function loadArabicNews() {
+  const responses = await Promise.allSettled(ARABIC_NEWS_FEEDS.map(async (feed) => {
+    const response = await fetch(feed.url, {
+      headers: { "accept": "application/rss+xml, application/xml, text/xml, */*", "user-agent": "KORAX-News/1.0" },
+      signal: AbortSignal.timeout(9000),
+    });
+    if (!response.ok) throw new Error("News feed returned " + response.status);
+    return parseArabicRss(await response.text(), feed.source);
+  }));
+  const articles = responses.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  const unique = new Map();
+  for (const article of articles) {
+    const key = article.url || article.title;
+    if (!unique.has(key)) unique.set(key, article);
+  }
+  return Array.from(unique.values())
+    .sort((a, b) => (Date.parse(b.publishedAt) || 0) - (Date.parse(a.publishedAt) || 0))
+    .slice(0, 60);
+}
+
+async function getCachedArabicNews() {
+  const cacheKey = new Request("https://korax-cache.invalid/api/news?language=ar");
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached.json();
+  const payload = { data: await loadArabicNews(), language: "ar", updatedAt: new Date().toISOString() };
+  await cache.put(cacheKey, new Response(JSON.stringify(payload), {
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=180" },
+  }));
+  return payload;
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   const path = url.pathname.replace(/\/+$/, "") || "/";
   const perPage = Math.min(50, Math.max(1, Number(url.searchParams.get("per_page") || 30)));
   const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+
+  if (path === "/api/news") {
+    const payload = await getCachedArabicNews();
+    const requested = Math.min(60, Math.max(1, Number(url.searchParams.get("per_page") || 40)));
+    return json({ ...payload, data: payload.data.slice(0, requested), source: "arabic-rss" });
+  }
 
   if (path === "/health") {
     return json({ ok: true, service: "KOORA API", providerConfigured: Boolean(env.SPORTMONKS_API_TOKEN) });
