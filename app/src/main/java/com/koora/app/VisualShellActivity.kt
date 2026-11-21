@@ -1,5 +1,6 @@
 package com.koora.app
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -50,6 +51,8 @@ import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val Page = Color(0xFFF4F7FB)
 private val Paper = Color.White
@@ -388,28 +391,76 @@ private data class NewsState(val articles: List<NewsArticle> = emptyList(), val 
 private object NewsRepository {
     private data class Feed(val source: String, val url: String)
     private val feeds = listOf(
-        Feed("BBC Sport", "https://feeds.bbci.co.uk/sport/football/rss.xml"),
-        Feed("Sky Sports", "https://www.skysports.com/rss/11095")
+        Feed("اليوم السابع", "https://www.youm7.com/rss/SectionRss?SectionID=298"),
+        Feed("الإخبارية", "https://alikhbariya.net/feeds/topics/football.xml"),
+        Feed("أخبار Google", "https://news.google.com/rss/search?q=%D9%83%D8%B1%D8%A9+%D8%A7%D9%84%D9%82%D8%AF%D9%85&hl=ar&gl=EG&ceid=EG:ar")
     )
+    private const val CACHE_NAME = "korax_arabic_news"
+    private const val CACHE_KEY = "articles"
 
-    suspend fun load(): List<NewsArticle> = coroutineScope {
-        feeds.map { feed ->
+    suspend fun load(context: Context): List<NewsArticle> = coroutineScope {
+        val remote = async(Dispatchers.IO) { runCatching { fetchBackend() }.getOrDefault(emptyList()) }.await()
+        if (remote.isNotEmpty()) {
+            saveCache(context, remote)
+            return@coroutineScope remote
+        }
+        val articles = feeds.map { feed ->
             async(Dispatchers.IO) { runCatching { fetch(feed) }.getOrDefault(emptyList()) }
         }.awaitAll().flatten()
+            .filter { isArabic(it.title) }
             .distinctBy { it.url }
             .sortedByDescending { it.publishedMillis }
             .take(60)
+        if (articles.isNotEmpty()) {
+            saveCache(context, articles)
+            articles
+        } else {
+            readCache(context)
+        }
+    }
+
+    private fun fetchBackend(): List<NewsArticle> {
+        val base = BuildConfig.KOORA_API_BASE_URL.trim().trimEnd('/')
+        if (!base.startsWith("https://")) return emptyList()
+        val connection = (URL(base + "/api/news?per_page=50").openConnection() as HttpURLConnection).apply {
+            connectTimeout = 7000
+            readTimeout = 9000
+            setRequestProperty("Accept", "application/json")
+        }
+        try {
+            if (connection.responseCode !in 200..299) error("News API HTTP " + connection.responseCode)
+            val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+            val array = root.optJSONArray("data") ?: JSONArray()
+            return (0 until array.length()).mapNotNull { index ->
+                val item = array.optJSONObject(index) ?: return@mapNotNull null
+                val title = clean(item.optString("title"))
+                val link = item.optString("url")
+                if (title.isBlank() || !isArabic(title) || !link.startsWith("https://")) return@mapNotNull null
+                val rawDate = item.optString("publishedAt")
+                NewsArticle(
+                    title = title,
+                    summary = clean(item.optString("summary")).take(300),
+                    url = link,
+                    source = item.optString("source", "مصدر رياضي"),
+                    published = dateLabel(parseDate(rawDate)),
+                    imageUrl = item.optString("imageUrl").takeIf { it.startsWith("https://") },
+                    publishedMillis = parseDate(rawDate)
+                )
+            }.distinctBy { it.url }.take(60)
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun fetch(feed: Feed): List<NewsArticle> {
         val connection = (URL(feed.url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = 9000
+            connectTimeout = 8000
             readTimeout = 9000
-            setRequestProperty("User-Agent", "KORAX-Android/0.2")
+            setRequestProperty("User-Agent", "KORAX-Android/0.3")
             setRequestProperty("Accept", "application/rss+xml, application/xml, text/xml, */*")
         }
         try {
-            if (connection.responseCode !in 200..299) error("RSS HTTP \${connection.responseCode}")
+            if (connection.responseCode !in 200..299) error("RSS HTTP " + connection.responseCode)
             connection.inputStream.use { input ->
                 val parser = Xml.newPullParser()
                 parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, true)
@@ -433,6 +484,7 @@ private object NewsRepository {
         var title = ""
         var link = ""
         var summary = ""
+        var rawSummary = ""
         var date = ""
         var image = ""
         while (true) {
@@ -443,32 +495,60 @@ private object NewsRepository {
             when (parser.name.substringAfter(':').lowercase(Locale.ROOT)) {
                 "title" -> title = parser.nextText()
                 "link" -> link = parser.getAttributeValue(null, "href") ?: parser.nextText()
-                "description", "summary", "encoded" -> summary = parser.nextText()
+                "description", "summary", "encoded" -> {
+                    rawSummary = parser.nextText()
+                    summary = rawSummary
+                    if (image.isBlank()) image = extractImage(rawSummary)
+                }
                 "pubdate", "published", "updated", "date" -> date = parser.nextText()
                 "thumbnail", "content" -> {
-                    val u = parser.getAttributeValue(null, "url") ?: parser.getAttributeValue("http://search.yahoo.com/mrss/", "url")
-                    if (!u.isNullOrBlank()) image = u
+                    val u = parser.getAttributeValue(null, "url")
+                        ?: parser.getAttributeValue("http://search.yahoo.com/mrss/", "url")
+                    if (!u.isNullOrBlank() && u.startsWith("https://")) image = u
                 }
                 "enclosure" -> {
                     val type = parser.getAttributeValue(null, "type").orEmpty()
                     val u = parser.getAttributeValue(null, "url").orEmpty()
-                    if (type.startsWith("image") && u.isNotBlank()) image = u
+                    if (type.startsWith("image") && u.startsWith("https://")) image = u
                 }
             }
         }
         title = clean(title)
         summary = clean(summary)
         link = link.trim()
-        if (title.isBlank() || !link.startsWith("https://")) return null
+        if (title.isBlank() || !isArabic(title) || !link.startsWith("https://")) return null
         val millis = parseDate(date)
-        return NewsArticle(title, summary.take(240), link, source, dateLabel(millis), image.takeIf { it.startsWith("https://") }, millis)
+        return NewsArticle(title, summary.take(300), link, source, dateLabel(millis), image.takeIf { it.startsWith("https://") }, millis)
     }
+
+    private fun extractImage(html: String): String {
+        val lower = html.lowercase(Locale.ROOT)
+        val marker = "src="
+        val start = lower.indexOf("<img")
+        if (start < 0) return ""
+        val src = lower.indexOf(marker, start)
+        if (src < 0) return ""
+        var valueStart = src + marker.length
+        while (valueStart < html.length && html[valueStart].isWhitespace()) valueStart++
+        if (valueStart >= html.length) return ""
+        val quote = html[valueStart]
+        if (quote == '"' || quote == '\'') valueStart++
+        val end = if (quote == '"' || quote == '\'') html.indexOf(quote, valueStart) else html.indexOfAny(charArrayOf(' ', '>'), valueStart)
+        if (end <= valueStart) return ""
+        return html.substring(valueStart, end).replace("&amp;", "&").trim()
+    }
+
+    private fun isArabic(value: String): Boolean = value.any { it in '\u0600'..'\u06FF' }
 
     private fun clean(text: String): String =
         Html.fromHtml(text, Html.FROM_HTML_MODE_COMPACT).toString().replace(Regex("\\s+"), " ").trim()
 
     private fun parseDate(value: String): Long {
-        val patterns = listOf("EEE, dd MMM yyyy HH:mm:ss zzz", "EEE, d MMM yyyy HH:mm:ss zzz", "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd'T'HH:mm:ssXXX")
+        val patterns = listOf(
+            "EEE, dd MMM yyyy HH:mm:ss zzz", "EEE, d MMM yyyy HH:mm:ss zzz",
+            "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd'T'HH:mm:ssXXX",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
+        )
         for (pattern in patterns) {
             try {
                 val date = SimpleDateFormat(pattern, Locale.US).parse(value)
@@ -480,6 +560,41 @@ private object NewsRepository {
 
     private fun dateLabel(millis: Long): String =
         if (millis <= 0L) "من المصدر" else SimpleDateFormat("d MMM • h:mm a", Locale("ar")).format(Date(millis))
+
+    private fun saveCache(context: Context, articles: List<NewsArticle>) {
+        runCatching {
+            val array = JSONArray()
+            articles.take(60).forEach { article ->
+                array.put(JSONObject()
+                    .put("title", article.title)
+                    .put("summary", article.summary)
+                    .put("url", article.url)
+                    .put("source", article.source)
+                    .put("published", article.published)
+                    .put("imageUrl", article.imageUrl ?: "")
+                    .put("publishedMillis", article.publishedMillis))
+            }
+            context.getSharedPreferences(CACHE_NAME, Context.MODE_PRIVATE)
+                .edit().putString(CACHE_KEY, array.toString()).apply()
+        }
+    }
+
+    private fun readCache(context: Context): List<NewsArticle> = runCatching {
+        val raw = context.getSharedPreferences(CACHE_NAME, Context.MODE_PRIVATE).getString(CACHE_KEY, null)
+            ?: return@runCatching emptyList()
+        val array = JSONArray(raw)
+        (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val title = item.optString("title")
+            val url = item.optString("url")
+            if (title.isBlank() || !url.startsWith("https://")) return@mapNotNull null
+            NewsArticle(
+                title, item.optString("summary"), url, item.optString("source"),
+                item.optString("published"), item.optString("imageUrl").takeIf { it.startsWith("https://") },
+                item.optLong("publishedMillis")
+            )
+        }
+    }.getOrDefault(emptyList())
 }
 
 @Composable
@@ -489,7 +604,7 @@ private fun NewsScreen() {
     val scope = rememberCoroutineScope()
     suspend fun refresh() {
         state = NewsState(loading = true)
-        val items = runCatching { NewsRepository.load() }.getOrDefault(emptyList())
+        val items = runCatching { NewsRepository.load(context) }.getOrDefault(emptyList())
         state = NewsState(items, loading = false)
     }
     LaunchedEffect(Unit) { refresh() }
@@ -546,12 +661,19 @@ private fun NewsCard(article: NewsArticle, onClick: () -> Unit) {
         colors = CardDefaults.cardColors(containerColor = Paper), border = BorderStroke(1.dp, Border)) {
         Column {
             if (!article.imageUrl.isNullOrBlank()) {
-                coil.compose.AsyncImage(article.imageUrl, article.title, Modifier.fillMaxWidth().height(155.dp))
+                coil.compose.AsyncImage(
+                    model = article.imageUrl,
+                    contentDescription = article.title,
+                    modifier = Modifier.fillMaxWidth().height(175.dp),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
             } else {
-                Box(Modifier.fillMaxWidth().height(66.dp).background(Brush.horizontalGradient(listOf(PaleBlue, PaleGreen))),
-                    contentAlignment = Alignment.CenterStart) {
-                    Text("KORAX  •  FOOTBALL NEWS", color = Blue, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
-                        modifier = Modifier.padding(horizontal = 17.dp))
+                Box(Modifier.fillMaxWidth().height(130.dp).background(Brush.horizontalGradient(listOf(PaleBlue, PaleGreen))),
+                    contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("⚽", fontSize = 38.sp)
+                        Text("صورة الخبر غير متاحة من المصدر", color = Blue, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
             Column(Modifier.padding(15.dp)) {
