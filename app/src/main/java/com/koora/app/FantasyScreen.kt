@@ -44,7 +44,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.json.JSONArray
-import org.json.JSONObject
 import java.util.UUID
 
 private val FxGold = Color(0xFFE5B85C)
