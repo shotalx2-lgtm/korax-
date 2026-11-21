@@ -125,7 +125,7 @@ private suspend fun loadNews(): List<NewsItem> {
         val title = x.optString("title").trim()
         if (title.isBlank() || !url.startsWith("https://")) return@mapNotNull null
         NewsItem(x.optString("id", url), title, x.optString("summary"), url,
-            x.optString("source", "مصدر رياضي"), x.optString("publishedAt"), x.https("imageUrl").ifBlank { null })
+            x.optString("source", "مصدر رياضي"), x.optString("publishedAt"), x.https("imageUrl").takeIf { it.isNotBlank() })
     }.distinctBy { it.url }
 }
 
