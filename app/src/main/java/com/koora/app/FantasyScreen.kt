@@ -1,6 +1,12 @@
 package com.koora.app
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.Locale
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -133,6 +139,61 @@ private class FantasyLocalStore(context: Context) {
     }
 }
 
+private suspend fun loadFantasyPlayersFromApi(): List<FantasyPlayer> = withContext(Dispatchers.IO) {
+    val base = BuildConfig.KOORA_API_BASE_URL.trim().trimEnd('/')
+    require(base.startsWith("https://")) { "مصدر البيانات غير مربوط بعد." }
+    val connection = (URL(base + "/api/players?per_page=50&page=1").openConnection() as HttpURLConnection).apply {
+        connectTimeout = 8000
+        readTimeout = 10000
+        setRequestProperty("Accept", "application/json")
+    }
+    try {
+        if (connection.responseCode !in 200..299) error("تعذر تحميل اللاعبين: HTTP " + connection.responseCode)
+        val root = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+        val array = root.optJSONArray("data") ?: JSONArray()
+        (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val id = item.optString("id")
+            val name = item.optString("name").trim()
+            val positionValue = item.opt("position")
+            val rawPosition = when (positionValue) {
+                is JSONObject -> positionValue.optString("name")
+                else -> positionValue?.toString().orEmpty()
+            }.lowercase(Locale.ROOT)
+            val position = when {
+                rawPosition.contains("goal") || rawPosition.contains("keeper") || rawPosition == "gk" -> "GK"
+                rawPosition.contains("defen") || rawPosition == "def" -> "DEF"
+                rawPosition.contains("mid") -> "MID"
+                rawPosition.contains("attack") || rawPosition.contains("forward") || rawPosition.contains("strik") || rawPosition == "fwd" -> "FWD"
+                else -> return@mapNotNull null
+            }
+            val teamValue = item.opt("team")
+            val club = when (teamValue) {
+                is JSONObject -> teamValue.optString("name")
+                is String -> teamValue
+                else -> ""
+            }.ifBlank { item.optString("teamName", "نادي غير محدد") }
+            if (id.isBlank() || name.isBlank()) return@mapNotNull null
+            val initialPrice = when (position) {
+                "GK" -> 4.5
+                "DEF" -> 5.0
+                "MID" -> 6.0
+                else -> 6.5
+            }
+            FantasyPlayer(
+                id = "provider-" + id,
+                name = name,
+                club = club,
+                position = position,
+                price = initialPrice,
+                points = item.optInt("fantasyPoints", 0)
+            )
+        }.distinctBy { it.id }.take(50)
+    } finally {
+        connection.disconnect()
+    }
+}
+
 @Composable
 fun FantasyScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -146,6 +207,9 @@ fun FantasyScreen() {
     var formPoints by remember { mutableStateOf("0") }
     var formPosition by remember { mutableStateOf("MID") }
     var message by remember { mutableStateOf("") }
+    var importing by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val apiConfigured = BuildConfig.KOORA_API_BASE_URL.trim().startsWith("https://")
 
     fun commit(next: FantasyState) {
         state = next
@@ -192,7 +256,50 @@ fun FantasyScreen() {
                 }
                 Spacer(Modifier.height(12.dp))
                 Text("المجموعة: ${owned.size}/15 لاعبًا", color = FxMuted, fontSize = 12.sp)
-                Text("لاعبون حقيقيون ونقاط موثقة فقط: أضف بيانات السوق من المصدر الذي تعتمد عليه المسابقة.", color = FxMuted, fontSize = 10.sp)
+                Text("أسماء اللاعبين تأتي من مزود البيانات عند ربطه. الأسعار الافتراضية خاصة بلعبة KORAX، والنقاط الرسمية تحتاج إحصائيات الجولات.", color = FxMuted, fontSize = 10.sp)
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Card(
+            colors = CardDefaults.cardColors(containerColor = FxPanel),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(1.dp, Color(0xFF303A49))
+        ) {
+            Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                Text("استيراد اللاعبين الحقيقيين", color = FxText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text("يتم جلب الأسماء والأندية والمراكز من مصدر البيانات المتصل. الأسعار الحالية قيم ابتدائية داخل لعبة KORAX وليست أسعارًا رسمية، والنقاط تبدأ من صفر حتى ربط إحصائيات الجولات.", color = FxMuted, fontSize = 10.sp, lineHeight = 16.sp)
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    enabled = apiConfigured && !importing,
+                    onClick = {
+                        scope.launch {
+                            importing = true
+                            message = "جارٍ تحميل اللاعبين من المصدر..."
+                            val result = runCatching { loadFantasyPlayersFromApi() }
+                            result.onSuccess { fetched ->
+                                val existing = state.catalogue.map { it.id }.toSet()
+                                val added = fetched.filter { it.id !in existing }
+                                if (fetched.isEmpty()) {
+                                    message = "المصدر لم يُرجع لاعبين متاحين. تحقق من اشتراك مزود البيانات."
+                                } else {
+                                    commit(state.copy(catalogue = state.catalogue + added))
+                                    message = if (added.isEmpty()) "قائمة اللاعبين محدثة بالفعل." else "تم استيراد " + added.size + " لاعبًا حقيقيًا إلى السوق."
+                                    section = "market"
+                                }
+                            }.onFailure { error ->
+                                message = error.message ?: "تعذر الاتصال بمصدر اللاعبين."
+                            }
+                            importing = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = FxGold, contentColor = Color.Black)
+                ) {
+                    Text(if (importing) "جارٍ التحميل..." else "تحديث سوق اللاعبين")
+                }
+                if (!apiConfigured) {
+                    Text("يلزم نشر خادم KORAX وربط رابط HTTPS في إعدادات البناء لتفعيل الاستيراد التلقائي.", color = FxMuted, fontSize = 10.sp)
+                }
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -209,13 +316,13 @@ fun FantasyScreen() {
         when (section) {
             "market" -> {
                 Text("سوق اللاعبين", color = FxText, fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                Text("اللاعبون الذين تضيفهم يدويًا إلى قائمة المسابقة المحلية.", color = FxMuted, fontSize = 11.sp)
+                Text("قائمة اللاعبين المستوردة من المصدر أو المضافة يدويًا إلى هذا الجهاز.", color = FxMuted, fontSize = 11.sp)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth(),
                     singleLine = true, label = { Text("ابحث عن لاعب أو نادٍ") })
                 Spacer(Modifier.height(8.dp))
                 if (remaining.isEmpty()) {
-                    InfoPanel("السوق فارغ حاليًا", "أضف لاعبي المسابقة من تبويب «إضافة للسوق». لن نعرض أسماء أو أسعارًا أو إحصائيات مختلقة.")
+                    InfoPanel("لا يوجد لاعبون في السوق حاليًا", "اربط مصدر البيانات ثم اضغط تحديث سوق اللاعبين، أو أضف بيانات موثوقة من تبويب الإدارة.")
                 } else {
                     remaining.forEach { player ->
                         PlayerCard(player, owned = false, onAction = {
