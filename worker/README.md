@@ -12,11 +12,14 @@ This Cloudflare Worker keeps the Sportmonks token on the server and normalizes p
 
 ## Routes
 - `GET /health`
+- `GET /api/news?per_page=40` (aggregated Arabic football headlines with source image URLs, cached at the edge)
 - `GET /api/matches?date=YYYY-MM-DD`
 - `GET /api/matches?live=1`
 - `GET /api/matches/{id}`
 - `GET /api/teams`, `GET /api/teams/{id}`
 - `GET /api/players`, `GET /api/players?search=name`, `GET /api/players/{id}`
 - `GET /api/competitions`, `GET /api/competitions/{id}`
+
+The Arabic news endpoint aggregates Arabic feeds from Youm7, Alikhbariya and Google News. It filters out non-Arabic headlines and returns an image when the feed supplies one. Image availability remains dependent on the publisher feed.
 
 The adapter uses short edge caches for live fixtures and longer caches for static profiles. Provider plan limits, selected league coverage, image intellectual-property permissions and commercial redistribution terms still apply. Do not publish club logos or player photos until image rights have been cleared separately.
