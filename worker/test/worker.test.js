@@ -77,3 +77,38 @@ test("provider routes fail closed when the server secret is missing", async () =
     else globalThis.caches = originalCaches;
   }
 });
+
+
+test("Arabic news endpoint aggregates Arabic feed items with their image", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  globalThis.caches = { default: { match: async () => undefined, put: async () => undefined } };
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url.includes("youm7.com")) {
+      return new Response(`<?xml version="1.0"?>
+        <rss><channel><item>
+          <title>خبر كروي عربي للاختبار</title>
+          <link>https://sports.example/article-1</link>
+          <description><![CDATA[ملخص الخبر الرياضي]]></description>
+          <media:content url="https://images.example/article-1.jpg" />
+          <pubDate>Sat, 21 Nov 2026 12:00:00 GMT</pubDate>
+        </item></channel></rss>`, { status: 200 });
+    }
+    return new Response("<rss><channel></channel></rss>", { status: 200 });
+  };
+  try {
+    const response = await worker.fetch(new Request("https://koora.test/api/news?per_page=10"), {});
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.language, "ar");
+    assert.equal(body.data.length, 1);
+    assert.equal(body.data[0].title, "خبر كروي عربي للاختبار");
+    assert.equal(body.data[0].imageUrl, "https://images.example/article-1.jpg");
+    assert.equal(body.data[0].source, "اليوم السابع");
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalCaches === undefined) delete globalThis.caches;
+    else globalThis.caches = originalCaches;
+  }
+});
