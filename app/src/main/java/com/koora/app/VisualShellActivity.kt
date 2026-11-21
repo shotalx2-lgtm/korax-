@@ -1,5 +1,6 @@
 package com.koora.app
 
+import android.app.DatePickerDialog
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -47,6 +48,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -146,9 +148,8 @@ private suspend fun loadTransfers(): List<TransferItem> {
     }
 }
 
-private suspend fun loadMatches(live: Boolean): List<MatchItem> {
-    val day = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-    val data = apiJson(if (live) "/api/matches?live=1" else "/api/matches?date=$day").rows()
+private suspend fun loadMatches(live: Boolean, selectedDate: String): List<MatchItem> {
+    val data = apiJson(if (live) "/api/matches?live=1" else "/api/matches?date=$selectedDate").rows()
     return (0 until data.length()).mapNotNull { i ->
         val x = data.optJSONObject(i) ?: return@mapNotNull null
         val h = x.optJSONObject("homeTeam"); val a = x.optJSONObject("awayTeam")
@@ -203,6 +204,8 @@ private class LocalComments(context: Context) {
 @Composable
 private fun KoraxApp() {
     var tab by rememberSaveable { mutableStateOf("news") }
+    var matchLiveRequested by rememberSaveable { mutableStateOf(false) }
+    var matchDate by rememberSaveable { mutableStateOf(todayIso()) }
     Scaffold(containerColor = KBg, bottomBar = {
         NavigationBar(containerColor = KCard) {
             val tabs = listOf(
@@ -224,9 +227,13 @@ private fun KoraxApp() {
     }) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (tab) {
-                "news" -> NewsScreen()
+                "news" -> NewsScreen(
+                    onOpenLive = { matchLiveRequested = true; tab = "matches" },
+                    onChooseDate = { selected -> matchDate = selected; matchLiveRequested = false; tab = "matches" },
+                    onOpenFantasy = { tab = "fantasy" }
+                )
                 "transfers" -> TransfersScreen()
-                "matches" -> MatchesScreen()
+                "matches" -> MatchesScreen(initialLive = matchLiveRequested, selectedDate = matchDate)
                 "fantasy" -> FantasyScreen()
                 "favorites" -> StateCard("المفضلة", "تابع أنديتك ولاعبيك لإضافتهم هنا. مزامنة المفضلة بين الأجهزة تحتاج حسابًا سحابيًا.", "♡")
                 "notifications" -> StateCard("الإشعارات", "ستظهر هنا تنبيهات المباريات والأخبار والفانتازي بعد تفعيل خدمة الإشعارات.", "♧")
@@ -235,6 +242,8 @@ private fun KoraxApp() {
         }
     }
 }
+
+private fun todayIso(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
 @Composable
 private fun KoraxHeader(title: String, subtitle: String = "", refresh: (() -> Unit)? = null) {
@@ -255,42 +264,149 @@ private fun KoraxHeader(title: String, subtitle: String = "", refresh: (() -> Un
 }
 
 @Composable
-private fun NewsScreen() {
+private fun BrandToolbar(onSearch: () -> Unit, onLive: () -> Unit, onDate: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("KORA", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = 1.1.sp)
+            Text("X", color = KLime, fontSize = 28.sp, fontWeight = FontWeight.Black)
+        }
+        Spacer(Modifier.weight(1f))
+        Surface(shape = RoundedCornerShape(13.dp), color = KCard2, border = BorderStroke(1.dp, KBorder)) {
+            IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, "بحث", tint = KLime) }
+        }
+        Spacer(Modifier.width(8.dp))
+        Surface(
+            modifier = Modifier.clip(RoundedCornerShape(13.dp)).clickable(onClick = onLive),
+            shape = RoundedCornerShape(13.dp), color = Color(0xFF28151A),
+            border = BorderStroke(1.dp, Color(0xFF65303A))
+        ) {
+            Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(7.dp).clip(CircleShape).background(Color(0xFFFF5268)))
+                Spacer(Modifier.width(6.dp))
+                Text("LIVE", color = Color(0xFFFF7283), fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        Surface(shape = RoundedCornerShape(13.dp), color = KCard2, border = BorderStroke(1.dp, KBorder)) {
+            IconButton(onClick = onDate) { Icon(Icons.Filled.CalendarMonth, "اختيار التاريخ", tint = KText) }
+        }
+    }
+}
+
+@Composable
+private fun FantasyShortcut(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF172006)),
+        border = BorderStroke(1.dp, Color(0xFF465717))
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(KLime), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.SportsSoccer, null, tint = Color.Black)
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(Modifier.weight(1f)) {
+                Text("KORAX XI", color = KLime, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = .7.sp)
+                Text("ادخل إلى فريقك وسوق اللاعبين والنقاط", color = Color(0xFFD0D5C3), fontSize = 10.sp)
+            }
+            Text("دخول  ←", color = KLime, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun NewsScreen(
+    onOpenLive: () -> Unit,
+    onChooseDate: (String) -> Unit,
+    onOpenFantasy: () -> Unit
+) {
     var articles by remember { mutableStateOf<List<NewsItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("الكل") }
     var query by rememberSaveable { mutableStateOf("") }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var selected by remember { mutableStateOf<NewsItem?>(null) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
     suspend fun refresh() {
-        loading = true; error = ""
+        loading = true
+        error = ""
         val result = runCatching { loadNews() }
         articles = result.getOrDefault(emptyList())
         error = result.exceptionOrNull()?.message.orEmpty()
         loading = false
     }
+
+    fun chooseMatchDate() {
+        val calendar = Calendar.getInstance()
+        DatePickerDialog(
+            context,
+            { _, year, month, day ->
+                onChooseDate(String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, day))
+            },
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
     LaunchedEffect(Unit) { refresh() }
-    val filtered = articles.filter { matchesCategory(it, category) && (query.isBlank() || (it.title + " " + it.summary).contains(query, true)) }
+    val filtered = articles.filter {
+        matchesCategory(it, category) && (query.isBlank() || (it.title + " " + it.summary).contains(query, true))
+    }
+
     Column(Modifier.fillMaxSize()) {
-        KoraxHeader("الأخبار", "عالمي وعربي • أخبار الأندية واللاعبين", refresh = { scope.launch { refresh() } })
-        OutlinedTextField(value = query, onValueChange = { query = it }, modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-            placeholder = { Text("ابحث عن لاعب أو نادٍ أو خبر...", color = KMuted, fontSize = 12.sp) },
-            leadingIcon = { Icon(Icons.Filled.Search, null, tint = KLime) }, singleLine = true, shape = RoundedCornerShape(14.dp))
-        Spacer(Modifier.height(8.dp))
+        BrandToolbar(
+            onSearch = { searchExpanded = !searchExpanded },
+            onLive = onOpenLive,
+            onDate = { chooseMatchDate() }
+        )
+        if (searchExpanded) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
+                placeholder = { Text("ابحث عن لاعب أو نادٍ أو خبر...", color = KMuted, fontSize = 12.sp) },
+                leadingIcon = { Icon(Icons.Filled.Search, null, tint = KLime) },
+                trailingIcon = {
+                    TextButton(onClick = { query = ""; searchExpanded = false }) {
+                        Text("إغلاق", color = KLime, fontSize = 10.sp)
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp)
+            )
+            Spacer(Modifier.height(7.dp))
+        }
         LazyRow(contentPadding = PaddingValues(horizontal = 13.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items(newsCategories) { option ->
-                FilterChip(selected = category == option, onClick = { category = option }, label = { Text(option, fontSize = 10.sp) },
-                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = KLime, selectedLabelColor = Color.Black, labelColor = KMuted))
+                FilterChip(
+                    selected = category == option,
+                    onClick = { category = option },
+                    label = { Text(option, fontSize = 10.sp) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = KLime, selectedLabelColor = Color.Black, labelColor = KMuted
+                    )
+                )
             }
         }
+        Spacer(Modifier.height(9.dp))
+        FantasyShortcut(onClick = onOpenFantasy)
         Spacer(Modifier.height(8.dp))
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = KLime) }
             articles.isEmpty() -> StateCard("تعذر تحميل الأخبار", error.ifBlank { "تأكد من نشر Worker وضبط رابط API." }, "📰")
             filtered.isEmpty() -> StateCard("لا توجد أخبار في هذا القسم", "غيّر التصنيف أو كلمة البحث. لا نعرض أخبارًا ثابتة أو صفقات وهمية.", "🔎")
-            else -> LazyColumn(contentPadding = PaddingValues(horizontal = 13.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            else -> LazyColumn(
+                contentPadding = PaddingValues(horizontal = 13.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp)
+            ) {
                 item {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("● من المصادر", color = KLime, fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -452,23 +568,23 @@ private fun TransfersScreen() {
 }
 
 @Composable
-private fun MatchesScreen() {
-    var live by rememberSaveable { mutableStateOf(false) }
+private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
+    var live by rememberSaveable { mutableStateOf(initialLive) }
     var matches by remember { mutableStateOf<List<MatchItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     suspend fun refresh() {
         loading = true
-        val result = runCatching { loadMatches(live) }
+        val result = runCatching { loadMatches(live, selectedDate) }
         matches = result.getOrDefault(emptyList()); error = result.exceptionOrNull()?.message.orEmpty(); loading = false
     }
-    LaunchedEffect(live) { refresh() }
+    LaunchedEffect(live, selectedDate) { refresh() }
     Column(Modifier.fillMaxSize()) {
-        KoraxHeader("المباريات", "مواعيد ونتائج من مزود البيانات", refresh = { scope.launch { refresh() } })
+        KoraxHeader("المباريات", "التاريخ: $selectedDate", refresh = { scope.launch { refresh() } })
         Row(Modifier.padding(horizontal = 13.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            FilterChip(selected = !live, onClick = { live = false }, label = { Text("مباريات اليوم") })
-            FilterChip(selected = live, onClick = { live = true }, label = { Text("مباشر") })
+            FilterChip(selected = !live, onClick = { live = false }, label = { Text("حسب التاريخ") })
+            FilterChip(selected = live, onClick = { live = true }, label = { Text("LIVE") })
         }
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = KLime) }
