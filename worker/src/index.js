@@ -301,99 +301,195 @@ function getOne(payload) {
 }
 
 
-const googleNewsFeed = (query) =>
-  "https://news.google.com/rss/search?q=" + encodeURIComponent(query) + "&hl=ar&gl=EG&ceid=EG:ar";
-
-const ARABIC_NEWS_FEEDS = [
-  { source: "اليوم السابع", url: "https://www.youm7.com/rss/SectionRss?SectionID=298" },
-  { source: "الإخبارية", url: "https://alikhbariya.net/feeds/topics/football.xml" },
-  { source: "Google News • الكرة العالمية", url: googleNewsFeed("كرة القدم العالمية OR دوري أبطال أوروبا OR كأس العالم") },
-  { source: "Google News • الكرة العربية", url: googleNewsFeed("الدوري السعودي OR الدوري المصري OR الكرة العربية OR المنتخبات العربية") },
-  { source: "Google News • الدوري الإنجليزي", url: googleNewsFeed("الدوري الإنجليزي OR بريميرليغ OR Premier League") },
-  { source: "Google News • الدوري الإسباني", url: googleNewsFeed("الدوري الإسباني OR الليغا OR La Liga") },
-  { source: "Google News • الدوري الإيطالي", url: googleNewsFeed("الدوري الإيطالي OR Serie A") },
-  { source: "Google News • الدوري الألماني", url: googleNewsFeed("الدوري الألماني OR Bundesliga") },
-  { source: "Google News • الدوري الفرنسي", url: googleNewsFeed("الدوري الفرنسي OR Ligue 1") },
-  { source: "Google News • الدوري السعودي", url: googleNewsFeed("الدوري السعودي للمحترفين OR دوري روشن") },
-  { source: "Google News • الانتقالات", url: googleNewsFeed("انتقالات كرة القدم OR ميركاتو OR صفقة انتقال لاعب") },
-  { source: "Google News • الإصابات", url: googleNewsFeed("إصابة لاعب كرة قدم OR غياب لاعب OR جاهزية اللاعبين") },
-  { source: "Google News • الفانتازي", url: googleNewsFeed("فانتازي الدوري الإنجليزي OR فانتازي كرة القدم OR Fantasy Premier League") },
+// KORAX news is collected directly from the Arabic sports publishers below.
+// No Sportmonks token, paid news API, or Google News feed is used for this endpoint.
+const NEWS_WEBSITES = [
+  {
+    id: "365scores",
+    source: "365Scores",
+    url: "https://www.365scores.com/ar/news/magazine/",
+    accepts: (path) => path.startsWith("/ar/news/magazine/") && path.length > "/ar/news/magazine/".length,
+  },
+  {
+    id: "goal",
+    source: "GOAL العربية",
+    url: "https://www.goal.com/ar/أخبار",
+    accepts: (path) => path.startsWith("/ar/") && path.length > 5 && !/\/(أخبار|news|live-scores|transfers)\/?$/i.test(path),
+  },
+  {
+    id: "yallakora",
+    source: "يلا كورة",
+    url: "https://www.yallakora.com/newslisting",
+    accepts: (path) => /\/news\/\d+/i.test(path),
+  },
+  {
+    id: "kooora",
+    source: "كووورة",
+    url: "https://www.kooora.com/news",
+    accepts: (path) => path !== "/news" && (path.includes("/news/") || /\/\d{5,}\/?$/.test(path)),
+  },
+  {
+    id: "mercatoday",
+    source: "ميركاتو داي",
+    url: "https://mercatoday.com/",
+    rssFallback: "https://mercatoday.com/feed/",
+    accepts: (path) => path !== "/" && !/\/(category|tag|author|feed|wp-json)(\/|$)/i.test(path),
+  },
 ];
 
-function decodeXml(value) {
-  return String(value || "")
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, "$1")
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+function decodeHtml(value) {
+  return decodeXml(String(value || ""))
     .replace(/&nbsp;/gi, " ")
-    .replace(/&quot;/gi, '"')
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&#([0-9]+);/g, (_, code) => String.fromCodePoint(Number(code)))
     .replace(/&apos;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&amp;/gi, "&");
+    .replace(/&#39;/gi, "'")
+    .replace(/&#34;/gi, '"');
 }
 
-function xmlText(block, name) {
-  const tag = name.replace(/:/g, "\\:");
-  const match = block.match(new RegExp(
-    "<(?:[\\w.-]+:)?" + tag + "\\b[^>]*>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?" + tag + "\\s*>",
-    "i"
-  ));
-  return match ? decodeXml(match[1]).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+function htmlText(value) {
+  return decodeHtml(String(value || "")
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]+>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function xmlLink(block) {
-  const match = block.match(/<(?:[\w.-]+:)?link\b([^>]*)>([\s\S]*?)<\/(?:[\w.-]+:)?link\s*>/i)
-    || block.match(/<(?:[\w.-]+:)?link\b([^>]*)\/?>/i);
-  if (!match) return "";
-  const href = match[1].match(/\bhref=["']([^"']+)["']/i)?.[1];
-  return decodeXml(href || match[2] || "").trim();
+function htmlAttribute(attributes, name) {
+  const escaped = name.replace(/[.*+?^$()|[\]\\]/g, "\\$&");
+  const match = String(attributes || "").match(new RegExp("\\b" + escaped + "\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", "i"));
+  return decodeHtml(match ? (match[1] ?? match[2] ?? match[3] ?? "") : "");
 }
 
-function xmlImage(block) {
-  const candidates = [
-    /<(?:media:content|media:thumbnail|content)\b[^>]*\burl=["']([^"']+)["']/i,
-    /<enclosure\b[^>]*\burl=["']([^"']+)["'][^>]*\btype=["']image\//i,
-    /<img\b[^>]*\bsrc=["']([^"']+)["']/i,
-  ];
-  for (const pattern of candidates) {
-    const value = block.match(pattern)?.[1];
-    if (value) {
-      const url = decodeXml(value).trim();
-      if (url.startsWith("https://")) return url;
-    }
+function absoluteHttps(rawUrl, baseUrl) {
+  if (!rawUrl) return "";
+  try {
+    const url = new URL(rawUrl, baseUrl);
+    if (url.protocol !== "https:") return "";
+    return url.toString();
+  } catch {
+    return "";
   }
-  return "";
 }
 
-function parseArabicRss(xml, source) {
-  const blocks = String(xml || "").match(/<(?:item|entry)\b[\s\S]*?<\/(?:item|entry)>/gi) || [];
-  return blocks.slice(0, 50).map((block) => {
-    const title = xmlText(block, "title");
-    const rawDescription = block.match(/<(?:description|summary|content:encoded)\b[^>]*>([\s\S]*?)<\/(?:description|summary|content:encoded)\s*>/i)?.[1] || "";
-    const summary = decodeXml(rawDescription).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 360);
-    const link = xmlLink(block) || xmlText(block, "guid");
-    const publishedAt = xmlText(block, "pubDate") || xmlText(block, "published") || xmlText(block, "updated") || xmlText(block, "dc:date");
-    const imageUrl = xmlImage(block) || xmlImage(rawDescription);
-    if (!title || !/[\u0600-\u06FF]/.test(title) || !link.startsWith("https://")) return null;
-    return { id: link, title, summary, url: link, source, publishedAt, imageUrl: imageUrl || null };
-  }).filter(Boolean);
+function articleImage(innerHtml, baseUrl, pageHtml) {
+  const imgTags = String(innerHtml || "").match(/<img\b[^>]*>/gi) || [];
+  for (const tag of imgTags) {
+    const candidate =
+      htmlAttribute(tag, "data-src") ||
+      htmlAttribute(tag, "data-lazy-src") ||
+      htmlAttribute(tag, "data-original") ||
+      htmlAttribute(tag, "src") ||
+      htmlAttribute(tag, "srcset").split(",")[0]?.trim().split(/\s+/)[0];
+    const resolved = absoluteHttps(candidate, baseUrl);
+    if (resolved) return resolved;
+  }
+  const og = String(pageHtml || "").match(/<meta\b[^>]*(?:property|name)=["'](?:og:image|twitter:image)["'][^>]*content=["']([^"']+)["']/i)
+    || String(pageHtml || "").match(/<meta\b[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["'](?:og:image|twitter:image)["']/i);
+  return absoluteHttps(og?.[1] || "", baseUrl) || null;
+}
+
+function parseWebsiteNews(pageHtml, site) {
+  const base = new URL(site.url);
+  const anchors = String(pageHtml || "").match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || [];
+  const output = [];
+  const seen = new Set();
+
+  for (const anchor of anchors) {
+    const opening = anchor.match(/^<a\b([^>]*)>/i);
+    if (!opening) continue;
+    const href = htmlAttribute(opening[1], "href");
+    const url = absoluteHttps(href, site.url);
+    if (!url) continue;
+
+    let parsed;
+    try { parsed = new URL(url); } catch { continue; }
+    if (parsed.hostname !== base.hostname && !parsed.hostname.endsWith("." + base.hostname)) continue;
+    if (!site.accepts(parsed.pathname)) continue;
+
+    const inner = anchor.slice(opening[0].length).replace(/<\/a>\s*$/i, "");
+    const heading = inner.match(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/i);
+    const imageTag = inner.match(/<img\b([^>]*)>/i);
+    const title =
+      htmlText(heading?.[1] || "") ||
+      htmlAttribute(opening[1], "aria-label") ||
+      htmlAttribute(opening[1], "title") ||
+      htmlAttribute(imageTag?.[1], "alt") ||
+      htmlText(inner);
+
+    if (title.length < 16 || title.length > 220 || !/[\u0600-\u06FF]/.test(title)) continue;
+    if (/^(المزيد|عرض الكل|أخبار|مباريات اليوم|تابعنا|الرئيسية|انتقالات)$/i.test(title)) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+
+    const paragraphs = [...inner.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+      .map((match) => htmlText(match[1]))
+      .filter((value) => value.length > 30 && value !== title);
+    const summary = (paragraphs[0] || htmlText(inner).replace(title, "").trim()).slice(0, 300);
+
+    const timeMatch = inner.match(/<time\b[^>]*datetime=["']([^"']+)["']/i);
+    const dateMatch = inner.match(/\b(?:20\d{2}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{4})\b/);
+    const publishedAt = timeMatch?.[1] || dateMatch?.[0] || "";
+
+    output.push({
+      id: url,
+      title,
+      summary,
+      url,
+      source: site.source,
+      publishedAt,
+      imageUrl: articleImage(inner, site.url, pageHtml),
+    });
+  }
+  return output.slice(0, 35);
+}
+
+async function fetchNewsWebsite(site) {
+  const headers = {
+    "accept": "text/html,application/xhtml+xml,application/rss+xml,application/xml;q=0.9,*/*;q=0.8",
+    "user-agent": "Mozilla/5.0 (compatible; KORAX-News/1.0; +https://github.com/shotalx2-lgtm/korax-)",
+    "accept-language": "ar,en;q=0.8",
+  };
+
+  try {
+    const response = await fetch(site.url, {
+      headers,
+      redirect: "follow",
+      signal: AbortSignal.timeout(11000),
+    });
+    if (!response.ok) throw new Error("Publisher returned HTTP " + response.status);
+    const html = await response.text();
+    const articles = parseWebsiteNews(html, site);
+    if (articles.length) return articles;
+    if (!site.rssFallback) return [];
+  } catch (error) {
+    if (!site.rssFallback) throw error;
+  }
+
+  if (site.rssFallback) {
+    const response = await fetch(site.rssFallback, {
+      headers: { ...headers, "accept": "application/rss+xml,application/xml,text/xml,*/*" },
+      signal: AbortSignal.timeout(9000),
+    });
+    if (!response.ok) throw new Error("Publisher RSS returned HTTP " + response.status);
+    return parseArabicRss(await response.text(), site.source);
+  }
+  return [];
 }
 
 async function loadArabicNews() {
-  const responses = await Promise.allSettled(ARABIC_NEWS_FEEDS.map(async (feed) => {
-    const response = await fetch(feed.url, {
-      headers: { "accept": "application/rss+xml, application/xml, text/xml, */*", "user-agent": "KORAX-News/1.0" },
-      signal: AbortSignal.timeout(9000),
-    });
-    if (!response.ok) throw new Error("News feed returned " + response.status);
-    return parseArabicRss(await response.text(), feed.source);
-  }));
+  const responses = await Promise.allSettled(NEWS_WEBSITES.map(fetchNewsWebsite));
   const articles = responses.flatMap((result) => result.status === "fulfilled" ? result.value : []);
   const unique = new Map();
   for (const article of articles) {
-    const key = article.url || article.title;
-    if (!unique.has(key)) unique.set(key, article);
+    const normalizedTitle = article.title.toLocaleLowerCase("ar")
+      .replace(/[^\p{L}\p{N}]+/gu, " ")
+      .trim();
+    const key = article.url || normalizedTitle;
+    if (!unique.has(key) && normalizedTitle) unique.set(key, article);
   }
   return Array.from(unique.values())
     .sort((a, b) => (Date.parse(b.publishedAt) || 0) - (Date.parse(a.publishedAt) || 0))
@@ -401,7 +497,7 @@ async function loadArabicNews() {
 }
 
 async function getCachedArabicNews() {
-  const cacheKey = new Request("https://korax-cache.invalid/api/news?language=ar");
+  const cacheKey = new Request("https://korax-cache.invalid/api/news?language=ar&source=publisher-websites-v1");
   const cache = caches.default;
   const cached = await cache.match(cacheKey);
   if (cached) return cached.json();
@@ -421,7 +517,7 @@ async function route(request, env) {
   if (path === "/api/news") {
     const payload = await getCachedArabicNews();
     const requested = Math.min(60, Math.max(1, Number(url.searchParams.get("per_page") || 40)));
-    return json({ ...payload, data: payload.data.slice(0, requested), source: "arabic-rss" });
+    return json({ ...payload, data: payload.data.slice(0, requested), source: "publisher-websites" });
   }
 
   if (path === "/health") {

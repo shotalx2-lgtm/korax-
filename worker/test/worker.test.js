@@ -79,40 +79,55 @@ test("provider routes fail closed when the server secret is missing", async () =
 });
 
 
-test("Arabic news endpoint aggregates Arabic feed items with their image", async () => {
+test("Arabic news endpoint fetches the named publishers without a news API key", async () => {
   const originalFetch = globalThis.fetch;
   const originalCaches = globalThis.caches;
   globalThis.caches = { default: { match: async () => undefined, put: async () => undefined } };
+  const calls = [];
   globalThis.fetch = async (input) => {
     const url = String(input);
-    if (url.includes("youm7.com")) {
-      return new Response(`<?xml version="1.0"?>
-        <rss><channel><item>
-          <title>خبر كروي عربي للاختبار</title>
-          <link>https://sports.example/article-1</link>
-          <description><![CDATA[ملخص الخبر الرياضي]]></description>
-          <media:content url="https://images.example/article-1.jpg" />
-          <pubDate>Sat, 21 Nov 2026 12:00:00 GMT</pubDate>
-        </item></channel></rss>`, { status: 200 });
-    }
-    return new Response("<rss><channel></channel></rss>", { status: 200 });
+    calls.push(url);
+    const article = (href, title, image, summary) =>
+      '<a href="' + href + '"><article><h2>' + title + '</h2><img src="' + image + '" alt="' + title + '"><p>' + summary + '</p></article></a>';
+    if (url.includes("365scores.com")) return new Response(
+      article("https://www.365scores.com/ar/news/magazine/test-article/", "خبر من 365Scores عن كرة القدم العالمية", "https://images.example/365.jpg", "ملخص خبر 365Scores الرياضي للاختبار."),
+      { status: 200, headers: { "content-type": "text/html" } }
+    );
+    if (url.includes("goal.com")) return new Response(
+      article("https://www.goal.com/ar/news/test-goal-article", "جول العربية تنشر آخر أخبار كرة القدم", "https://images.example/goal.jpg", "ملخص خبر جول العربية للاختبار."),
+      { status: 200, headers: { "content-type": "text/html" } }
+    );
+    if (url.includes("yallakora.com")) return new Response(
+      article("https://www.yallakora.com/premier-league/news/573781/test", "يلا كورة تتابع أخبار الدوري الإنجليزي", "https://images.example/yalla.jpg", "ملخص خبر يلا كورة للاختبار."),
+      { status: 200, headers: { "content-type": "text/html" } }
+    );
+    if (url.includes("kooora.com")) return new Response(
+      article("https://www.kooora.com/news/test-kooora/123456", "كووورة تنشر خبرًا جديدًا عن الأندية العربية", "https://images.example/kooora.jpg", "ملخص خبر كووورة للاختبار."),
+      { status: 200, headers: { "content-type": "text/html" } }
+    );
+    if (url === "https://mercatoday.com/") return new Response(
+      article("https://mercatoday.com/2026/11/test-mercato/", "ميركاتو داي تتابع أحدث صفقات الانتقالات", "https://images.example/mercato.jpg", "ملخص خبر ميركاتو داي للاختبار."),
+      { status: 200, headers: { "content-type": "text/html" } }
+    );
+    return new Response("", { status: 404 });
   };
   try {
-    const response = await worker.fetch(new Request("https://koora.test/api/news?per_page=10"), {});
+    const response = await worker.fetch(new Request("https://koora.test/api/news?per_page=20"), {});
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.language, "ar");
-    assert.equal(body.data.length, 1);
-    assert.equal(body.data[0].title, "خبر كروي عربي للاختبار");
-    assert.equal(body.data[0].imageUrl, "https://images.example/article-1.jpg");
-    assert.equal(body.data[0].source, "اليوم السابع");
+    assert.equal(body.source, "publisher-websites");
+    assert.equal(body.data.length, 5);
+    assert.deepEqual(new Set(body.data.map((item) => item.source)), new Set(["365Scores", "GOAL العربية", "يلا كورة", "كووورة", "ميركاتو داي"]));
+    assert.ok(body.data.every((item) => item.imageUrl?.startsWith("https://images.example/")));
+    assert.equal(calls.length, 5);
+    assert.ok(calls.every((url) => !url.includes("news.google.com")));
   } finally {
     globalThis.fetch = originalFetch;
     if (originalCaches === undefined) delete globalThis.caches;
     else globalThis.caches = originalCaches;
   }
 });
-
 
 test("latest transfers are normalized into KORAX transfer records", async () => {
   const originalFetch = globalThis.fetch;
