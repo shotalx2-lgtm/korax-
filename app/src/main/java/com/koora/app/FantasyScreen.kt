@@ -47,12 +47,12 @@ import androidx.compose.ui.unit.sp
 import org.json.JSONArray
 import java.util.UUID
 
-private val FxGold = Color(0xFFE5B85C)
+private val FxGold = Color(0xFFD5FF00)
 private val FxPanel = Color(0xFF141923)
 private val FxPanel2 = Color(0xFF1C2430)
 private val FxText = Color(0xFFF4F6FA)
 private val FxMuted = Color(0xFF9AA5B5)
-private val FxGreen = Color(0xFF33C48D)
+private val FxGreen = Color(0xFFD5FF00)
 
 private data class FantasyPlayer(
     val id: String,

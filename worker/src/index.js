@@ -218,6 +218,24 @@ function normalizePlayer(player) {
   };
 }
 
+function normalizeTransfer(item) {
+  const player = item?.player || {};
+  const from = item?.fromTeam || item?.from_team || {};
+  const to = item?.toTeam || item?.to_team || {};
+  const league = item?.league || from?.league || to?.league || null;
+  return {
+    id: String(item?.id ?? ""),
+    player: { id: String(player?.id ?? item?.player_id ?? ""), name: player?.name || item?.player_name || "اسم غير متاح", image_path: player?.image_path || "", imageUrl: player?.image_path || "" },
+    playerName: player?.name || item?.player_name || "",
+    fromTeam: { id: String(from?.id ?? item?.from_team_id ?? ""), name: from?.name || "", image_path: from?.image_path || "", imageUrl: from?.image_path || "" },
+    toTeam: { id: String(to?.id ?? item?.to_team_id ?? ""), name: to?.name || "", image_path: to?.image_path || "", imageUrl: to?.image_path || "" },
+    fromTeamName: from?.name || "", toTeamName: to?.name || "",
+    type: item?.type || null, typeName: nestedName(item?.type) || item?.type_name || "",
+    typeId: item?.type_id ?? null, date: item?.date || item?.completed_at || "",
+    completed: Boolean(item?.completed), amount: item?.amount ?? null, league, leagueName: nestedName(league),
+  };
+}
+
 function normalizeLeague(league) {
   return {
     id: String(league?.id ?? ""),
@@ -283,10 +301,23 @@ function getOne(payload) {
 }
 
 
+const googleNewsFeed = (query) =>
+  "https://news.google.com/rss/search?q=" + encodeURIComponent(query) + "&hl=ar&gl=EG&ceid=EG:ar";
+
 const ARABIC_NEWS_FEEDS = [
   { source: "اليوم السابع", url: "https://www.youm7.com/rss/SectionRss?SectionID=298" },
   { source: "الإخبارية", url: "https://alikhbariya.net/feeds/topics/football.xml" },
-  { source: "أخبار Google", url: "https://news.google.com/rss/search?q=%D9%83%D8%B1%D8%A9+%D8%A7%D9%84%D9%82%D8%AF%D9%85&hl=ar&gl=EG&ceid=EG:ar" },
+  { source: "Google News • الكرة العالمية", url: googleNewsFeed("كرة القدم العالمية OR دوري أبطال أوروبا OR كأس العالم") },
+  { source: "Google News • الكرة العربية", url: googleNewsFeed("الدوري السعودي OR الدوري المصري OR الكرة العربية OR المنتخبات العربية") },
+  { source: "Google News • الدوري الإنجليزي", url: googleNewsFeed("الدوري الإنجليزي OR بريميرليغ OR Premier League") },
+  { source: "Google News • الدوري الإسباني", url: googleNewsFeed("الدوري الإسباني OR الليغا OR La Liga") },
+  { source: "Google News • الدوري الإيطالي", url: googleNewsFeed("الدوري الإيطالي OR Serie A") },
+  { source: "Google News • الدوري الألماني", url: googleNewsFeed("الدوري الألماني OR Bundesliga") },
+  { source: "Google News • الدوري الفرنسي", url: googleNewsFeed("الدوري الفرنسي OR Ligue 1") },
+  { source: "Google News • الدوري السعودي", url: googleNewsFeed("الدوري السعودي للمحترفين OR دوري روشن") },
+  { source: "Google News • الانتقالات", url: googleNewsFeed("انتقالات كرة القدم OR ميركاتو OR صفقة انتقال لاعب") },
+  { source: "Google News • الإصابات", url: googleNewsFeed("إصابة لاعب كرة قدم OR غياب لاعب OR جاهزية اللاعبين") },
+  { source: "Google News • الفانتازي", url: googleNewsFeed("فانتازي الدوري الإنجليزي OR فانتازي كرة القدم OR Fantasy Premier League") },
 ];
 
 function decodeXml(value) {
@@ -463,6 +494,19 @@ async function route(request, env) {
     }, env, 600);
     const item = getOne(payload);
     return item ? json({ data: normalizePlayer(item), source: "sportmonks" }) : json({ error: "Player not found" }, 404);
+  }
+
+  if (path === "/api/transfers") {
+    const payload = await cachedProviderRequest("/transfers/latest", {
+      include: "player;type;fromTeam;toTeam;position;detailedPosition",
+      order: "desc", per_page: perPage, page,
+    }, env, 900);
+    return json({
+      data: getList(payload).map(normalizeTransfer),
+      meta: payload?.meta || null,
+      source: "sportmonks",
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   if (path === "/api/competitions") {

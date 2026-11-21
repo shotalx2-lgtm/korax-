@@ -1,15 +1,15 @@
 <resources>
     <style name="KooraTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:statusBarColor">#F4F7FB</item>
-        <item name="android:navigationBarColor">#FFFFFF</item>
-        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#07090D</item>
+        <item name="android:navigationBarColor">#07090D</item>
+        <item name="android:windowLightNavigationBar">false</item>
         <item name="android:windowActionModeOverlay">true</item>
-        <item name="android:windowBackground">#F4F7FB</item>
+        <item name="android:windowBackground">#07090D</item>
     </style>
     <style name="Theme.Koora.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#F4F7FB</item>
+        <item name="windowSplashScreenBackground">#07090D</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
         <item name="postSplashScreenTheme">@style/KooraTheme</item>
     </style>

@@ -112,3 +112,36 @@ test("Arabic news endpoint aggregates Arabic feed items with their image", async
     else globalThis.caches = originalCaches;
   }
 });
+
+
+test("latest transfers are normalized into KORAX transfer records", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
+  globalThis.caches = { default: { match: async () => undefined, put: async () => undefined } };
+  globalThis.fetch = async (input, init) => {
+    assert.match(String(input), /transfers\/latest/);
+    assert.equal(new Headers(init.headers).get("authorization"), "unit-test-token");
+    return new Response(JSON.stringify({ data: [{
+      id: 123, date: "2026-11-20", completed: true, amount: 2500000,
+      player: { id: 77, name: "Player One", image_path: "https://images.example/player.png" },
+      type: { id: 1, name: "Transfer" },
+      fromTeam: { id: 10, name: "Old Club", image_path: "https://images.example/old.png" },
+      toTeam: { id: 20, name: "New Club", image_path: "https://images.example/new.png" },
+      league: { name: "Premier League" }
+    }] }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const response = await worker.fetch(new Request("https://koora.test/api/transfers?per_page=10"), { SPORTMONKS_API_TOKEN: "unit-test-token", ALLOWED_ORIGINS: "*" });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data[0].player.name, "Player One");
+    assert.equal(body.data[0].fromTeam.name, "Old Club");
+    assert.equal(body.data[0].toTeam.name, "New Club");
+    assert.equal(body.data[0].typeName, "Transfer");
+    assert.equal(body.data[0].completed, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalCaches === undefined) delete globalThis.caches;
+    else globalThis.caches = originalCaches;
+  }
+});
