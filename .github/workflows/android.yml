@@ -39,7 +39,7 @@ jobs:
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
       - name: Build optimized release APK
-        run: gradle :app:assembleRelease --stacktrace
+        run: gradle :app:assembleRelease --stacktrace -PKOORA_API_BASE_URL="${{ secrets.KOORA_API_BASE_URL }}"
       - name: Prepare public APK asset
         run: |
           cp app/build/outputs/apk/release/app-release.apk KORAX-Android.apk
