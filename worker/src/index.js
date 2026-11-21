@@ -398,17 +398,17 @@ function rssValue(block, name) {
 }
 
 function parseArabicRss(xml, source) {
-  const blocks = String(xml || "").match(/<(?:item|entry)\\b[\\s\\S]*?<\\/(?:item|entry)>/gi) || [];
+  const blocks = String(xml || "").match(/<(?:item|entry)\b[\s\S]*?<\/(?:item|entry)>/gi) || [];
   return blocks.slice(0, 40).map((block) => {
     const title = rssValue(block, "title");
     const summary = (rssValue(block, "description") || rssValue(block, "summary")).slice(0, 300);
     const rawLink = rssValue(block, "link") || rssValue(block, "guid");
     const url = absoluteHttps(rawLink, "https://mercatoday.com/");
-    const imageMatch = block.match(/<(?:media:content|media:thumbnail|enclosure)\\b[^>]*\\burl=["']([^"']+)["']/i)
-      || block.match(/<img\\b[^>]*\\bsrc=["']([^"']+)["']/i);
+    const imageMatch = block.match(/<(?:media:content|media:thumbnail|enclosure)\b[^>]*\burl=["']([^"']+)["']/i)
+      || block.match(/<img\b[^>]*\bsrc=["']([^"']+)["']/i);
     const imageUrl = absoluteHttps(imageMatch?.[1] || "", "https://mercatoday.com/");
     const publishedAt = rssValue(block, "pubDate") || rssValue(block, "published") || rssValue(block, "updated");
-    if (!title || !/[\\u0600-\\u06FF]/.test(title) || !url) return null;
+    if (!title || !/[\u0600-\u06FF]/.test(title) || !url) return null;
     return { id: url, title, summary, url, source, publishedAt, imageUrl: imageUrl || null };
   }).filter(Boolean);
 }
