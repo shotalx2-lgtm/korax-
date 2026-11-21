@@ -339,7 +339,8 @@ const NEWS_WEBSITES = [
 
 function decodeXml(value) {
   return String(value || "")
-    .replace(/<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>/gi, "$1")
+    .replaceAll("<![CDATA[", "")
+    .replaceAll("]]>", "")
     .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
     .replace(/&#([0-9]+);/g, (_, code) => String.fromCodePoint(Number(code)))
     .replace(/&nbsp;/gi, " ")
@@ -349,7 +350,6 @@ function decodeXml(value) {
     .replace(/&gt;/gi, ">")
     .replace(/&amp;/gi, "&");
 }
-
 function decodeHtml(value) {
   return decodeXml(String(value || ""))
     .replace(/&nbsp;/gi, " ")
