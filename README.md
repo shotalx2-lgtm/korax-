@@ -1,22 +1,29 @@
-# KORAX — Fantasy & Football News
+# KORAX — Arabic Football & Fantasy
 
-KORAX is an Arabic-first Android football companion with a locally persisted fantasy-team manager and live football headlines from public RSS feeds.
+KORAX is an Arabic-first native Android football app built with Kotlin and Jetpack Compose.
 
-## Included in this build
-- Native Android application using Kotlin and Jetpack Compose.
-- Arabic news headlines fetched from BBC Sport Football and Sky Sports RSS feeds; articles open at their original publishers.
-- Local fantasy squad management: 100m starting budget, 15-player squad limits, position quotas, a three-player-per-club cap, buying and selling, formations, captain and vice-captain selection, local points totals and transfer history.
-- Fantasy roster and market entries persist on the device across app restarts.
-- Clear empty states when no verified sports data is configured; the application does not create fake live scores, injuries, players or match statistics.
+## Current app build
+- Arabic football news from Youm7, Alikhbariya and Google News RSS feeds, with source attribution, publisher article links, image extraction where supplied by the feed, and a local cache for offline viewing.
+- A Cloudflare Worker endpoint at `GET /api/news` aggregates and edge-caches Arabic news.
+- Fantasy squad management on the device: 100m game budget, 15-player squad rules, position quotas, a three-player-per-club limit, transfers, formations, captain/vice-captain and local history.
+- When the football backend is configured, the Fantasy market can import up to 50 real player records from the provider. Initial game prices are KORAX defaults, not official market prices; points are not official until a season-scoped statistics/scoring service is connected.
+- News uses a lazy list and cropped, on-demand images. Hardware acceleration is enabled. Network work runs off the UI thread and news is cached locally to reduce loading and stutter on lower-end phones.
 
-## Important fantasy limitations
-The fantasy manager in this build is a **single-device local mode**. Market players, prices and points must be entered by the user from competition-approved data. It is not yet a connected multi-user fantasy service: accounts, Google sign-in, remote leagues, head-to-head matchmaking, cloud synchronization, administrator roles, official match-event scoring, automatic substitutions, chips, paid subscriptions and push notifications still require a deployed secure backend and service credentials.
+## Important limitations
+This is not yet a production multi-user fantasy platform. Fantasy teams and transfer history are still stored locally on the device. Accounts, Google sign-in, shared leagues, leaderboards, head-to-head play, authoritative season player prices and points, live fantasy scoring, automatic substitutions, chips, push notifications, payments, administrator roles and cloud synchronization still need a deployed authenticated backend and persistent database.
+
+A build or passing test does not prove capacity for millions of concurrent users. That requires production infrastructure configuration, load tests, monitoring, rate limiting, backups, incident recovery and a provider subscription with the required competitions and statistics.
 
 ## Football data backend
-The repository includes a Cloudflare Worker adapter for Sportmonks. Provider credentials must be configured as a Cloudflare Worker secret named `SPORTMONKS_API_TOKEN`; never embed that token in the Android APK. The Worker must be deployed and its HTTPS base URL supplied as `KOORA_API_BASE_URL` at Android build time. Provider plan coverage and image redistribution rights must be verified before public use.
+The repository includes a Cloudflare Worker adapter for Sportmonks and the Arabic RSS news aggregator. Deploy the Worker and configure:
+- `SPORTMONKS_API_TOKEN` as a Worker secret (never place it in the APK).
+- `KOORA_API_BASE_URL` as a GitHub Actions secret containing the Worker's HTTPS base URL.
+- A Sportmonks subscription covering the leagues and player statistics used by the product.
 
-## Build
-The GitHub Actions workflow builds a debug APK on pushes to `main` and uploads it as the `KORAX-debug-apk` workflow artifact.
+Check image rights and commercial redistribution terms for all provider content before public release.
+
+## Android build
+GitHub Actions builds an optimized, minified release APK for testing. CI signs it with the Android debug certificate; it is installable for testing but is not a Play Store production-signed release.
 
 ## Repository
 https://github.com/shotalx2-lgtm/korax-
