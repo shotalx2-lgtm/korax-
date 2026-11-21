@@ -337,6 +337,19 @@ const NEWS_WEBSITES = [
   },
 ];
 
+function decodeXml(value) {
+  return String(value || "")
+    .replace(/<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>/gi, "$1")
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&#([0-9]+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&amp;/gi, "&");
+}
+
 function decodeHtml(value) {
   return decodeXml(String(value || ""))
     .replace(/&nbsp;/gi, " ")
@@ -373,6 +386,31 @@ function absoluteHttps(rawUrl, baseUrl) {
   } catch {
     return "";
   }
+}
+
+function rssValue(block, name) {
+  const escapedName = name.replace(/:/g, "\\:");
+  const match = String(block || "").match(new RegExp(
+    "<(?:[\\w.-]+:)?" + escapedName + "\\b[^>]*>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?" + escapedName + "\\s*>",
+    "i"
+  ));
+  return match ? htmlText(match[1]) : "";
+}
+
+function parseArabicRss(xml, source) {
+  const blocks = String(xml || "").match(/<(?:item|entry)\\b[\\s\\S]*?<\\/(?:item|entry)>/gi) || [];
+  return blocks.slice(0, 40).map((block) => {
+    const title = rssValue(block, "title");
+    const summary = (rssValue(block, "description") || rssValue(block, "summary")).slice(0, 300);
+    const rawLink = rssValue(block, "link") || rssValue(block, "guid");
+    const url = absoluteHttps(rawLink, "https://mercatoday.com/");
+    const imageMatch = block.match(/<(?:media:content|media:thumbnail|enclosure)\\b[^>]*\\burl=["']([^"']+)["']/i)
+      || block.match(/<img\\b[^>]*\\bsrc=["']([^"']+)["']/i);
+    const imageUrl = absoluteHttps(imageMatch?.[1] || "", "https://mercatoday.com/");
+    const publishedAt = rssValue(block, "pubDate") || rssValue(block, "published") || rssValue(block, "updated");
+    if (!title || !/[\\u0600-\\u06FF]/.test(title) || !url) return null;
+    return { id: url, title, summary, url, source, publishedAt, imageUrl: imageUrl || null };
+  }).filter(Boolean);
 }
 
 function articleImage(innerHtml, baseUrl, pageHtml) {
