@@ -211,6 +211,23 @@ fun FantasyScreen() {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val apiConfigured = BuildConfig.KOORA_API_BASE_URL.trim().startsWith("https://")
 
+    androidx.compose.runtime.LaunchedEffect(apiConfigured) {
+        if (apiConfigured && state.catalogue.isEmpty()) {
+            importing = true
+            val result = runCatching { loadFantasyPlayersFromApi() }
+            val fetched = result.getOrDefault(emptyList())
+            if (fetched.isNotEmpty()) {
+                val next = state.copy(catalogue = fetched)
+                state = next
+                store.save(next)
+                message = "تم تحميل " + fetched.size + " لاعبًا من مصدر البيانات."
+            } else if (result.isFailure) {
+                message = result.exceptionOrNull()?.message ?: "تعذر تحميل سوق اللاعبين."
+            }
+            importing = false
+        }
+    }
+
     fun commit(next: FantasyState) {
         state = next
         store.save(next)
