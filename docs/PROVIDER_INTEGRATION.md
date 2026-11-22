@@ -1,12 +1,27 @@
-# Provider integration notes
+# Provider integration
 
-KOORA's Android client talks only to the KOORA backend. It must never hold third-party provider tokens.
+KORAX uses two independent no-key source families behind its Cloudflare Worker.
 
-The initial adapter targets Sportmonks Football API v3. It converts provider responses into the stable app contract:
-- Fixtures and livescores
-- Match events, lineups, scores and statistics
-- Team, player and league records
+## SportScore football data
 
-The chosen subscription must cover the leagues and endpoints enabled in production. Sportmonks tiers are selected by league count; the provider currently lists Starter (5 leagues), Growth (30), Pro (120) and Enterprise (all supported leagues) options. Verify exact league-level coverage before purchasing or advertising global coverage.
+- Official docs: https://sportscore.com/developers/api/
+- Public REST base: https://sportscore.com
+- No API key required for the public attribution tier.
+- Available documented routes include fixtures, live/recent matches, match detail, team schedule, standings, top scorers/assists, player profiles and search.
+- The provider documents approximately 10,000 requests per 24 hours per IP for anonymous public use; confirm current terms and fair-use limits before launch.
+- Required visible “Powered by SportScore” backlink attribution is added to the Android matches screen.
 
-Photo and logo rights are not included automatically just because an API returns an image URL. Obtain written clearance or use a separately licensed image source.
+The current provider documentation does not expose a complete league squad catalogue or a confirmed transfer feed. KORAX's fantasy endpoint therefore returns only players appearing in top-scorer/assist leaderboards; it must not be described as a full player market or live gameweek scoring. The transfer endpoint is explicitly marked unavailable.
+
+## Publisher RSS news
+
+The Worker reads RSS feeds from بطولات, اليوم السابع, هسبورت, الجزيرة, سكاي نيوز عربية, BBC Sport, Sky Sports and The Guardian. No news API key is used. The Worker keeps short headlines/summaries, original article links, source labels, timestamps, and feed-provided image URLs when available.
+
+RSS refresh and article/image availability depend on each publisher. Check publisher terms, image licensing and commercial reuse permissions before public monetization. Never copy full article bodies.
+
+## Operational notes
+
+- The Android app contains no provider secret.
+- Edge caching reduces repeated upstream requests.
+- Keep a source-health check for each feed and each SportScore endpoint.
+- Do not claim all competitions, player profiles, images, lineups or statistics are available until verified against live responses.
