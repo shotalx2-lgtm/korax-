@@ -48,11 +48,32 @@ jobs:
           else
             echo "Firebase config not supplied; Google sign-in will remain unavailable in this build."
           fi
+      - name: Configure Android release signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/korax-release.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/korax-release.jks" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "Stable Android release signing key configured."
+          else
+            echo "Stable Android release signing key not supplied."
+          fi
       - name: Validate release integration configuration
         id: release_config
         env:
           KOORA_API_BASE_URL: ${{ secrets.KOORA_API_BASE_URL }}
           FIREBASE_CONFIG_JSON_B64: ${{ secrets.FIREBASE_CONFIG_JSON_B64 }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           ready=true
           if [ -z "$KOORA_API_BASE_URL" ] || [[ "$KOORA_API_BASE_URL" != https://* ]]; then
@@ -61,6 +82,10 @@ jobs:
           fi
           if [ -z "$FIREBASE_CONFIG_JSON_B64" ]; then
             echo "Release APK blocked: Firebase config is required for Google sign-in and cloud fantasy sync."
+            ready=false
+          fi
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "Release APK blocked: configure all Android release signing secrets."
             ready=false
           fi
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
