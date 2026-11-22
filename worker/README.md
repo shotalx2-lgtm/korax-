@@ -26,6 +26,7 @@ The `GET /api/news` route aggregates public RSS feeds without a news API key:
 - سكاي نيوز عربية (football-filtered items)
 - BBC Sport: football، Premier League، Champions League وEuropean Football
 - Sky Sports: football وPremier League
+- The Guardian Football
 
 The response includes title, short summary, original article URL, publisher, publication date, language, category, and an image URL only when the feed supplies one. News is cached for five minutes. Feed availability and images depend on the publisher; no article body or image is copied from the article page. Respect publisher terms and image rights before commercial redistribution.
 
