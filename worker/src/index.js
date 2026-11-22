@@ -410,6 +410,7 @@ async function loadPublisherNews() {
     sources: NEWS_FEEDS.map((feed) => feed.source),
     feedsAvailable: responses.filter((result) => result.status === "fulfilled").length,
     feedsTotal: NEWS_FEEDS.length,
+    feedErrors: responses.map((result, index) => result.status === "rejected" ? { feed: NEWS_FEEDS[index].id, error: String(result.reason?.message || result.reason) } : null).filter(Boolean),
   };
 }
 
