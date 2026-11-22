@@ -294,13 +294,21 @@ fun FantasyScreen() {
                             message = "جارٍ تحميل اللاعبين من المصدر..."
                             val result = runCatching { loadFantasyPlayersFromApi() }
                             result.onSuccess { fetched ->
-                                val existing = state.catalogue.map { it.id }.toSet()
-                                val added = fetched.filter { it.id !in existing }
                                 if (fetched.isEmpty()) {
                                     message = "المصدر لم يُرجع لاعبين متاحين. تحقق من اشتراك مزود البيانات."
                                 } else {
-                                    commit(state.copy(catalogue = state.catalogue + added))
-                                    message = if (added.isEmpty()) "قائمة اللاعبين محدثة بالفعل." else "تم استيراد " + added.size + " لاعبًا حقيقيًا إلى السوق."
+                                    val existingById = state.catalogue.associateBy { it.id }
+                                    val refreshed = fetched.map { fresh ->
+                                        val previous = existingById[fresh.id]
+                                        if (previous == null) fresh else fresh.copy(
+                                            price = previous.price,
+                                            points = previous.points
+                                        )
+                                    }
+                                    val refreshedIds = refreshed.map { it.id }.toSet()
+                                    val retained = state.catalogue.filter { it.id !in refreshedIds }
+                                    commit(state.copy(catalogue = retained + refreshed))
+                                    message = "تم تحديث بيانات " + refreshed.size + " لاعبًا مع الاحتفاظ بأسعارك ونقاطك المسجلة."
                                     section = "market"
                                 }
                             }.onFailure { error ->
