@@ -138,6 +138,22 @@ private class FantasyLocalStore(context: Context) {
 
     fun exportRaw(): String? = prefs.getString("state", null)
 
+    fun exportCloudState(state: FantasyState): String {
+        val owned = JSONArray()
+        state.ownedIds.forEach { owned.put(it) }
+        val log = JSONArray()
+        state.transferLog.forEach { log.put(it) }
+        return JSONObject()
+            .put("owned", owned)
+            .put("budget", state.budget)
+            .put("teamName", state.teamName)
+            .put("formation", state.formation)
+            .put("captainId", state.captainId)
+            .put("viceId", state.viceId)
+            .put("log", log)
+            .toString()
+    }
+
     fun save(state: FantasyState) {
         val players = JSONArray()
         state.catalogue.forEach { p ->
@@ -262,10 +278,10 @@ fun FantasyScreen() {
             val cloudJson = document.getString("stateJson")
             if (!cloudJson.isNullOrBlank()) {
                 store.importRaw(cloudJson)
-                state = store.decode(cloudJson)
+                state = store.decode(cloudJson).copy(catalogue = state.catalogue)
                 message = "تمت استعادة تشكيلتك من حسابك."
             } else {
-                val localJson = store.exportRaw().orEmpty()
+                val localJson = store.exportCloudState(state)
                 if (localJson.isNotBlank()) {
                     FirebaseFirestore.getInstance().collection("fantasyTeams").document(uid)
                         .set(mapOf("stateJson" to localJson, "updatedAt" to FieldValue.serverTimestamp())).await()
@@ -285,7 +301,7 @@ fun FantasyScreen() {
             FirebaseFirestore.getInstance().collection("fantasyTeams").document(uid)
                 .set(
                     mapOf(
-                        "stateJson" to store.exportRaw().orEmpty(),
+                        "stateJson" to store.exportCloudState(state),
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 ).await()
