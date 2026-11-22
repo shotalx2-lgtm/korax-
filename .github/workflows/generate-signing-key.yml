@@ -65,4 +65,4 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-# Manual run is triggered by a commit to this integration branch.
+# Trigger a fresh run after repository secrets are configured.
