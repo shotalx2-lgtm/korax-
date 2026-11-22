@@ -1,6 +1,8 @@
 name: KORAX Generate Release Signing Key
 
 on:
+  push:
+    branches: [ feature/korax-sportscore-rss-integration ]
   workflow_dispatch:
 
 permissions:
