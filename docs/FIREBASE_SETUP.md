@@ -20,6 +20,14 @@ Encode the file as Base64 on your own computer and save the result as a GitHub A
 
 The Android workflow decodes this secret into `app/google-services.json` before Gradle runs. When the secret is absent, the project still builds, but Firebase sign-in remains unavailable and the account screen explains that configuration is required.
 
+## Fantasy cloud saves
+
+1. In the Firebase console, create a Cloud Firestore database.
+2. Publish the repository's `firestore.rules` rules to the Firestore database.
+3. The Android fantasy screen saves the signed-in user's squad, budget, team name, formation, captain, vice-captain, and transfer log to `fantasyTeams/{Firebase UID}`. The player catalogue remains cached separately and is not duplicated in every user's cloud document.
+
+The rules intentionally allow each user to read and change only their own fantasy save. Multiplayer leagues, shared leaderboards, friend requests, and chat need additional collections and stricter membership-based rules before those features are enabled.
+
 ## Important boundaries
 
 - Google sign-in authenticates a user with Firebase Authentication.
