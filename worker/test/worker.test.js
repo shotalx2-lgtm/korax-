@@ -90,7 +90,7 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
     assert.equal(body.source, "publisher-rss");
     assert.equal(body.language, "ar+en");
     assert.equal(body.feedsTotal, 8);
-    assert.equal(body.feedsAvailable, 8);
+    assert.equal(body.feedsAvailable, 8, JSON.stringify(body.feedErrors));
     assert.equal(body.data.length, 8);
     assert.ok(body.data.some(item => item.language === "ar"));
     assert.ok(body.data.some(item => item.language === "en"));
