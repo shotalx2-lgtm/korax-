@@ -45,7 +45,6 @@ jobs:
             -keystore signing-output/korax-release.jks \
             -storepass:env STORE_PASSWORD \
             -alias korax-release > signing-output/certificate-fingerprints.txt
-          base64 -w 0 signing-output/korax-release.jks > signing-output/ANDROID_KEYSTORE_BASE64.txt
           cat > signing-output/SETUP.txt <<'EOF'
           KORAX release signing key
           Alias: korax-release
@@ -53,7 +52,7 @@ jobs:
           - ANDROID_KEYSTORE_PASSWORD: the keystore password you created in GitHub Secrets
           - ANDROID_KEY_PASSWORD: the private key password you created in GitHub Secrets
           - ANDROID_KEY_ALIAS: korax-release
-          - ANDROID_KEYSTORE_BASE64: contents of ANDROID_KEYSTORE_BASE64.txt
+          - ANDROID_KEYSTORE_BASE64: base64-encode korax-release.jks locally before adding it as a GitHub secret
           IMPORTANT: Keep korax-release.jks and its passwords backed up securely.
           Never commit this keystore or its passwords to the repository.
           EOF
@@ -61,7 +60,7 @@ jobs:
       - name: Upload signing materials (private workflow artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: KORAX-private-signing-materials
+          name: KORAX-encrypted-signing-keystore
           path: signing-output/
           if-no-files-found: error
           retention-days: 1
