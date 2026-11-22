@@ -89,13 +89,13 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
     const body = await response.json();
     assert.equal(body.source, "publisher-rss");
     assert.equal(body.language, "ar+en");
-    assert.equal(body.feedsTotal, 18);
-    assert.equal(body.feedsAvailable, 18, JSON.stringify(body.feedErrors));
-    assert.equal(body.data.length, 18);
+    assert.equal(body.feedsTotal, 26);
+    assert.equal(body.feedsAvailable, 26, JSON.stringify(body.feedErrors));
+    assert.equal(body.data.length, 26);
     assert.ok(body.data.some(item => item.language === "ar"));
     assert.ok(body.data.some(item => item.language === "en"));
     assert.ok(body.data.every(item => item.imageUrl?.startsWith("https://images.example/")));
-    assert.equal(calls.length, 18);
+    assert.equal(calls.length, 26);
     assert.ok(calls.every(url => !url.includes("news.google.com")));
   } finally {
     globalThis.fetch = originalFetch;
