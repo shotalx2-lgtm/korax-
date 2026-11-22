@@ -649,6 +649,9 @@ private fun AccountCard() {
     var currentUser by remember(auth) { mutableStateOf(auth?.currentUser) }
     var busy by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var creatingAccount by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     DisposableEffect(auth) {
@@ -657,6 +660,71 @@ private fun AccountCard() {
             auth.addAuthStateListener(listener)
             onDispose { auth.removeAuthStateListener(listener) }
         } else onDispose { }
+    }
+
+    fun runEmailAuth(create: Boolean) {
+        val firebaseAuth = auth
+        if (firebaseAuth == null) {
+            feedback = "يلزم إعداد Firebase أولًا."
+            return
+        }
+        scope.launch {
+            busy = true
+            feedback = ""
+            runCatching {
+                val cleanEmail = email.trim()
+                check(cleanEmail.contains("@")) { "اكتب بريدًا إلكترونيًا صحيحًا." }
+                check(password.length >= 6) { "كلمة المرور يجب أن تكون 6 أحرف على الأقل." }
+                if (create) firebaseAuth.createUserWithEmailAndPassword(cleanEmail, password).await()
+                else firebaseAuth.signInWithEmailAndPassword(cleanEmail, password).await()
+            }.onSuccess {
+                feedback = if (create) "تم إنشاء الحساب وتسجيل الدخول." else "تم تسجيل الدخول بنجاح."
+            }.onFailure { error ->
+                feedback = error.localizedMessage ?: "تعذر إكمال تسجيل الدخول."
+            }
+            busy = false
+        }
+    }
+
+    fun runGoogleAuth() {
+        val firebaseAuth = auth
+        if (firebaseAuth == null) {
+            feedback = "يلزم إعداد Firebase أولًا."
+            return
+        }
+        scope.launch {
+            busy = true
+            feedback = ""
+            runCatching {
+                val clientIdResource = context.resources.getIdentifier(
+                    "default_web_client_id", "string", context.packageName
+                )
+                check(clientIdResource != 0) {
+                    "إعداد OAuth غير موجود. أضف google-services.json بعد تفعيل Google في Firebase."
+                }
+                val googleOption = GetGoogleIdOption.Builder()
+                    .setServerClientId(context.getString(clientIdResource))
+                    .setFilterByAuthorizedAccounts(false)
+                    .build()
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(googleOption)
+                    .build()
+                val result = CredentialManager.create(context).getCredential(context, request)
+                val credential = result.credential
+                check(
+                    credential is CustomCredential &&
+                        credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                ) { "لم يتم استلام بيانات اعتماد Google صالحة." }
+                val googleToken = GoogleIdTokenCredential.createFrom(credential.data)
+                val firebaseCredential = GoogleAuthProvider.getCredential(googleToken.idToken, null)
+                firebaseAuth.signInWithCredential(firebaseCredential).await()
+            }.onSuccess {
+                feedback = "تم تسجيل الدخول بنجاح."
+            }.onFailure { error ->
+                feedback = error.localizedMessage ?: "تعذر تسجيل الدخول. تحقق من إعداد Firebase."
+            }
+            busy = false
+        }
     }
 
     Card(
@@ -690,50 +758,46 @@ private fun AccountCard() {
                 }
                 auth == null -> {
                     Text(
-                        "تسجيل Google جاهز برمجيًا، لكن يلزم إضافة إعداد Firebase الخاص بتطبيق KORAX وتفعيل Google من لوحة Firebase.",
+                        "تسجيل البريد وGoogle جاهز برمجيًا، لكن يلزم إضافة إعداد Firebase الخاص بتطبيق KORAX وتفعيل طريقتَي الدخول من لوحة Firebase.",
                         color = KMuted, fontSize = 11.sp, lineHeight = 17.sp
                     )
                 }
                 else -> {
                     Text("سجّل الدخول لحفظ حسابك وربط بياناتك.", color = KMuted, fontSize = 11.sp)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = email, onValueChange = { email = it },
+                        label = { Text("البريد الإلكتروني") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    OutlinedTextField(
+                        value = password, onValueChange = { password = it },
+                        label = { Text("كلمة المرور") }, singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
                     Button(
                         enabled = !busy,
-                        onClick = {
-                            scope.launch {
-                                busy = true
-                                feedback = ""
-                                runCatching {
-                                    val clientIdResource = context.resources.getIdentifier(
-                                        "default_web_client_id", "string", context.packageName
-                                    )
-                                    check(clientIdResource != 0) {
-                                        "إعداد OAuth غير موجود. أضف google-services.json بعد تفعيل Google في Firebase."
-                                    }
-                                    val googleOption = GetGoogleIdOption.Builder()
-                                        .setServerClientId(context.getString(clientIdResource))
-                                        .setFilterByAuthorizedAccounts(false)
-                                        .build()
-                                    val request = GetCredentialRequest.Builder()
-                                        .addCredentialOption(googleOption)
-                                        .build()
-                                    val result = CredentialManager.create(context).getCredential(context, request)
-                                    val credential = result.credential
-                                    check(
-                                        credential is CustomCredential &&
-                                            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                                    ) { "لم يتم استلام بيانات اعتماد Google صالحة." }
-                                    val googleToken = GoogleIdTokenCredential.createFrom(credential.data)
-                                    val firebaseCredential = GoogleAuthProvider.getCredential(googleToken.idToken, null)
-                                    auth.signInWithCredential(firebaseCredential).await()
-                                }.onSuccess {
-                                    feedback = "تم تسجيل الدخول بنجاح."
-                                }.onFailure { error ->
-                                    feedback = error.localizedMessage ?: "تعذر تسجيل الدخول. تحقق من إعداد Firebase."
-                                }
-                                busy = false
-                            }
-                        },
+                        onClick = { runEmailAuth(creatingAccount) },
+                        modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(containerColor = KLime, contentColor = Color.Black)
+                    ) {
+                        Text(if (busy) "جارٍ التنفيذ..." else if (creatingAccount) "إنشاء حساب بالبريد" else "تسجيل الدخول بالبريد")
+                    }
+                    TextButton(
+                        enabled = !busy,
+                        onClick = { creatingAccount = !creatingAccount; feedback = "" },
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Text(if (creatingAccount) "لديك حساب؟ سجّل الدخول" else "ليس لديك حساب؟ أنشئ حسابًا")
+                    }
+                    Button(
+                        enabled = !busy,
+                        onClick = { runGoogleAuth() },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = KCard2, contentColor = KText)
                     ) { Text(if (busy) "جارٍ تسجيل الدخول..." else "تسجيل الدخول باستخدام Google") }
                 }
             }
