@@ -62,6 +62,18 @@ private val FxText = Color(0xFFF4F6FA)
 private val FxMuted = Color(0xFF9AA5B5)
 private val FxGreen = Color(0xFFD5FF00)
 
+private val RequiredFantasyLeagues = listOf(
+    "الدوري الإنجليزي", "الدوري الإسباني", "الدوري الفرنسي",
+    "الدوري الإيطالي", "الدوري الألماني", "الدوري السعودي"
+)
+
+private fun fantasyCoverageSummary(players: List<FantasyPlayer>): String {
+    val available = players.map { it.league }.filter { it.isNotBlank() }.distinct()
+    val missing = RequiredFantasyLeagues.filterNot { it in available }
+    return if (missing.isEmpty()) "تم تحميل الدوريات الستة."
+    else "لم تصل بيانات هذه الدوريات من الاشتراك الحالي: " + missing.joinToString("، ")
+}
+
 private data class FantasyPlayer(
     val id: String,
     val name: String,
@@ -319,7 +331,7 @@ fun FantasyScreen() {
                 val next = state.copy(catalogue = fetched)
                 state = next
                 store.save(next)
-                message = "تم تحميل " + fetched.size + " لاعبًا من مصدر البيانات."
+                message = "تم تحميل " + fetched.size + " لاعبًا. " + fantasyCoverageSummary(fetched)
             } else if (result.isFailure) {
                 message = result.exceptionOrNull()?.message ?: "تعذر تحميل سوق اللاعبين."
             }
@@ -407,7 +419,7 @@ fun FantasyScreen() {
                                     val refreshedIds = refreshed.map { it.id }.toSet()
                                     val retained = state.catalogue.filter { it.id !in refreshedIds }
                                     commit(state.copy(catalogue = retained + refreshed))
-                                    message = "تم تحديث بيانات " + refreshed.size + " لاعبًا مع الاحتفاظ بأسعارك ونقاطك المسجلة."
+                                    message = "تم تحديث بيانات " + refreshed.size + " لاعبًا مع الاحتفاظ بأسعارك. " + fantasyCoverageSummary(refreshed)
                                     section = "market"
                                 }
                             }.onFailure { error ->
