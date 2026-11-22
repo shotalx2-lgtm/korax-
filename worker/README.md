@@ -19,7 +19,7 @@ Important coverage limits: SportScore does not document a full squad/player-cata
 
 The `GET /api/news` route aggregates public RSS feeds without a news API key:
 
-- بطولات: feed عام، الدوري المصري، الدوري الإسباني، الدوري الإنجليزي، الأهلي، الزمالك وبرشلونة
+- بطولات: feed عام، الدوري المصري، الدوري الإسباني، الدوري الإنجليزي، الأهلي، الزمالك، بيراميدز، ريال مدريد، برشلونة، ليفربول، مانشستر سيتي، مانشستر يونايتد، آرسنال، يوفنتوس وباريس سان جيرمان
 - اليوم السابع (sports section)
 - هسبورت
 - الجزيرة (football-filtered items)
