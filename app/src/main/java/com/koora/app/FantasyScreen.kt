@@ -277,8 +277,8 @@ fun FantasyScreen() {
                 .collection("fantasyTeams").document(uid).get().await()
             val cloudJson = document.getString("stateJson")
             if (!cloudJson.isNullOrBlank()) {
-                store.importRaw(cloudJson)
                 state = store.decode(cloudJson).copy(catalogue = state.catalogue)
+                store.save(state)
                 message = "تمت استعادة تشكيلتك من حسابك."
             } else {
                 val localJson = store.exportCloudState(state)
