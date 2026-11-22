@@ -18,7 +18,7 @@ The current repository is an integration build, not yet a production release.
 - [ ] Add confirmed transfers from a provider that supplies transfer records.
 - [ ] Implement cloud league rankings, friend requests, multiplayer leagues and chat if they remain in scope.
 - [ ] Finish push notifications and notification backend setup.
-- [ ] Configure Firebase project, Google OAuth client and Firestore rules for the actual Android app.
+- [ ] Configure Firebase project, Email/Password and Google providers, Google OAuth client and Firestore rules for the actual Android app.
 
 ## Release and quality
 - [ ] Configure a production upload key and Play App Signing; never commit keystores or secrets.
