@@ -343,20 +343,21 @@ fun FantasyScreen() {
                 } else {
                     remaining.forEach { player ->
                         PlayerCard(player, owned = false, onAction = {
-                            val positionLimit = mapOf("GK" to 2, "DEF" to 5, "MID" to 5, "FWD" to 3).getValue(player.position)
-                            when {
-                                owned.size >= 15 -> message = "اكتمل الفريق: لا يمكن تجاوز 15 لاعبًا."
-                                state.count(player.position) >= positionLimit -> message = "اكتمل العدد المسموح لمركز ${positionLabel(player.position)}."
-                                owned.count { it.club.equals(player.club, true) } >= 3 -> message = "الحد الأقصى ثلاثة لاعبين من النادي الواحد."
-                                player.price > state.budget -> message = "الميزانية المتبقية لا تكفي."
-                                else -> {
-                                    commit(state.copy(
-                                        ownedIds = state.ownedIds + player.id,
-                                        budget = state.budget - player.price,
-                                        transferLog = (listOf("شراء: ${player.name}") + state.transferLog).take(50)
-                                    ))
-                                    message = "تم شراء ${player.name} وحفظ العملية على الجهاز."
-                                }
+                            val candidate = FantasyRulePlayer(player.id, player.club, player.position, player.price, player.points)
+                            val validation = FantasyRules.validateAdd(
+                                owned.map { FantasyRulePlayer(it.id, it.club, it.position, it.price, it.points) },
+                                candidate,
+                                state.budget
+                            )
+                            if (!validation.allowed) {
+                                message = validation.reason
+                            } else {
+                                commit(state.copy(
+                                    ownedIds = state.ownedIds + player.id,
+                                    budget = state.budget - player.price,
+                                    transferLog = (listOf("شراء: ${player.name}") + state.transferLog).take(50)
+                                ))
+                                message = "تم شراء ${player.name} وحفظ العملية على الجهاز."
                             }
                         }, actionLabel = "شراء")
                     }
@@ -413,7 +414,13 @@ fun FantasyScreen() {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         row.forEach { formation ->
                             FilterChip(selected = state.formation == formation,
-                                onClick = { commit(state.copy(formation = formation)); message = "تم حفظ خطة $formation." },
+                                onClick = {
+                                val validation = FantasyRules.validateFormation(formation)
+                                if (validation.allowed) {
+                                    commit(state.copy(formation = formation))
+                                    message = "تم حفظ خطة $formation."
+                                } else message = validation.reason
+                            },
                                 label = { Text(formation) })
                         }
                     }
