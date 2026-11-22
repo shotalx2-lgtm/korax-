@@ -6,7 +6,7 @@ The Android project now contains the Google Credential Manager + Firebase Authen
 
 1. Create a Firebase project for KORAX.
 2. Add an Android app with package name `com.koora.app`.
-3. In Firebase Authentication, enable the **Google** provider.
+3. In Firebase Authentication → Sign-in method, enable both **Email/Password** and **Google** providers.
 4. Add the SHA-1 and SHA-256 fingerprints for the certificate that signs the APK users will install. The current CI debug certificate is for testing only; production must use a stable release keystore.
 5. Download the updated `google-services.json` for the Android app.
 
@@ -30,7 +30,7 @@ The rules intentionally allow each user to read and change only their own fantas
 
 ## Important boundaries
 
-- Google sign-in authenticates a user with Firebase Authentication.
+- Email/password registration and sign-in, and Google sign-in, authenticate a user with Firebase Authentication.
 - Authentication alone does not create cloud fantasy saves, leagues, leaderboards, friend requests, or chat. Those require a database, security rules, and application screens; they must be completed and tested separately.
 - Never place Sportmonks credentials, Firebase service-account private keys, or other server secrets in the Android APK or public source code.
 - Before a public release, configure a stable release signing key and register its certificate fingerprints in Firebase.
