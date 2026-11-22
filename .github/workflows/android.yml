@@ -38,6 +38,8 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
+      - name: Print Android signing fingerprints for Firebase setup
+        run: gradle :app:signingReport --console=plain
       - name: Configure Firebase Android app (optional until project setup)
         env:
           FIREBASE_CONFIG_JSON_B64: ${{ secrets.FIREBASE_CONFIG_JSON_B64 }}
