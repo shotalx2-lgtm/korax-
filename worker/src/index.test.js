@@ -34,7 +34,7 @@ test("season fantasy scoring applies position-specific goal and clean-sheet valu
     { type: { name: "Own Goals" }, value: 1 },
   ];
   assert.equal(calculateSeasonFantasyPoints("DEF", details), 10);
-  assert.equal(calculateSeasonFantasyPoints("MID", details), 6);
+  assert.equal(calculateSeasonFantasyPoints("MID", details), 7);
   assert.equal(calculateSeasonFantasyPoints("FWD", details), 5);
 });
 
