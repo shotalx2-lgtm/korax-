@@ -584,6 +584,7 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     suspend fun refresh() {
         loading = true
         val result = runCatching { loadMatches(live, selectedDate) }
@@ -626,6 +627,14 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
                 }
             }
         }
+        Text(
+            "Powered by SportScore",
+            color = KMuted,
+            fontSize = 9.sp,
+            modifier = Modifier.align(Alignment.CenterHorizontally).clickable {
+                uriHandler.openUri("https://sportscore.com/")
+            }.padding(vertical = 7.dp)
+        )
     }
 }
 
