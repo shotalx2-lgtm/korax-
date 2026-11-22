@@ -560,10 +560,11 @@ async function resolveFantasyCompetition(target, env) {
     : Array.isArray(root?.leagues) ? root.leagues
     : Array.isArray(root?.tournaments) ? root.tournaments
     : Array.isArray(root?.results) ? root.results.filter((item) => String(item.type || "").toLowerCase().includes("competition")) : [];
+  const matchName = (item) => (nestedName(item) || item?.title || item?.competition_name || item?.league_name || "").toLowerCase();
   const match = rows.find((item) => {
-    const name = nestedName(item).toLowerCase();
+    const name = matchName(item);
     return name.includes("saudi") && (name.includes("pro") || name.includes("professional"));
-  }) || rows.find((item) => nestedName(item).toLowerCase().includes("saudi"));
+  }) || rows.find((item) => matchName(item).includes("saudi"));
   const urlSlug = String(match?.url || match?.href || "").match(/\/([a-z0-9]{8,})\/?$/i)?.[1] || "";
   return match?.slug || match?.competition_slug || match?.url_slug || urlSlug;
 }
