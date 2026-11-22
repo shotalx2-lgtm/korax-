@@ -344,20 +344,18 @@ function parseRssFeed(xml, feed) {
     const description = xmlField(block, "description").value || xmlField(block, "summary").value || xmlField(block, "content").value || "";
     const summary = htmlText(description).slice(0, 360);
     const link = xmlField(block, "link");
-    const rawLink = xmlAttribute(link.attrs, "href") || htmlText(link.value) || htmlText(xmlField(block, "guid").value);
+    const atomLink = block.match(/<link\b([^>]*)\/?>/i);
+    const rawLink = xmlAttribute(link.attrs || atomLink?.[1], "href") || htmlText(link.value) || htmlText(xmlField(block, "guid").value);
     const url = safeNewsUrl(rawLink, feed.url);
     const rawDate = htmlText(xmlField(block, "pubDate").value) || htmlText(xmlField(block, "published").value) ||
       htmlText(xmlField(block, "updated").value) || htmlText(xmlField(block, "date").value);
     const timestamp = Date.parse(rawDate);
     let imageUrl = "";
-    for (const tag of ["content", "thumbnail", "enclosure"]) {
-      const image = xmlField(block, tag);
-      const candidate = xmlAttribute(image.attrs, "url") || xmlAttribute(image.attrs, "href");
-      const mime = xmlAttribute(image.attrs, "type");
-      if (candidate && (!mime || mime.startsWith("image/"))) {
-        imageUrl = safeNewsUrl(candidate, feed.url);
-        if (imageUrl) break;
-      }
+    const imageTag = block.match(/<(?:[\w.-]+:)?(?:content|thumbnail|enclosure)\b([^>]*)\/?>/i);
+    if (imageTag) {
+      const candidate = xmlAttribute(imageTag[1], "url") || xmlAttribute(imageTag[1], "href");
+      const mime = xmlAttribute(imageTag[1], "type");
+      if (candidate && (!mime || mime.startsWith("image/"))) imageUrl = safeNewsUrl(candidate, feed.url);
     }
     if (!imageUrl) {
       const image = block.match(/<img\b[^>]*(?:src|data-src)=["']([^"']+)["']/i);
