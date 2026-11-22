@@ -60,7 +60,9 @@ private data class FantasyPlayer(
     val club: String,
     val position: String,
     val price: Double,
-    val points: Int
+    val points: Int,
+    val imageUrl: String? = null,
+    val league: String = ""
 )
 
 private data class FantasyState(
@@ -96,7 +98,9 @@ private class FantasyLocalStore(context: Context) {
                     club = item.optString("club"),
                     position = item.optString("position"),
                     price = item.optDouble("price"),
-                    points = item.optInt("points")
+                    points = item.optInt("points"),
+                    imageUrl = item.optString("imageUrl").takeIf { it.startsWith("https://") },
+                    league = item.optString("league")
                 ).takeIf { it.id.isNotBlank() && it.name.isNotBlank() }
             }
             val ownedJson = root.optJSONArray("owned") ?: JSONArray()
@@ -120,7 +124,8 @@ private class FantasyLocalStore(context: Context) {
         val players = JSONArray()
         state.catalogue.forEach { p ->
             players.put(JSONObject().put("id", p.id).put("name", p.name).put("club", p.club)
-                .put("position", p.position).put("price", p.price).put("points", p.points))
+                .put("position", p.position).put("price", p.price).put("points", p.points)
+                .put("imageUrl", p.imageUrl ?: "").put("league", p.league))
         }
         val owned = JSONArray()
         state.ownedIds.forEach { owned.put(it) }
@@ -142,7 +147,7 @@ private class FantasyLocalStore(context: Context) {
 private suspend fun loadFantasyPlayersFromApi(): List<FantasyPlayer> = withContext(Dispatchers.IO) {
     val base = BuildConfig.KOORA_API_BASE_URL.trim().trimEnd('/')
     require(base.startsWith("https://")) { "مصدر البيانات غير مربوط بعد." }
-    val connection = (URL(base + "/api/players?per_page=50&page=1").openConnection() as HttpURLConnection).apply {
+    val connection = (URL(base + "/api/fantasy/players").openConnection() as HttpURLConnection).apply {
         connectTimeout = 8000
         readTimeout = 10000
         setRequestProperty("Accept", "application/json")
@@ -168,10 +173,12 @@ private suspend fun loadFantasyPlayersFromApi(): List<FantasyPlayer> = withConte
                 else -> return@mapNotNull null
             }
             val teamValue = item.opt("team")
-            val club = when (teamValue) {
-                is JSONObject -> teamValue.optString("name")
-                is String -> teamValue
-                else -> ""
+            val club = item.optString("club").ifBlank {
+                when (teamValue) {
+                    is JSONObject -> teamValue.optString("name")
+                    is String -> teamValue
+                    else -> ""
+                }
             }.ifBlank { item.optString("teamName", "نادي غير محدد") }
             if (id.isBlank() || name.isBlank()) return@mapNotNull null
             val initialPrice = when (position) {
@@ -185,10 +192,12 @@ private suspend fun loadFantasyPlayersFromApi(): List<FantasyPlayer> = withConte
                 name = name,
                 club = club,
                 position = position,
-                price = initialPrice,
-                points = item.optInt("fantasyPoints", 0)
+                price = item.optDouble("price", initialPrice),
+                points = item.optInt("points", item.optInt("fantasyPoints", 0)),
+                imageUrl = item.optString("imageUrl").takeIf { it.startsWith("https://") },
+                league = item.optString("league")
             )
-        }.distinctBy { it.id }.take(50)
+        }.distinctBy { it.id }
     } finally {
         connection.disconnect()
     }
@@ -273,7 +282,7 @@ fun FantasyScreen() {
                 }
                 Spacer(Modifier.height(12.dp))
                 Text("المجموعة: ${owned.size}/15 لاعبًا", color = FxMuted, fontSize = 12.sp)
-                Text("أسماء اللاعبين تأتي من مزود البيانات عند ربطه. الأسعار الافتراضية خاصة بلعبة KORAX، والنقاط الرسمية تحتاج إحصائيات الجولات.", color = FxMuted, fontSize = 10.sp)
+                Text("اللاعبون وإحصائيات الموسم تُجلب من مزود البيانات للدوريات الستة. الأسعار الابتدائية وقواعد نقاط الموسم خاصة بلعبة KORAX.", color = FxMuted, fontSize = 10.sp)
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -284,7 +293,7 @@ fun FantasyScreen() {
         ) {
             Column(Modifier.fillMaxWidth().padding(14.dp)) {
                 Text("استيراد اللاعبين الحقيقيين", color = FxText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text("يتم جلب الأسماء والأندية والمراكز من مصدر البيانات المتصل. الأسعار الحالية قيم ابتدائية داخل لعبة KORAX وليست أسعارًا رسمية، والنقاط تبدأ من صفر حتى ربط إحصائيات الجولات.", color = FxMuted, fontSize = 10.sp, lineHeight = 16.sp)
+                Text("يتم تحميل لاعبي الدوريات الستة مع صورهم وإحصائيات الموسم. الأسعار الأساسية وقواعد احتساب نقاط الموسم محددة داخل KORAX وليست أسعارًا رسمية من المزود.", color = FxMuted, fontSize = 10.sp, lineHeight = 16.sp)
                 Spacer(Modifier.height(8.dp))
                 Button(
                     enabled = apiConfigured && !importing,
@@ -453,7 +462,7 @@ fun FantasyScreen() {
             }
             "points" -> {
                 Text("نظام النقاط", color = FxText, fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                Text("النقاط الحالية مدخلة يدويًا في بطاقة كل لاعب أثناء إضافته للسوق، وليست نتائج مباشرة من جهة رسمية.", color = FxMuted, fontSize = 11.sp)
+                Text("نقاط الموسم محسوبة تلقائيًا من إحصائيات اللاعبين المتاحة لدى مزود البيانات وفق قواعد KORAX.", color = FxMuted, fontSize = 11.sp)
                 Spacer(Modifier.height(10.dp))
                 owned.forEach { player ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -463,13 +472,11 @@ fun FantasyScreen() {
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text(player.points.toString() + " نقطة", color = FxGold, fontWeight = FontWeight.Bold)
-                            Text("−1", color = FxMuted, modifier = Modifier.clickable { adjustPoints(player, -1) }.padding(5.dp))
-                            Text("+1", color = FxGreen, modifier = Modifier.clickable { adjustPoints(player, 1) }.padding(5.dp))
                         }
                     }
                 }
                 if (owned.isNotEmpty()) {
-                    InfoPanel("مجموع الفريق: ${state.points()} نقطة", "يحصل القائد على مضاعفة نقاطه في الحساب المحلي. لم يتم توصيل محرك اعتماد نقاط رسمي أو جولات مباشرة.")
+                    InfoPanel("مجموع الفريق: ${state.points()} نقطة", "هذه نقاط الموسم من إحصائيات المزود وفق نظام KORAX. مضاعفة القائد تُطبق على مجموع النقاط المعروض.")
                 }
                 if (owned.isEmpty()) InfoPanel("لا توجد نقاط بعد", "أضف لاعبين إلى السوق ثم اشترِ تشكيلتك.")
             }
@@ -532,10 +539,19 @@ private fun PlayerCard(player: FantasyPlayer, owned: Boolean, onAction: () -> Un
         border = BorderStroke(1.dp, Color(0xFF303A49))
     ) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!player.imageUrl.isNullOrBlank()) {
+                coil.compose.AsyncImage(
+                    model = player.imageUrl,
+                    contentDescription = player.name,
+                    modifier = Modifier.width(48.dp).height(56.dp).padding(end = 7.dp),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
+            }
             Column(Modifier.weight(1f)) {
                 Text(player.name, color = FxText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 Text("${player.club} • ${positionLabel(player.position)}", color = FxMuted, fontSize = 10.sp)
-                Text(String.format("%.1f مليون", player.price) + " • ${player.points} نقطة مدخلة", color = FxGold, fontSize = 10.sp)
+                if (player.league.isNotBlank()) Text(player.league, color = FxMuted, fontSize = 9.sp)
+                Text(String.format("%.1f مليون", player.price) + " • ${player.points} نقطة موسم", color = FxGold, fontSize = 10.sp)
             }
             Button(onClick = onAction, colors = ButtonDefaults.buttonColors(containerColor = if (owned) FxPanel2 else FxGold, contentColor = if (owned) FxText else Color.Black)) {
                 Text(actionLabel)
