@@ -46,7 +46,13 @@ The response includes title, short summary, original article URL, publisher, pub
 
 ## Deploy
 
-1. From the `worker/` directory, run `npx wrangler deploy` (or deploy `src/index.js` from the Cloudflare dashboard using `wrangler.toml`).
+For a Git-connected Cloudflare Worker whose repository root is the checkout root, use this deploy command so Wrangler runs from the Worker package directory:
+
+```bash
+cd worker && npx wrangler deploy --name korax-sports-proxy
+```
+
+For a local deployment, run `npx wrangler deploy` from the `worker/` directory (or deploy `src/index.js` from the Cloudflare dashboard using `wrangler.toml`).
 2. Copy the deployed `https://<worker-name>.<account-subdomain>.workers.dev` URL.
 3. Set the Android build property `KOORA_API_BASE_URL` to that Worker HTTPS origin. This is the backend URL, not a sports/news API key.
 4. No SportScore key or news API key is required for the documented public tiers.
