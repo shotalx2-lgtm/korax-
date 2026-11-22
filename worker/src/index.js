@@ -893,3 +893,5 @@ export default {
     }
   },
 };
+
+export { fantasyPosition, numericStat, calculateSeasonFantasyPoints };
