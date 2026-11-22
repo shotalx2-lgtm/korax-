@@ -523,7 +523,8 @@ function normalizeFantasyPlayer(row, league) {
   const team = row?.team || row?.club || player?.team || player?.club || {};
   const name = nestedName(player) || row?.player_name || row?.name || "";
   const id = String(player?.slug || player?.id || row?.player_slug || row?.player_id || row?.slug || "");
-  const position = fantasyPosition(player?.position || row?.position || player?.role || row?.role || "");
+  const position = fantasyPosition(player?.position || row?.position || player?.role || row?.role ||
+    row?.player_position || row?.position_name || player?.position_name || row?.role_name || "");
   if (!id || !name || !position) return null;
   const goals = scoreValue(row, "goals", "goal", "total_goals");
   const assists = scoreValue(row, "assists", "total_assists");
@@ -536,7 +537,8 @@ function normalizeFantasyPlayer(row, league) {
     { type: { name: "Yellow Cards" }, value: scoreValue(row, "yellow_cards", "yellowCards") },
     { type: { name: "Red Cards" }, value: scoreValue(row, "red_cards", "redCards") },
   ];
-  const image = player?.image || player?.image_url || player?.photo || player?.photo_url || row?.image || row?.image_url || "";
+  const image = player?.image || player?.image_url || player?.photo || player?.photo_url ||
+    row?.player_image || row?.player_image_url || row?.image || row?.image_url || "";
   const club = nestedName(team) || row?.team_name || row?.club_name || "";
   const price = position === "GK" ? 4.5 : position === "DEF" ? 5.0 : position === "MID" ? 6.0 : 6.5;
   return {
@@ -554,12 +556,16 @@ async function resolveFantasyCompetition(target, env) {
     q: target.search, sport: "football", limit: 20,
   }, env, 21600);
   const root = unwrap(payload);
-  const rows = root?.competitions || root?.leagues || root?.tournaments || [];
+  const rows = Array.isArray(root?.competitions) ? root.competitions
+    : Array.isArray(root?.leagues) ? root.leagues
+    : Array.isArray(root?.tournaments) ? root.tournaments
+    : Array.isArray(root?.results) ? root.results.filter((item) => String(item.type || "").toLowerCase().includes("competition")) : [];
   const match = rows.find((item) => {
     const name = nestedName(item).toLowerCase();
     return name.includes("saudi") && (name.includes("pro") || name.includes("professional"));
   }) || rows.find((item) => nestedName(item).toLowerCase().includes("saudi"));
-  return match?.slug || match?.competition_slug || match?.url_slug || "";
+  const urlSlug = String(match?.url || match?.href || "").match(/\/([a-z0-9]{8,})\/?$/i)?.[1] || "";
+  return match?.slug || match?.competition_slug || match?.url_slug || urlSlug;
 }
 
 async function loadFantasyLeaguePlayers(target, env) {
