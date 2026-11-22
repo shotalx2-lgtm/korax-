@@ -280,7 +280,6 @@ async function cachedProviderRequest(path, params, env, ttlSeconds) {
   for (const [key, value] of Object.entries(params || {})) {
     if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
   }
-  url.searchParams.set("src", "korax-android-app");
   const cache = caches.default;
   const cacheKey = new Request(url.toString(), { method: "GET" });
   const cached = await cache.match(cacheKey);
