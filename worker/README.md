@@ -19,14 +19,13 @@ Important coverage limits: SportScore does not document a full squad/player-cata
 
 The `GET /api/news` route aggregates public RSS feeds without a news API key:
 
-- بطولات
+- بطولات: feed عام، الدوري المصري، الدوري الإسباني، الدوري الإنجليزي، الأهلي، الزمالك وبرشلونة
 - اليوم السابع (sports section)
 - هسبورت
 - الجزيرة (football-filtered items)
 - سكاي نيوز عربية (football-filtered items)
-- BBC Sport Football
-- Sky Sports Football
-- The Guardian Football
+- BBC Sport: football، Premier League، Champions League وEuropean Football
+- Sky Sports: football وPremier League
 
 The response includes title, short summary, original article URL, publisher, publication date, language, category, and an image URL only when the feed supplies one. News is cached for five minutes. Feed availability and images depend on the publisher; no article body or image is copied from the article page. Respect publisher terms and image rights before commercial redistribution.
 
