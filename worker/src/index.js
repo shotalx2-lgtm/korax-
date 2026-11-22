@@ -648,67 +648,74 @@ async function loadFantasyLeaguePlayers(target, env) {
     return { key: target.key, name: target.label, leagueId: String(league.id), available: false, reason: "current_season_unavailable", players: [] };
   }
 
-  const teamsPayload = await cachedProviderRequest(
-    "/teams/seasons/" + encodeURIComponent(String(season.id)),
-    { include: "country;venue", per_page: 50, page: 1 },
-    env,
-    21600
+  const playerPages = [];
+  for (let page = 1; page <= 30; page++) {
+    const payload = await cachedProviderRequest(
+      "/players",
+      {
+        include: "country;position;detailedPosition;teams;statistics.details.type",
+        filters: "playerStatisticSeasons:" + String(season.id),
+        per_page: 50,
+        page,
+      },
+      env,
+      21600
+    );
+    const rows = getList(payload);
+    playerPages.push(...rows);
+    const pagination = payload?.meta?.pagination || payload?.meta || {};
+    const hasMore = pagination.has_more === true || pagination.hasMore === true;
+    if (!hasMore && rows.length < 50) break;
+    if (!hasMore && rows.length === 0) break;
+  }
+
+  const players = playerPages.map((player) => {
+    const position = fantasyPosition(player?.position) || fantasyPosition(player?.detailed_position);
+    const id = String(player?.id ?? "");
+    const name = player?.display_name || player?.name || player?.common_name || "";
+    if (!id || !name || !position) return null;
+    const seasonStats = (Array.isArray(player?.statistics) ? player.statistics : [])
+      .find((item) => String(item?.season_id ?? "") === String(season.id))
+      || (Array.isArray(player?.statistics) ? player.statistics[0] : null);
+    const details = Array.isArray(seasonStats?.details) ? seasonStats.details : [];
+    const teams = Array.isArray(player?.teams) ? player.teams : [];
+    const activeTeam = teams.find((item) => item?.active) || teams[0] || null;
+    const team = activeTeam?.team || activeTeam || {};
+    const basePrice = position === "GK" ? 4.5 : position === "DEF" ? 5.0 : position === "MID" ? 6.0 : 6.5;
+    return {
+      id: "provider-" + id,
+      providerId: id,
+      name,
+      club: team?.name || player?.team?.name || "نادي غير محدد",
+      teamId: String(team?.id ?? activeTeam?.team_id ?? ""),
+      position,
+      price: basePrice,
+      points: calculateSeasonFantasyPoints(position, details),
+      imageUrl: player.image_path || null,
+      leagueId: String(league.id),
+      league: target.label,
+      seasonId: String(season.id),
+      season: season.name || "",
+      stats: {
+        appearances: numericStat(details, "Appearances", "Appearences"),
+        minutes: numericStat(details, "Minutes Played", "Minutes"),
+        goals: numericStat(details, "Goals"),
+        assists: numericStat(details, "Assists"),
+        cleanSheets: numericStat(details, "Clean Sheets", "Cleansheets"),
+        saves: numericStat(details, "Saves"),
+      },
+    };
+  }).filter(Boolean).filter((player, index, all) =>
+    all.findIndex((candidate) => candidate.id === player.id) === index
   );
-  const teams = getList(teamsPayload).filter((team) => team?.id && !team?.placeholder);
 
-  const teamResults = await mapWithConcurrency(teams, 6, async (team) => {
-    try {
-      const squadPayload = await cachedProviderRequest(
-        "/squads/seasons/" + encodeURIComponent(String(season.id)) + "/teams/" + encodeURIComponent(String(team.id)),
-        { include: "player;position;details.type" },
-        env,
-        21600
-      );
-      return getList(squadPayload).map((entry) => {
-        const player = entry?.player || {};
-        const position = fantasyPosition(entry?.position) || fantasyPosition(player?.position) || fantasyPosition(player?.detailed_position);
-        const id = String(entry?.player_id ?? player?.id ?? "");
-        const name = player?.display_name || player?.name || player?.common_name || "";
-        if (!id || !name || !position) return null;
-        const details = Array.isArray(entry?.details) ? entry.details : [];
-        const basePrice = position === "GK" ? 4.5 : position === "DEF" ? 5.0 : position === "MID" ? 6.0 : 6.5;
-        return {
-          id: "provider-" + id,
-          providerId: id,
-          name,
-          club: team.name || "نادي غير محدد",
-          teamId: String(team.id),
-          position,
-          price: basePrice,
-          points: calculateSeasonFantasyPoints(position, details),
-          imageUrl: player.image_path || null,
-          leagueId: String(league.id),
-          league: target.label,
-          seasonId: String(season.id),
-          season: season.name || "",
-          stats: {
-            appearances: numericStat(details, "Appearances", "Appearences"),
-            minutes: numericStat(details, "Minutes Played", "Minutes"),
-            goals: numericStat(details, "Goals"),
-            assists: numericStat(details, "Assists"),
-            cleanSheets: numericStat(details, "Clean Sheets", "Cleansheets"),
-            saves: numericStat(details, "Saves"),
-          },
-        };
-      }).filter(Boolean);
-    } catch {
-      return [];
-    }
-  });
-
-  const players = teamResults.flat().filter(Boolean);
   return {
     key: target.key,
     name: target.label,
     leagueId: String(league.id),
     seasonId: String(season.id),
     season: season.name || "",
-    teams: teams.length,
+    playerPages: playerPages.length,
     available: true,
     players,
   };
