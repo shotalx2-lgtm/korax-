@@ -40,6 +40,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.ClearCredentialStateRequest
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -619,11 +629,118 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
     }
 }
 
+
+@Composable
+private fun AccountCard() {
+    val context = LocalContext.current
+    val auth: FirebaseAuth? = remember {
+        if (FirebaseApp.getApps(context).isNotEmpty()) runCatching { FirebaseAuth.getInstance() }.getOrNull()
+        else null
+    }
+    var currentUser by remember(auth) { mutableStateOf(auth?.currentUser) }
+    var busy by remember { mutableStateOf(false) }
+    var feedback by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
+    DisposableEffect(auth) {
+        if (auth != null) {
+            val listener = FirebaseAuth.AuthStateListener { currentUser = it.currentUser }
+            auth.addAuthStateListener(listener)
+            onDispose { auth.removeAuthStateListener(listener) }
+        } else onDispose { }
+    }
+
+    Card(
+        Modifier.fillMaxWidth().padding(bottom = 10.dp),
+        shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(containerColor = KCard),
+        border = BorderStroke(1.dp, KBorder)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(15.dp)) {
+            Text("حساب KORAX", color = KText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(5.dp))
+            when {
+                currentUser != null -> {
+                    Text(currentUser?.displayName ?: currentUser?.email.orEmpty(), color = KLime, fontSize = 12.sp)
+                    Text(currentUser?.email.orEmpty(), color = KMuted, fontSize = 10.sp)
+                    Button(
+                        enabled = !busy,
+                        onClick = {
+                            scope.launch {
+                                busy = true
+                                auth?.signOut()
+                                runCatching {
+                                    CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
+                                }
+                                feedback = "تم تسجيل الخروج من حساب KORAX."
+                                busy = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = KCard2, contentColor = KText)
+                    ) { Text(if (busy) "جارٍ التنفيذ..." else "تسجيل الخروج") }
+                }
+                auth == null -> {
+                    Text(
+                        "تسجيل Google جاهز برمجيًا، لكن يلزم إضافة إعداد Firebase الخاص بتطبيق KORAX وتفعيل Google من لوحة Firebase.",
+                        color = KMuted, fontSize = 11.sp, lineHeight = 17.sp
+                    )
+                }
+                else -> {
+                    Text("سجّل الدخول لحفظ حسابك وربط بياناتك.", color = KMuted, fontSize = 11.sp)
+                    Button(
+                        enabled = !busy,
+                        onClick = {
+                            scope.launch {
+                                busy = true
+                                feedback = ""
+                                runCatching {
+                                    val clientIdResource = context.resources.getIdentifier(
+                                        "default_web_client_id", "string", context.packageName
+                                    )
+                                    check(clientIdResource != 0) {
+                                        "إعداد OAuth غير موجود. أضف google-services.json بعد تفعيل Google في Firebase."
+                                    }
+                                    val googleOption = GetGoogleIdOption.Builder()
+                                        .setServerClientId(context.getString(clientIdResource))
+                                        .setFilterByAuthorizedAccounts(false)
+                                        .build()
+                                    val request = GetCredentialRequest.Builder()
+                                        .addCredentialOption(googleOption)
+                                        .build()
+                                    val result = CredentialManager.create(context).getCredential(context, request)
+                                    val credential = result.credential
+                                    check(
+                                        credential is CustomCredential &&
+                                            credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                                    ) { "لم يتم استلام بيانات اعتماد Google صالحة." }
+                                    val googleToken = GoogleIdTokenCredential.createFrom(credential.data)
+                                    val firebaseCredential = GoogleAuthProvider.getCredential(googleToken.idToken, null)
+                                    auth.signInWithCredential(firebaseCredential).await()
+                                }.onSuccess {
+                                    feedback = "تم تسجيل الدخول بنجاح."
+                                }.onFailure { error ->
+                                    feedback = error.localizedMessage ?: "تعذر تسجيل الدخول. تحقق من إعداد Firebase."
+                                }
+                                busy = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = KLime, contentColor = Color.Black)
+                    ) { Text(if (busy) "جارٍ تسجيل الدخول..." else "تسجيل الدخول باستخدام Google") }
+                }
+            }
+            if (feedback.isNotBlank()) {
+                Text(feedback, color = if (currentUser != null) KLime else KMuted, fontSize = 10.sp)
+            }
+        }
+    }
+}
+
 @Composable
 private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         KoraxHeader("المزيد", "إعدادات وتجربتك في KORAX")
         Column(Modifier.padding(horizontal = 14.dp)) {
+            AccountCard()
             MoreRow("الأخبار", "العودة إلى مركز الأخبار", "⌂", home)
             MoreRow("المفضلة", "الأندية واللاعبون الذين تتابعهم", "♡", favorites)
             MoreRow("الإشعارات", "مركز تنبيهات المباريات والأخبار", "♧", notifications)

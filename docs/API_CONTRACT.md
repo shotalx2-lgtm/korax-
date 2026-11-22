@@ -8,6 +8,16 @@ The Android client intentionally contains no sports-provider secret. Set KOORA_A
 
 Returns Arabic football articles with `id`, `title`, `summary`, `url`, `source`, `publishedAt`, and optional `imageUrl`. It aggregates RSS sources and caches responses at the edge. Images are publisher-supplied and may be unavailable for some articles.
 
+## Fantasy player catalogue
+
+- GET /api/fantasy/players
+
+Returns the current-season player catalogue for the English Premier League, Spanish La Liga, French Ligue 1, Italian Serie A, German Bundesliga, and Saudi Pro League. Each player may include a stable provider ID, name, club, position, player image, KORAX starting price, season statistics, and KORAX season-total points. The response includes per-league availability so a competition missing from the provider subscription is not silently represented with sample players.
+
+The endpoint resolves each league's current season, loads its participating teams, and then loads each team's season squad. Provider responses are cached for six hours. A cold catalogue refresh therefore uses multiple provider requests; it is not one request per end user when the cache is warm.
+
+The initial point model is KORAX-specific and documented in `docs/FANTASY_SCORING.md`. It is a season aggregate, not matchweek scoring. Do not use it to claim live gameweek points or locked round results.
+
 ## List endpoints
 
 All endpoints return either a JSON array or an object containing a data array.
