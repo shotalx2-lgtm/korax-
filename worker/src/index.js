@@ -262,7 +262,6 @@ async function providerRequest(path, params = {}) {
   for (const [key, value] of Object.entries(params || {})) {
     if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
   }
-  url.searchParams.set("src", "korax-android-app");
   const response = await fetch(url, {
     headers: { accept: "application/json", "user-agent": "KORAX/1.0 (football app)" },
     redirect: "follow",
