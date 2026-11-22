@@ -103,6 +103,53 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
   }
 });
 
+test("fantasy uses documented SportScore league leaderboards and exposes their limited scope", async () => {
+  const originalFetch = globalThis.fetch;
+  const restoreCache = installCache();
+  const requested = [];
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    requested.push(url);
+    assert.equal(new Headers(init.headers).get("x-api-key"), null);
+    assert.equal(new Headers(init.headers).get("authorization"), null);
+    if (url.pathname === "/api/v1/search/") {
+      return new Response(JSON.stringify({
+        competitions: [{ name: "Saudi Pro League", slug: "saudi-pro-2026" }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    const slug = url.searchParams.get("slug") || "unknown";
+    return new Response(JSON.stringify({
+      players: [{
+        player: {
+          id: "player-" + slug, slug: "player-" + slug,
+          name: "Test Striker", position: "Forward",
+          image: "https://images.example/player.png",
+        },
+        team: { name: "Test Club", slug: "test-club" },
+        goals: 10, assists: 3, appearances: 12,
+      }],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const response = await worker.fetch(new Request("https://korax.test/api/fantasy/players"), {});
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.source, "sportscore");
+    assert.equal(body.leagues.length, 6);
+    assert.equal(body.data.length, 6);
+    assert.equal(body.meta.catalogueScope, "top_scorers_and_assists_only");
+    assert.equal(body.meta.roundScoringAvailable, false);
+    assert.ok(body.data.every(player => player.position === "FWD"));
+    assert.ok(requested.some(url => url.pathname === "/api/v1/search/"));
+    assert.ok(requested.filter(url => url.pathname === "/api/v1/topscorers/").length === 12);
+    assert.ok(requested.some(url => url.searchParams.get("slug") === "jednm9whz0ryox8"));
+    assert.ok(requested.some(url => url.searchParams.get("slug") === "saudi-pro-2026"));
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreCache();
+  }
+});
+
 test("SportScore has no confirmed transfer endpoint, so the API does not invent transfer records", async () => {
   const response = await worker.fetch(new Request("https://korax.test/api/transfers?per_page=50"), {});
   assert.equal(response.status, 200);
