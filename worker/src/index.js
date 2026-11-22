@@ -687,7 +687,13 @@ async function route(request, env) {
 
   const competition = path.match(/^\/api\/competitions\/([A-Za-z0-9_-]+)$/);
   if (competition) {
-    const payload = await cachedProviderRequest("/api/widget/standings/", { sport: "football", slug: competition[1] }, env, 600);
+    let slug = competition[1];
+    if (slug === "saudi-pro-league") {
+      const target = FANTASY_LEAGUE_TARGETS.find((item) => item.key === "saudi");
+      slug = await resolveFantasyCompetition(target, env);
+    }
+    if (!slug) return json({ error: "Competition not found" }, 404);
+    const payload = await cachedProviderRequest("/api/widget/standings/", { sport: "football", slug }, env, 600);
     return json({ data: unwrap(payload), source: "sportscore" });
   }
 
