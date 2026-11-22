@@ -87,7 +87,10 @@ private class FantasyLocalStore(context: Context) {
 
     fun load(): FantasyState {
         val raw = prefs.getString("state", null) ?: return FantasyState()
-        return runCatching {
+        return decode(raw)
+    }
+
+    fun decode(raw: String): FantasyState = runCatching {
             val root = JSONObject(raw)
             val playersJson = root.optJSONArray("catalogue") ?: JSONArray()
             val players = (0 until playersJson.length()).mapNotNull { index ->
@@ -118,7 +121,14 @@ private class FantasyLocalStore(context: Context) {
                 transferLog = log
             )
         }.getOrDefault(FantasyState())
+
+    fun importRaw(raw: String) {
+        runCatching { JSONObject(raw) }.onSuccess {
+            prefs.edit().putString("state", raw).apply()
+        }
     }
+
+    fun exportRaw(): String? = prefs.getString("state", null)
 
     fun save(state: FantasyState) {
         val players = JSONArray()
