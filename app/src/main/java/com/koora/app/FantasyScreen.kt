@@ -251,6 +251,7 @@ private suspend fun loadFantasyPlayersFromApi(): List<FantasyPlayer> = withConte
 
 @Composable
 fun FantasyScreen() {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { FantasyLocalStore(context) }
     val firebaseConfigured = remember { FirebaseApp.getApps(context).isNotEmpty() }
@@ -620,6 +621,14 @@ fun FantasyScreen() {
                 InfoPanel("قواعد التشكيلة الافتراضية", "15 لاعبًا: حارسا مرمى، 5 مدافعين، 5 وسط، 3 مهاجمين. الميزانية 100 مليون، والحد الأقصى 3 لاعبين من النادي الواحد.")
             }
         }
+        Text(
+            "Powered by SportScore",
+            color = FxMuted,
+            fontSize = 9.sp,
+            modifier = Modifier.align(Alignment.CenterHorizontally).clickable {
+                uriHandler.openUri("https://sportscore.com/")
+            }.padding(vertical = 7.dp)
+        )
         Spacer(Modifier.height(20.dp))
     }
 }
