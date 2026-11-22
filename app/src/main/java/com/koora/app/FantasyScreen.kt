@@ -34,6 +34,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.tasks.await
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -217,6 +225,12 @@ private suspend fun loadFantasyPlayersFromApi(): List<FantasyPlayer> = withConte
 fun FantasyScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { FantasyLocalStore(context) }
+    val firebaseConfigured = remember { FirebaseApp.getApps(context).isNotEmpty() }
+    val auth: FirebaseAuth? = remember(firebaseConfigured) {
+        if (firebaseConfigured) runCatching { FirebaseAuth.getInstance() }.getOrNull() else null
+    }
+    var signedInUid by remember(auth) { mutableStateOf(auth?.currentUser?.uid) }
+    var cloudReady by remember { mutableStateOf(false) }
     var state by remember { mutableStateOf(store.load()) }
     var section by remember { mutableStateOf("team") }
     var query by remember { mutableStateOf("") }
@@ -229,6 +243,56 @@ fun FantasyScreen() {
     var importing by remember { mutableStateOf(false) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val apiConfigured = BuildConfig.KOORA_API_BASE_URL.trim().startsWith("https://")
+
+    DisposableEffect(auth) {
+        if (auth != null) {
+            val listener = FirebaseAuth.AuthStateListener { signedInUid = it.currentUser?.uid }
+            auth.addAuthStateListener(listener)
+            onDispose { auth.removeAuthStateListener(listener) }
+        } else onDispose { }
+    }
+
+    LaunchedEffect(signedInUid) {
+        cloudReady = false
+        val uid = signedInUid
+        if (!firebaseConfigured || uid.isNullOrBlank()) return@LaunchedEffect
+        runCatching {
+            val document = FirebaseFirestore.getInstance()
+                .collection("fantasyTeams").document(uid).get().await()
+            val cloudJson = document.getString("stateJson")
+            if (!cloudJson.isNullOrBlank()) {
+                store.importRaw(cloudJson)
+                state = store.decode(cloudJson)
+                message = "تمت استعادة تشكيلتك من حسابك."
+            } else {
+                val localJson = store.exportRaw().orEmpty()
+                if (localJson.isNotBlank()) {
+                    FirebaseFirestore.getInstance().collection("fantasyTeams").document(uid)
+                        .set(mapOf("stateJson" to localJson, "updatedAt" to FieldValue.serverTimestamp())).await()
+                }
+            }
+        }.onFailure {
+            message = "تعذر تحميل الحفظ السحابي: " + (it.localizedMessage ?: "تحقق من إعداد Firestore وقواعد الأمان.")
+        }
+        cloudReady = true
+    }
+
+    LaunchedEffect(state, signedInUid, cloudReady) {
+        val uid = signedInUid
+        if (!cloudReady || uid.isNullOrBlank()) return@LaunchedEffect
+        delay(700)
+        runCatching {
+            FirebaseFirestore.getInstance().collection("fantasyTeams").document(uid)
+                .set(
+                    mapOf(
+                        "stateJson" to store.exportRaw().orEmpty(),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+        }.onFailure {
+            message = "تعذر مزامنة الفريق: " + (it.localizedMessage ?: "تحقق من اتصال الإنترنت.")
+        }
+    }
 
     androidx.compose.runtime.LaunchedEffect(apiConfigured) {
         if (apiConfigured && state.catalogue.isEmpty()) {
@@ -273,7 +337,7 @@ fun FantasyScreen() {
                 Text("إدارة فريقك ومنافستك", color = FxMuted, fontSize = 12.sp)
             }
             Surface(color = FxPanel2, shape = RoundedCornerShape(12.dp)) {
-                Text("محلي", color = FxGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                Text(if (signedInUid != null && cloudReady) "سحابي" else "محلي", color = FxGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
             }
         }
