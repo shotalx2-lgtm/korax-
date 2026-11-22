@@ -134,43 +134,52 @@ function normalizeStatistic(item, teams = []) {
 }
 
 function normalizeFixture(fixture) {
-  const participants = Array.isArray(fixture?.participants) ? fixture.participants : [];
-  const homeRaw = participants.find((item) => participantLocation(item) === "home") || participants[0];
-  const awayRaw = participants.find((item) => participantLocation(item) === "away") || participants[1];
-  const home = normalizeParticipant(homeRaw || {});
-  const away = normalizeParticipant(awayRaw || {});
-  const state = fixture?.state || {};
-  const stateName = state?.name || state?.short_name || state?.developer_name || "";
-  const score = normalizeScores(fixture?.scores, home.id, away.id, stateName);
-  const teams = [home, away];
-  const events = Array.isArray(fixture?.events) ? fixture.events.map(normalizeEvent) : [];
-  const lineups = Array.isArray(fixture?.lineups) ? fixture.lineups.map(normalizeLineup) : [];
-  const statistics = Array.isArray(fixture?.statistics)
-    ? fixture.statistics.map((item) => normalizeStatistic(item, teams)).filter((item) => item.name && item.value)
-    : [];
+  const homeRaw = fixture?.home_team || fixture?.homeTeam || fixture?.home || fixture?.teams?.home || {};
+  const awayRaw = fixture?.away_team || fixture?.awayTeam || fixture?.away || fixture?.teams?.away || {};
+  const toTeam = (raw, fallbackName, logo) => {
+    const obj = raw && typeof raw === "object" ? raw : {};
+    const name = nestedName(raw) || fallbackName || "اسم غير متاح";
+    const image = obj.logo || obj.logo_url || obj.image || obj.image_url || logo || "";
+    return {
+      id: String(obj.id || obj.slug || ""),
+      name,
+      crest: typeof image === "string" && image.startsWith("https://") ? image : "",
+      logoUrl: typeof image === "string" && image.startsWith("https://") ? image : "",
+      country: nestedName(obj.country),
+    };
+  };
+  const home = toTeam(homeRaw, typeof fixture?.home === "string" ? fixture.home : "", fixture?.home_logo);
+  const away = toTeam(awayRaw, typeof fixture?.away === "string" ? fixture.away : "", fixture?.away_logo);
+  const score = fixture?.score && typeof fixture.score === "object" ? fixture.score : {};
+  const homeScore = firstScore(fixture?.home_score, fixture?.homeScore, score.home, score.home_score);
+  const awayScore = firstScore(fixture?.away_score, fixture?.awayScore, score.away, score.away_score);
+  const competition = fixture?.competition || fixture?.league || fixture?.tournament || fixture?.competition_name || null;
+  const stateName = String(fixture?.status_text || fixture?.status || fixture?.state || "الحالة غير متاحة");
+  const eventsRaw = Array.isArray(fixture?.events) ? fixture.events : Array.isArray(fixture?.timeline) ? fixture.timeline : [];
   return {
-    id: String(fixture?.id ?? ""),
+    id: String(fixture?.slug || fixture?.match_slug || fixture?.id || fixture?.fixture_id || ""),
     name: [home.name, away.name].filter(Boolean).join(" × "),
-    homeTeam: home,
-    awayTeam: away,
-    home: home.name,
-    away: away.name,
-    homeScore: score.homeScore,
-    awayScore: score.awayScore,
-    scoreType: score.scoreType,
-    status: stateName || "الحالة غير متاحة",
-    startTime: fixture?.starting_at_timestamp
-      ? new Date(Number(fixture.starting_at_timestamp) * 1000).toISOString()
-      : fixture?.starting_at || "",
-    competition: fixture?.league || fixture?.competition || null,
-    competitionName: nestedName(fixture?.league || fixture?.competition),
+    homeTeam: home, awayTeam: away, home: home.name, away: away.name,
+    homeScore, awayScore, scoreType: null, status: stateName,
+    startTime: String(fixture?.time || fixture?.start_time || fixture?.startTime || fixture?.kickoff || fixture?.date || ""),
+    competition: typeof competition === "string" ? { name: competition } : competition,
+    competitionName: nestedName(competition) || String(competition || ""),
     venue: fixture?.venue || null,
-    referee: fixture?.referees?.[0] || null,
-    events,
-    lineups,
-    statistics,
+    referee: fixture?.referee || null,
+    events: eventsRaw,
+    lineups: Array.isArray(fixture?.lineups) ? fixture.lineups : [],
+    statistics: Array.isArray(fixture?.statistics) ? fixture.statistics : [],
     imageUrl: "",
   };
+}
+
+function firstScore(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return null;
 }
 
 function normalizeTeam(team) {
