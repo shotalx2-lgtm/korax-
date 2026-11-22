@@ -321,6 +321,7 @@ const NEWS_FEEDS = [
   { id: "bbc-europe", source: "BBC Sport - European Football", language: "en", url: "https://feeds.bbci.co.uk/sport/football/european/rss.xml" },
   { id: "sky-football", source: "Sky Sports", language: "en", url: "https://www.skysports.com/rss/11095" },
   { id: "sky-premier", source: "Sky Sports - Premier League", language: "en", url: "https://www.skysports.com/rss/11661" },
+  { id: "guardian-football", source: "The Guardian - Football", language: "en", url: "https://www.theguardian.com/football/rss" },
 ];
 
 const FOOTBALL_WORDS = /football|soccer|premier league|champions league|la liga|serie a|bundesliga|ligue 1|saudi pro league|transfer|arsenal|chelsea|liverpool|manchester|real madrid|barcelona|bayern|psg|كرة القدم|كورة|الدوري|الأهلي|الزمالك|ريال مدريد|برشلونة|ليفربول|مانشستر|الهلال|النصر|الاتحاد|محمد صلاح|عمر مرموش|انتقال|ميركاتو|مدرب|مباراة|هدف|أهداف|لاعب|منتخب/i;
