@@ -317,6 +317,29 @@ const NEWS_FEEDS = [
 ];
 const FOOTBALL_WORDS = /football|soccer|premier league|champions league|la liga|serie a|bundesliga|ligue 1|saudi pro league|transfer|arsenal|chelsea|liverpool|manchester|real madrid|barcelona|bayern|psg|كرة القدم|كورة|الدوري|الأهلي|الزمالك|ريال مدريد|برشلونة|ليفربول|مانشستر|الهلال|النصر|الاتحاد|محمد صلاح|عمر مرموش|انتقال|ميركاتو|مدرب|مباراة|هدف|أهداف|لاعب|منتخب/i;
 
+function decodeXml(value) {
+  return String(value || "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
+    .replace(/&#([0-9]+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&nbsp;/gi, " ").replace(/&quot;/gi, '"').replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&amp;/gi, "&");
+}
+
+function decodeHtml(value) {
+  return decodeXml(String(value || ""))
+    .replace(/&#39;/gi, "'").replace(/&#34;/gi, '"');
+}
+
+function htmlText(value) {
+  return decodeHtml(String(value || "")
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]+>/g, " "))
+    .replace(/\s+/g, " ").trim();
+}
+
 function xmlField(block, name) {
   const re = new RegExp("<(?:[\\w.-]+:)?" + name + "\\b([^>]*)>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?" + name + "\\s*>", "i");
   const match = String(block || "").match(re);
