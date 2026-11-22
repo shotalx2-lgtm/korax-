@@ -460,12 +460,12 @@ async function getCachedArabicNews() {
 }
 
 const FANTASY_LEAGUE_TARGETS = [
-  { key: "england", slug: "premier-league", label: "الدوري الإنجليزي" },
-  { key: "spain", slug: "la-liga", label: "الدوري الإسباني" },
-  { key: "france", slug: "ligue-1", label: "الدوري الفرنسي" },
-  { key: "italy", slug: "serie-a", label: "الدوري الإيطالي" },
-  { key: "germany", slug: "bundesliga", label: "الدوري الألماني" },
-  { key: "saudi", slug: "saudi-pro-league", label: "الدوري السعودي" },
+  { key: "england", slug: "jednm9whz0ryox8", label: "الدوري الإنجليزي", search: "English Premier League" },
+  { key: "spain", slug: "vl7oqdehlyr510j", label: "الدوري الإسباني", search: "Spanish La Liga" },
+  { key: "france", slug: "yl5ergphnzr8k0o", label: "الدوري الفرنسي", search: "French Ligue 1" },
+  { key: "italy", slug: "4zp5rzghp5q82w1", label: "الدوري الإيطالي", search: "Italian Serie A" },
+  { key: "germany", slug: "gy0or5jhg6qwzv3", label: "الدوري الألماني", search: "Bundesliga" },
+  { key: "saudi", slug: "", label: "الدوري السعودي", search: "Saudi Pro League" },
 ];
 
 function fantasyPosition(value) {
@@ -548,10 +548,29 @@ function normalizeFantasyPlayer(row, league) {
   };
 }
 
+async function resolveFantasyCompetition(target, env) {
+  if (target.slug) return target.slug;
+  const payload = await cachedProviderRequest("/api/v1/search/", {
+    q: target.search, sport: "football", limit: 20,
+  }, env, 21600);
+  const root = unwrap(payload);
+  const rows = root?.competitions || root?.leagues || root?.tournaments || [];
+  const match = rows.find((item) => {
+    const name = nestedName(item).toLowerCase();
+    return name.includes("saudi") && (name.includes("pro") || name.includes("professional"));
+  }) || rows.find((item) => nestedName(item).toLowerCase().includes("saudi"));
+  return match?.slug || match?.competition_slug || match?.url_slug || "";
+}
+
 async function loadFantasyLeaguePlayers(target, env) {
+  const slug = await resolveFantasyCompetition(target, env);
+  if (!slug) return {
+    key: target.key, name: target.label, leagueId: "", available: false,
+    reason: "competition_not_found", players: [],
+  };
   const [goalsPayload, assistsPayload] = await Promise.all([
-    cachedProviderRequest("/api/v1/topscorers/", { sport: "football", slug: target.slug, limit: 50, stat: "goals" }, env, 3600),
-    cachedProviderRequest("/api/v1/topscorers/", { sport: "football", slug: target.slug, limit: 50, stat: "assists" }, env, 3600),
+    cachedProviderRequest("/api/v1/topscorers/", { sport: "football", slug, limit: 50, stat: "goals" }, env, 3600),
+    cachedProviderRequest("/api/v1/topscorers/", { sport: "football", slug, limit: 50, stat: "assists" }, env, 3600),
   ]);
   const rowsFor = (payload) => {
     const root = unwrap(payload);
@@ -564,13 +583,13 @@ async function loadFantasyLeaguePlayers(target, env) {
   const unique = new Map();
   for (const payload of [goalsPayload, assistsPayload]) {
     for (const row of rowsFor(payload)) {
-      const player = normalizeFantasyPlayer(row, target);
+      const player = normalizeFantasyPlayer(row, { ...target, slug });
       if (player && !unique.has(player.id)) unique.set(player.id, player);
     }
   }
   const players = Array.from(unique.values());
   return {
-    key: target.key, name: target.label, leagueId: target.slug, available: players.length > 0,
+    key: target.key, name: target.label, leagueId: slug, available: players.length > 0,
     reason: players.length ? "leaderboards_only" : "no_leaderboard_data", players,
   };
 }
@@ -604,14 +623,15 @@ async function getCachedFantasyPlayers(env) {
 }
 
 const KORAX_COMPETITIONS = [
-  { id: "premier-league", name: "الدوري الإنجليزي", country: "إنجلترا" },
-  { id: "la-liga", name: "الدوري الإسباني", country: "إسبانيا" },
-  { id: "ligue-1", name: "الدوري الفرنسي", country: "فرنسا" },
-  { id: "serie-a", name: "الدوري الإيطالي", country: "إيطاليا" },
-  { id: "bundesliga", name: "الدوري الألماني", country: "ألمانيا" },
-  { id: "saudi-pro-league", name: "الدوري السعودي", country: "السعودية" },
-  { id: "uefa-champions-league", name: "دوري أبطال أوروبا", country: "أوروبا" },
+  { id: "jednm9whz0ryox8", slug: "jednm9whz0ryox8", name: "الدوري الإنجليزي", country: "إنجلترا" },
+  { id: "vl7oqdehlyr510j", slug: "vl7oqdehlyr510j", name: "الدوري الإسباني", country: "إسبانيا" },
+  { id: "yl5ergphnzr8k0o", slug: "yl5ergphnzr8k0o", name: "الدوري الفرنسي", country: "فرنسا" },
+  { id: "4zp5rzghp5q82w1", slug: "4zp5rzghp5q82w1", name: "الدوري الإيطالي", country: "إيطاليا" },
+  { id: "gy0or5jhg6qwzv3", slug: "gy0or5jhg6qwzv3", name: "الدوري الألماني", country: "ألمانيا" },
+  { id: "saudi-pro-league", slug: "saudi-pro-league", name: "الدوري السعودي", country: "السعودية" },
+  { id: "z8yomo4h7wq0j6l", slug: "z8yomo4h7wq0j6l", name: "دوري أبطال أوروبا", country: "أوروبا" },
 ];
+
 
 async function route(request, env) {
   const url = new URL(request.url);
