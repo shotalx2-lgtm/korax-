@@ -48,16 +48,33 @@ jobs:
           else
             echo "Firebase config not supplied; Google sign-in will remain unavailable in this build."
           fi
+      - name: Validate release integration configuration
+        id: release_config
+        env:
+          KOORA_API_BASE_URL: ${{ secrets.KOORA_API_BASE_URL }}
+          FIREBASE_CONFIG_JSON_B64: ${{ secrets.FIREBASE_CONFIG_JSON_B64 }}
+        run: |
+          ready=true
+          if [ -z "$KOORA_API_BASE_URL" ] || [[ "$KOORA_API_BASE_URL" != https://* ]]; then
+            echo "Release APK blocked: configure KOORA_API_BASE_URL with the deployed Cloudflare Worker HTTPS URL."
+            ready=false
+          fi
+          if [ -z "$FIREBASE_CONFIG_JSON_B64" ]; then
+            echo "Release APK blocked: Firebase config is required for Google sign-in and cloud fantasy sync."
+            ready=false
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
       - name: Run Android unit tests
         run: gradle :app:testDebugUnitTest --stacktrace
       - name: Build optimized release APK
         run: gradle :app:assembleRelease --stacktrace -PKOORA_API_BASE_URL="${{ secrets.KOORA_API_BASE_URL }}"
       - name: Prepare public APK asset
+        if: steps.release_config.outputs.ready == 'true'
         run: |
           cp app/build/outputs/apk/release/app-release.apk KORAX-Android.apk
           file KORAX-Android.apk
       - name: Publish optimized APK as a GitHub prerelease
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.release_config.outputs.ready == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-release-${{ github.run_number }}
@@ -73,6 +90,7 @@ jobs:
           make_latest: false
           files: KORAX-Android.apk
       - name: Upload APK workflow artifact
+        if: steps.release_config.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: KORAX-optimized-apk
