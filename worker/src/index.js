@@ -309,13 +309,13 @@ const NEWS_FEEDS = [
 const FOOTBALL_WORDS = /football|soccer|premier league|champions league|la liga|serie a|bundesliga|ligue 1|saudi pro league|transfer|arsenal|chelsea|liverpool|manchester|real madrid|barcelona|bayern|psg|كرة القدم|كورة|الدوري|الأهلي|الزمالك|ريال مدريد|برشلونة|ليفربول|مانشستر|الهلال|النصر|الاتحاد|محمد صلاح|عمر مرموش|انتقال|ميركاتو|مدرب|مباراة|هدف|أهداف|لاعب|منتخب/i;
 
 function xmlField(block, name) {
-  const re = new RegExp("<(?:[\\\\w.-]+:)?" + name + "\\\\b([^>]*)>([\\\\s\\\\S]*?)<\\\\/(?:[\\\\w.-]+:)?" + name + "\\\\s*>", "i");
+  const re = new RegExp("<(?:[\\w.-]+:)?" + name + "\\b([^>]*)>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?" + name + "\\s*>", "i");
   const match = String(block || "").match(re);
   return match ? { attrs: match[1] || "", value: match[2] || "" } : { attrs: "", value: "" };
 }
 
 function xmlAttribute(attributes, name) {
-  const re = new RegExp("\\\\b" + name + "\\\\s*=\\\\s*(?:\\"([^\\"]*)\\"|'([^']*)'|([^\\\\s>]+))", "i");
+  const re = new RegExp("\\b" + name + "\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", "i");
   const match = String(attributes || "").match(re);
   return decodeHtml(match ? (match[1] ?? match[2] ?? match[3] ?? "") : "");
 }
@@ -329,7 +329,7 @@ function safeNewsUrl(raw, base) {
 }
 
 function parseRssFeed(xml, feed) {
-  const blocks = String(xml || "").match(/<(?:item|entry)\\b[\\s\\S]*?<\\/(?:item|entry)>/gi) || [];
+  const blocks = String(xml || "").match(/<(?:item|entry)\b[\s\S]*?<\/(?:item|entry)>/gi) || [];
   return blocks.slice(0, 60).map((block) => {
     const title = htmlText(xmlField(block, "title").value);
     const description = xmlField(block, "description").value || xmlField(block, "summary").value || xmlField(block, "content").value || "";
@@ -351,7 +351,7 @@ function parseRssFeed(xml, feed) {
       }
     }
     if (!imageUrl) {
-      const image = block.match(/<img\\b[^>]*(?:src|data-src)=["']([^"']+)["']/i);
+      const image = block.match(/<img\b[^>]*(?:src|data-src)=["']([^"']+)["']/i);
       imageUrl = safeNewsUrl(image?.[1] || "", feed.url);
     }
     if (!title || !url) return null;
@@ -391,7 +391,7 @@ async function loadPublisherNews() {
   const unique = new Map();
   for (const article of articles) {
     const normalized = article.title.toLocaleLowerCase()
-      .replace(/[^\\p{L}\\p{N}]+/gu, " ").trim();
+      .replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     const key = article.url || normalized;
     if (normalized && !unique.has(key)) unique.set(key, article);
   }
