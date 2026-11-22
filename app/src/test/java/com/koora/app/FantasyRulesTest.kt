@@ -41,7 +41,7 @@ class FantasyRulesTest {
 
     @Test fun viceCaptainGetsMultiplierOnlyWhenCaptainDoesNotAppear() {
         val squad = listOf(player("captain", points = 8), player("vice", points = 6), player("other", points = 2))
-        assertEquals(18, FantasyRules.calculateRoundPoints(squad, "captain", "vice", setOf("captain", "vice", "other")))
+        assertEquals(24, FantasyRules.calculateRoundPoints(squad, "captain", "vice", setOf("captain", "vice", "other")))
         assertEquals(14, FantasyRules.calculateRoundPoints(squad, "captain", "vice", setOf("vice", "other")))
         assertEquals(0, FantasyRules.calculateRoundPoints(squad, "captain", "vice", emptySet()))
     }
