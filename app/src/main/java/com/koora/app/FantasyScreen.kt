@@ -70,8 +70,8 @@ private val RequiredFantasyLeagues = listOf(
 private fun fantasyCoverageSummary(players: List<FantasyPlayer>): String {
     val available = players.map { it.league }.filter { it.isNotBlank() }.distinct()
     val missing = RequiredFantasyLeagues.filterNot { it in available }
-    return if (missing.isEmpty()) "تم تحميل الدوريات الستة."
-    else "لم تصل بيانات هذه الدوريات من الاشتراك الحالي: " + missing.joinToString("، ")
+    return if (missing.isEmpty()) "تم تحميل بيانات الهدافين وصانعي الأهداف من الدوريات الستة فقط؛ سوق اللاعبين الكامل واحتساب نقاط الجولة المباشرة غير متاحين من المصدر الحالي."
+    else "بيانات الهدافين وصانعي الأهداف غير متاحة لهذه الدوريات: " + missing.joinToString("، ") + ". كما أن المصدر لا يوفر سوقًا كاملًا لكل اللاعبين."
 }
 
 private data class FantasyPlayer(
