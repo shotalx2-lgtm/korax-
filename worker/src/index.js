@@ -117,6 +117,7 @@ function normalizeEvent(event) {
     team_id: teamRaw?.id ?? event?.participant_id ?? event?.team_id ?? null,
     team: team ? { id: teamRaw?.id ?? null, name: team, imageUrl: teamImage } : null,
     team_image_url: teamImage,
+    assist_player_id: assistRaw?.id ?? event?.assist_player_id ?? null,
     assist_player_name: assistName,
     assist_player_image_url: httpsImage(assistRaw?.image_path, assistRaw?.image_url, assistRaw?.photo_url),
     detail: event?.addition || event?.info || event?.result || "",
