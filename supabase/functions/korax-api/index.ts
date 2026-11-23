@@ -1335,47 +1335,18 @@ async function route(request, env) {
       };
     });
     if (search.length >= 2) {
-      const payload = await cachedProviderRequest(
-        "/api/v1/search/", { q: search, sport: "football", limit: perPage }, env, 300
-      );
-      const root = unwrap(payload);
-      let rows = [];
-      for (const key of ["competitions", "leagues", "tournaments", "competition", "league", "tournament"]) {
-        if (Array.isArray(root?.[key])) rows.push(...root[key]);
-        else if (root?.[key] && typeof root[key] === "object") rows.push(root[key]);
-      }
-      if (Array.isArray(root?.results)) {
-        rows.push(...root.results.filter((row) =>
-          /competition|league|tournament/i.test(String(row?.type || row?.entity_type || ""))
-        ));
-      }
-      const mapped = rows.map((row) => {
-        const name = nestedName(row?.name) || row?.title || row?.competition_name || "";
-        const slug = String(row?.slug || row?.url_slug || row?.competition_slug || row?.league_slug || row?.id || "");
-        const kindText = String(row?.type || row?.entity_type || row?.kind || "").toLowerCase();
-        const kind = /tournament|cup|champions|world cup/.test(kindText + " " + name.toLowerCase()) ? "tournament" : "league";
-        const imageUrl = httpsImage(row?.image_path, row?.image_url, row?.logo, row?.logo_url, row?.badge);
-        return {
-          id: String(row?.id || slug),
-          slug,
-          name,
-          country: nestedName(row?.country) || row?.country_name || "",
-          kind,
-          imageUrl,
-          logoUrl: imageUrl,
-        };
-      }).filter((row) => row.name && row.slug);
-      const unique = [...new Map(mapped.map((row) => [row.kind + ":" + row.slug, row])).values()];
-      if (unique.length) {
-        return json({ data: unique.slice(0, perPage), source: "sportscore-search", meta: { count: unique.length, query: search } });
-      }
-      const needle = search.toLocaleLowerCase();
-      const fallback = data.filter((item) =>
-        (item.name + " " + item.country + " " + item.providerName).toLocaleLowerCase().includes(needle)
-      );
-      return json({ data: fallback, source: "sportscore-search", meta: { count: fallback.length, query: search } });
+      const matches = await searchCachedCompetitions(search, perPage);
+      return json({
+        data: matches,
+        source: "sportscore-search",
+        meta: {
+          count: matches.length,
+          query: search,
+          catalogueScope: "competitions recorded in the KORAX match cache",
+        },
+      });
     }
-    return json({ data, source: "sportscore-competition-index" });
+    return json({ data, source: "sportscore-competition-index" });    return json({ data, source: "sportscore-competition-index" });
   }
 
   const competition = path.match(/^\/api\/competitions\/([A-Za-z0-9_-]+)$/);
@@ -1383,49 +1354,70 @@ async function route(request, env) {
     const slug = encodeURIComponent(competition[1]);
     const rows = await dbRows("/rest/v1/korax_sportscore_competitions?select=slug,name,country,standings,updated_at&slug=eq." + slug + "&limit=1");
     const row = Array.isArray(rows) ? rows[0] : null;
-    return row
-      ? json({ data: row.standings, name: row.name, country: row.country, updatedAt: row.updated_at, source: "sportscore-supabase-cache" })
-      : json({ error: "Standings are not in the current SportScore cache yet", retryable: true }, 503);
+    if (row) {
+      return json({
+        data: row.standings,
+        name: row.name,
+        country: row.country,
+        updatedAt: row.updated_at,
+        source: "sportscore-supabase-cache",
+      });
+    }
+    if (competition[1].startsWith("cached-competition-")) {
+      const data = await getCachedCompetitionProfile(competition[1]);
+      return data
+        ? json({ data, source: "sportscore-supabase-cache", meta: { partial: true, catalogueScope: "cached fixtures only" } })
+        : json({ error: "Competition is not in the current KORAX cache", retryable: true }, 404);
+    }
+    return json({ error: "Standings are not in the current SportScore cache yet", retryable: true }, 503);
   }
 
   if (path === "/api/teams" || path === "/api/players") {
     const search = (url.searchParams.get("search") || "").trim();
-    if (search.length < 2) return json({ data: [], meta: { requiresSearch: true }, source: "sportscore-search" });
-    const payload = await cachedProviderRequest("/api/v1/search/", { q: search, sport: "football", limit: perPage }, env, 300);
-    const root = unwrap(payload);
     const kind = path === "/api/teams" ? "team" : "player";
-    const keys = kind === "team" ? ["teams", "team"] : ["players", "player"];
-    let rows = [];
-    for (const key of keys) if (Array.isArray(root?.[key])) { rows = root[key]; break; }
-    if (!rows.length && Array.isArray(root?.results)) rows = root.results.filter((row) => String(row.type || "").toLowerCase().includes(kind));
-    if (kind === "team") {
-      rows = rows.map((row) => {
-        const descriptor = [
-          row?.type, row?.entity_type, row?.team_type, row?.category,
-          row?.gender, row?.name, row?.common_name,
-        ].map((value) => nestedName(value) || String(value || "")).join(" ").toLowerCase();
-        const explicitlyNational = row?.national === true || row?.is_national === true ||
-          row?.national_team === true || row?.type === "national_team" ||
-          row?.entity_type === "national_team" || /national team|men national|women national|منتخب/.test(descriptor);
-        return { ...row, koraxKind: explicitlyNational ? "national" : "club" };
+    if (search.length < 2) {
+      return json({
+        data: [],
+        meta: { requiresSearch: true, catalogueScope: kind === "team" ? "cached match participants" : "players in cached match lineups and incidents" },
+        source: "sportscore-search",
       });
     }
-    return json({ data: rows, source: "sportscore" });
-  }
-
-  const team = path.match(/^\/api\/teams\/([A-Za-z0-9_-]+)$/);
+    const data = kind === "team"
+      ? searchCachedTeamEntities(await getCachedEntityMatchRows(), search, perPage)
+      : await searchCachedPlayers(search, perPage);
+    return json({
+      data,
+      source: "sportscore-search",
+      meta: {
+        count: data.length,
+        query: search,
+        catalogueScope: kind === "team"
+          ? "teams appearing in the cached SportScore fixtures"
+          : "players present in cached SportScore lineups, substitutes and incidents; not a complete world-player catalogue",
+        providerSearchUnavailable: true,
+      },
+    });
+  }  const team = path.match(/^\/api\/teams\/([A-Za-z0-9_-]+)$/);
   if (team) {
+    if (team[1].startsWith("cached-team-")) {
+      const data = await getCachedTeamProfile(team[1]);
+      return data
+        ? json({ data, source: "sportscore-supabase-cache", meta: { partial: true, catalogueScope: "cached fixtures only" } })
+        : json({ error: "Team is not in the current KORAX cache", retryable: true }, 404);
+    }
     const payload = await cachedProviderRequest("/api/widget/team/", { sport: "football", slug: team[1], limit: 30 }, env, 300);
     return json({ data: unwrap(payload), source: "sportscore" });
-  }
-
-  const player = path.match(/^\/api\/players\/([A-Za-z0-9_-]+)$/);
+  }  const player = path.match(/^\/api\/players\/([A-Za-z0-9_-]+)$/);
   if (player) {
+    if (player[1].startsWith("cached-player-")) {
+      const data = await getCachedPlayerProfile(player[1]);
+      return data
+        ? json({ data, source: "sportscore-supabase-cache", meta: { partial: true, catalogueScope: "players in cached match lineups and incidents" } })
+        : json({ error: "Player is not in the current KORAX detail cache", retryable: true }, 404);
+    }
     const payload = await cachedProviderRequest("/api/widget/player/", { sport: "football", slug: player[1] }, env, 300);
     return json({ data: unwrap(payload), source: "sportscore" });
-  }
-
-  if (path === "/api/transfers") {
+  }  if (path === "/api/transfers") {
     return json({
       data: [], source: "sportscore",
       meta: { available: false, reason: "provider_has_no_confirmed_transfers_endpoint" },
