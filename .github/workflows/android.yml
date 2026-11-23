@@ -1,4 +1,4 @@
-name: KORAX Android build
+name: KORAX Android build # Supabase cache validation enabled
 
 on:
   push:
