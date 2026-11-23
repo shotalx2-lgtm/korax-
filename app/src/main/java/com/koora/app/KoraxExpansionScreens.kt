@@ -2,6 +2,8 @@ package com.koora.app
 
 import android.content.Context
 import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -963,14 +965,51 @@ private fun KoraxOfflinePage(onBack: () -> Unit, onOpenArticle: (NewsItem) -> Un
 private fun KoraxBackupPage(onBack: () -> Unit) {
     val context = LocalContext.current
     var message by remember { mutableStateOf("") }
+    val backupKeys = listOf("korax_user_preferences_v1", "korax_general_settings_v1", "korax_news_interactions_v2", "korax_offline_articles_v1", "korax_smart_alerts_v2")
+    val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            val result = runCatching {
+                val raw = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                    ?: error("تعذر قراءة ملف النسخة الاحتياطية")
+                val root = JSONObject(raw)
+                var restored = 0
+                backupKeys.forEach { key ->
+                    val group = root.optJSONObject(key) ?: return@forEach
+                    val editor = context.getSharedPreferences(key, Context.MODE_PRIVATE).edit().clear()
+                    val iterator = group.keys()
+                    while (iterator.hasNext()) {
+                        val name = iterator.next()
+                        when (val value = group.opt(name)) {
+                            null, JSONObject.NULL -> Unit
+                            is JSONArray -> {
+                                val set = (0 until value.length()).map { value.optString(it) }.toSet()
+                                editor.putStringSet(name, set)
+                            }
+                            is String -> editor.putString(name, value)
+                            is Boolean -> editor.putBoolean(name, value)
+                            is Int -> editor.putInt(name, value)
+                            is Long -> editor.putLong(name, value)
+                            is Float -> editor.putFloat(name, value)
+                            is Double -> editor.putFloat(name, value.toFloat())
+                            else -> editor.putString(name, value.toString())
+                        }
+                    }
+                    editor.apply()
+                    restored++
+                }
+                require(restored > 0) { "الملف لا يحتوي على بيانات KORAX معروفة." }
+                "تم استيراد بيانات النسخة الاحتياطية. أعد فتح التطبيق لتحديث كل الشاشات."
+            }
+            message = result.getOrElse { "تعذر استعادة النسخة: " + it.message.orEmpty() }
+        }
+    }
     Column(Modifier.fillMaxSize().background(XBg)) {
         ToolHeader("النسخة الاحتياطية المحلية", "تصدير بيانات هذا الجهاز دون إنشاء حساب", onBack)
         Column(Modifier.padding(14.dp)) {
             Text("يمكن تصدير المفضلة والإعدادات العامة والتعليقات والمحفوظات المحلية لمشاركتها أو الاحتفاظ بها. لا يشمل هذا ملفات التطبيق أو بيانات خادم خارجية.", color = XMuted, fontSize = 11.sp, lineHeight = 18.sp)
             Button(onClick = {
-                val keys = listOf("korax_user_preferences_v1", "korax_general_settings_v1", "korax_news_interactions_v2", "korax_offline_articles_v1", "korax_smart_alerts_v2")
                 val root = JSONObject()
-                keys.forEach { key ->
+                backupKeys.forEach { key ->
                     val values = context.getSharedPreferences(key, Context.MODE_PRIVATE).all
                     val group = JSONObject()
                     values.forEach { (name, value) ->
@@ -993,8 +1032,12 @@ private fun KoraxBackupPage(onBack: () -> Unit) {
             }, modifier = Modifier.fillMaxWidth().padding(top = 15.dp), colors = ButtonDefaults.buttonColors(containerColor = XAccent, contentColor = Color.Black)) {
                 Text("تصدير نسخة احتياطية")
             }
+            OutlinedButton(
+                onClick = { restoreLauncher.launch(arrayOf("application/json", "text/*", "application/octet-stream")) },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+            ) { Text("استعادة نسخة احتياطية") }
             if (message.isNotBlank()) Text(message, color = XMuted, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
-            Text("تنبيه: لا توجد مزامنة تلقائية بين الأجهزة في النسخة الحالية. احتفظ بالملف في مكان آمن، فهو قد يحتوي على تعليقاتك وتفضيلاتك.", color = XMuted, fontSize = 9.sp, lineHeight = 15.sp, modifier = Modifier.padding(top = 13.dp))
+            Text("تنبيه: الاستعادة تستبدل مجموعات التفضيلات المحلية المعروفة بالبيانات الموجودة في الملف. لا توجد مزامنة تلقائية بين الأجهزة في النسخة الحالية. احتفظ بالملف في مكان آمن، فقد يحتوي على تعليقاتك وتفضيلاتك.", color = XMuted, fontSize = 9.sp, lineHeight = 15.sp, modifier = Modifier.padding(top = 13.dp))
         }
     }
 }
