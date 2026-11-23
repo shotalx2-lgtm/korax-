@@ -655,7 +655,7 @@ internal object KoraxSmartAlerts {
             .setShowWhen(true)
             .setSubText(if (kind == "news") "KORAX • أخبار كرة القدم" else "KORAX • كرة القدم")
             .setTicker(title)
-            .setColor(android.graphics.Color.rgb(37, 216, 189))
+            .setColor(android.graphics.Color.rgb(213, 255, 0))
             .setCategory(if (kind == "news") NotificationCompat.CATEGORY_RECOMMENDATION else NotificationCompat.CATEGORY_EVENT)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
         builder.setLargeIcon(brandBitmap ?: contextIconBitmap)
