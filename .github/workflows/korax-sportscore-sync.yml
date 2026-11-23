@@ -1,0 +1,179 @@
+name: KORAX SportScore sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: korax-sportscore-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Fetch SportScore and sync Supabase cache
+        env:
+          SUPABASE_URL: https://hwrsjmdcivdluztnhpxo.supabase.co
+          SUPABASE_PUBLISHABLE_KEY: sb_publishable_qGcLhGeCxVU5MvFVQ2YlPQ_XKGS42QW
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+
+          const base = "https://sportscore.com";
+          const ua = "sportscore-mcp/0.3 (+https://sportscore.com/developers/)";
+          const headers = { "user-agent": ua, "accept": "application/json" };
+          const timeout = 20_000;
+
+          async function getJson(url) {
+            const response = await fetch(url, { headers, signal: AbortSignal.timeout(timeout) });
+            const text = await response.text();
+            if (!response.ok) throw new Error("SportScore HTTP " + response.status + " for " + url + ": " + text.slice(0, 160));
+            try { return JSON.parse(text); }
+            catch { throw new Error("SportScore returned invalid JSON for " + url); }
+          }
+
+          function rowsOf(value) {
+            const root = value?.data ?? value;
+            return Array.isArray(root) ? root : (root?.matches || root?.fixtures || root?.results || []);
+          }
+
+          function slugOf(match) {
+            const url = String(match?.url || match?.match_url || match?.href || "");
+            return String(match?.slug || match?.match_slug ||
+              url.match(/\/match\/[^/]+\/([A-Za-z0-9_-]+)\/?(?:[?#].*)?$/i)?.[1] || "");
+          }
+
+          function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+          async function withConcurrency(items, limit, worker) {
+            const results = [];
+            let next = 0;
+            async function run() {
+              while (true) {
+                const index = next++;
+                if (index >= items.length) return;
+                try { results[index] = await worker(items[index], index); }
+                catch (error) { results[index] = { error: String(error) }; }
+              }
+            }
+            await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run));
+            return results;
+          }
+
+          const now = new Date();
+          const today = now.toISOString().slice(0, 10);
+          const minute = now.getUTCMinutes();
+          const isManual = process.env.GITHUB_EVENT_NAME === "workflow_dispatch";
+          const fullSync = isManual || minute % 15 === 0;
+          const standingsSync = isManual || minute === 0;
+
+          const matchMap = new Map();
+          const livePayload = await getJson(base + "/api/widget/matches/?sport=football&limit=50");
+          for (const match of rowsOf(livePayload)) {
+            const slug = slugOf(match);
+            if (slug) matchMap.set(slug, match);
+          }
+
+          const competitionTargets = [
+            { slug: "jednm9whz0ryox8", name: "الدوري الإنجليزي", country: "إنجلترا" },
+            { slug: "vl7oqdehlyr510j", name: "الدوري الإسباني", country: "إسبانيا" },
+            { slug: "yl5ergphnzr8k0o", name: "الدوري الفرنسي", country: "فرنسا" },
+            { slug: "4zp5rzghp5q82w1", name: "الدوري الإيطالي", country: "إيطاليا" },
+            { slug: "gy0or5jhg6qwzv3", name: "الدوري الألماني", country: "ألمانيا" },
+            { slug: "saudi-pro-league", name: "الدوري السعودي", country: "السعودية" },
+            { slug: "z8yomo4h7wq0j6l", name: "دوري أبطال أوروبا", country: "أوروبا" }
+          ];
+
+          if (fullSync) {
+            const dates = [];
+            for (let offset = -1; offset <= 7; offset++) {
+              const date = new Date(now);
+              date.setUTCDate(date.getUTCDate() + offset);
+              dates.push(date.toISOString().slice(0, 10));
+            }
+            const fixtureResults = await withConcurrency(dates, 4, async date => ({
+              date,
+              payload: await getJson(base + "/api/v1/fixtures/?sport=football&date=" + date + "&limit=200")
+            }));
+            for (const result of fixtureResults) {
+              if (!result || result.error) {
+                console.error("Fixture date failed:", result?.error || "unknown");
+                continue;
+              }
+              for (const match of rowsOf(result.payload)) {
+                const slug = slugOf(match);
+                if (slug) matchMap.set(slug, match);
+              }
+            }
+          }
+
+          const matches = [...matchMap.values()];
+          const details = [];
+          if (fullSync) {
+            const candidates = matches
+              .filter(match => {
+                const time = Date.parse(match.time || match.start_time || "");
+                if (!Number.isFinite(time)) return false;
+                const status = String(match.status || "").toLowerCase();
+                const matchDate = new Date(time).toISOString().slice(0, 10);
+                return matchDate === today && !/cancel|postpon|abandon/.test(status);
+              })
+              .sort((a, b) => Date.parse(a.time || a.start_time) - Date.parse(b.time || b.start_time))
+              .slice(0, 20);
+
+            const detailResults = await withConcurrency(candidates, 4, async match => {
+              const slug = slugOf(match);
+              return {
+                slug,
+                detail: await getJson(base + "/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug))
+              };
+            });
+            for (const result of detailResults) {
+              if (result && !result.error && result.slug && result.detail) details.push(result);
+              else if (result?.error) console.error("Match detail fetch failed:", result.error);
+            }
+          }
+
+          let competitions = [];
+          if (standingsSync) {
+            const standingResults = await withConcurrency(competitionTargets, 3, async target => ({
+              ...target,
+              standings: await getJson(base + "/api/widget/standings/?sport=football&slug=" + encodeURIComponent(target.slug))
+            }));
+            competitions = standingResults.filter(x => x && !x.error && x.standings);
+          }
+
+          const tokenUrl = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
+          tokenUrl.searchParams.set("audience", "korax-sportscore-sync");
+          const tokenResponse = await fetch(tokenUrl, {
+            headers: { authorization: "Bearer " + process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN },
+            signal: AbortSignal.timeout(timeout)
+          });
+          if (!tokenResponse.ok) throw new Error("GitHub OIDC token request failed: HTTP " + tokenResponse.status);
+          const token = (await tokenResponse.json()).value;
+          if (!token) throw new Error("GitHub OIDC token missing");
+
+          const payload = { matches, details, competitions, syncedAt: new Date().toISOString() };
+          const response = await fetch(process.env.SUPABASE_URL + "/functions/v1/korax-sportscore-sync", {
+            method: "POST",
+            headers: {
+              authorization: "Bearer " + token,
+              apikey: process.env.SUPABASE_PUBLISHABLE_KEY,
+              "content-type": "application/json"
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(60_000)
+          });
+          const body = await response.text();
+          if (!response.ok) throw new Error("Supabase sync failed: HTTP " + response.status + " " + body.slice(0, 500));
+          console.log("KORAX SportScore sync:", body);
+          console.log("Collected", matches.length, "fixtures,", details.length, "details, and", competitions.length, "standings tables.");
+          NODE
