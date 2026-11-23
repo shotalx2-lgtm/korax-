@@ -25,8 +25,8 @@ android {
         applicationId = "com.koora.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.4.0"
+        versionCode = 6
+        versionName = "0.5.0"
 
         val apiBase = providers.gradleProperty("KOORA_API_BASE_URL").orElse("").get()
         buildConfigField("String", "KOORA_API_BASE_URL", "\"$apiBase\"")
@@ -75,7 +75,7 @@ kotlin {
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.activity:activity-compose:1.10.0")
-    implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation("androidx.core:core-splashscreen:1.0.1")\n    implementation("androidx.core:core-ktx:1.15.0")\n    implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
