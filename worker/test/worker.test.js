@@ -92,7 +92,7 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
     assert.equal(body.source, "publisher-rss");
     assert.equal(body.language, "ar+en");
     assert.equal(body.feedsTotal, 26);
-    assert.ok(calls.includes("https://www.youm7.com/rss/rss"));
+    assert.ok(calls.includes("https://www.youm7.com/rss/SectionRss?SectionID=298"));
     assert.equal(body.feedsAvailable, 26, JSON.stringify(body.feedErrors));
     assert.equal(body.data.length, 26);
     assert.ok(body.data.some(item => item.language === "ar"));
@@ -106,6 +106,40 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
   }
 });
 
+
+test("Youm7 redirect failures fall back to a publisher-attributed RSS mirror", async () => {
+  const originalFetch = globalThis.fetch;
+  const restoreCache = installCache();
+  const calls = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.includes("www.youm7.com/rss/SectionRss")) {
+      return new Response("redirect loop", { status: 508 });
+    }
+    const xml = `<rss><channel><item>
+      <title><![CDATA[أخبار كرة القدم من اليوم السابع]]></title>
+      <link>https://publisher.example/youm7-story</link>
+      <description><![CDATA[ملخص الخبر الرياضي]]></description>
+      <pubDate>Sun, 22 Nov 2026 17:00:00 GMT</pubDate>
+      <enclosure url="https://images.example/youm7.jpg" type="image/jpeg"/>
+    </item></channel></rss>`;
+    return new Response(xml, { status: 200, headers: { "content-type": "application/rss+xml" } });
+  };
+  try {
+    const response = await worker.fetch(new Request("https://korax.test/api/news?per_page=100"), {});
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.feedsAvailable, 26);
+    assert.equal(body.feedErrors.some(item => item.feed === "youm7"), false);
+    assert.ok(calls.includes("https://www.youm7.com/rss/SectionRss?SectionID=298"));
+    assert.ok(calls.includes("https://alikhbariya.net/feeds/sources/f903fc12-4e08-4331-b249-81551c16f840.xml"));
+    assert.ok(body.data.some(item => item.source === "الإخبارية – تغطية اليوم السابع"));
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreCache();
+  }
+});
 
 test("RSS text cleanup decodes encoded markup before stripping HTML", () => {
   assert.equal(
