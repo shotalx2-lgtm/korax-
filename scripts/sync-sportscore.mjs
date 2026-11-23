@@ -110,6 +110,7 @@ async function main() {
       })
       .sort((a, b) => Date.parse(a.time || a.start_time) - Date.parse(b.time || b.start_time))
       .slice(0, 20);
+    console.log("SportScore details candidates:", candidates.length, candidates.slice(0, 5).map(m => slugOf(m)));
     const detailResults = await mapLimit(candidates, 4, async match => {
       const slug = slugOf(match);
       return {
@@ -118,6 +119,7 @@ async function main() {
       };
     });
     details = detailResults.filter(result => result && !result.error && result.slug && result.detail);
+    console.log("SportScore detail fetch results:", details.length, "of", candidates.length);
     for (const result of detailResults) if (result?.error) console.error("Detail fetch warning:", result.error);
   }
 
