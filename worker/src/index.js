@@ -559,7 +559,7 @@ async function fetchRssFeed(feed) {
     throw new Error(feed.id + " RSS returned no parseable articles");
   } catch (primaryError) {
     if (!feed.fallbackUrl) throw primaryError;
-    const fallbackArticles = await fetchRssFeedUrl(feed.fallbackUrl, feed);
+    const fallbackArticles = await fetchRssFeedUrl(feed.fallbackUrl, { ...feed, url: feed.fallbackUrl });
     if (!fallbackArticles.length) throw new Error(feed.id + " primary and fallback RSS feeds returned no articles");
     return fallbackArticles;
   }
