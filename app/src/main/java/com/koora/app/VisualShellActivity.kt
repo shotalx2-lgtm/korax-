@@ -266,7 +266,7 @@ private suspend fun loadMatches(live: Boolean, selectedDate: String): List<Match
             a?.https("crest").orEmpty().ifBlank { a?.https("logoUrl").orEmpty() },
             score, localizeMatchStatus(x.optString("status", "غير متاحة")), x.optString("startTime"),
             x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") },
-            detailsAvailable = stableMatchId != null)
+            detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false))
     }.distinctBy { it.id }
 }
 
