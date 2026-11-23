@@ -101,7 +101,7 @@ private fun JSONObject.firstString(vararg keys: String): String {
 }
 
 private fun JSONObject.firstImage(): String {
-    val keys = listOf("imageUrl", "image_path", "image_url", "logoUrl", "logo", "logo_url", "crest", "photo", "photo_url")
+    val keys = listOf("imageUrl", "image_path", "imagePath", "image_url", "logoUrl", "logo", "logo_url", "logo_path", "crest", "crestUrl", "crest_url", "badge", "emblem", "photo", "photo_url", "thumbnail")
     return keys.firstNotNullOfOrNull { key ->
         optString(key).takeIf { it.startsWith("https://") }
     }.orEmpty()
