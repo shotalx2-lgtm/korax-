@@ -247,8 +247,7 @@ jobs:
         run: gradle :app:assembleRelease --stacktrace -PKOORA_API_BASE_URL="${{ secrets.KOORA_API_BASE_URL || 'https://korax.shotalx2.workers.dev' }}"
       - name: Print Android signing fingerprints for Firebase setup
         run: gradle :app:signingReport --console=plain
-      - name: Prepare public APK asset
-        if: steps.release_config.outputs.ready == 'true'
+      - name: Prepare test APK asset
         run: |
           cp app/build/outputs/apk/release/app-release.apk KORAX-Android.apk
           file KORAX-Android.apk
@@ -269,7 +268,6 @@ jobs:
           make_latest: false
           files: KORAX-Android.apk
       - name: Upload APK workflow artifact
-        if: steps.release_config.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: KORAX-optimized-apk
