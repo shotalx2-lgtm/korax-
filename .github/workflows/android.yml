@@ -59,19 +59,21 @@ jobs:
             });
           '
 
-          news="$(curl --silent --show-error --fail --max-time 60 "$base/api/news?per_page=5")"
+          news="$(curl --silent --show-error --fail --max-time 60 "$base/api/news?language=ar&per_page=10")"
           printf '%s' "$news" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
             process.stdin.on("end", () => {
               const value = JSON.parse(raw);
               if (value.source !== "publisher-rss" || !Array.isArray(value.data)) {
-                throw new Error("News API response does not match the KORAX contract: " + raw);
+                throw new Error("Arabic news API response does not match the KORAX contract: " + raw);
               }
-              console.log("News endpoint passed:", value.data.length, "articles returned");
-              if (value.data.length === 0) {
-                console.warn("Warning: RSS sources returned no articles in this check.");
-              }
+              if (value.data.length === 0) throw new Error("Arabic RSS returned zero articles. The app news feed would be empty.");
+              const broken = value.data.filter(item => !item.title || !/^https:\/\//.test(item.url || "") || !item.source);
+              if (broken.length) throw new Error("Arabic RSS contains " + broken.length + " article rows without title, HTTPS URL or source.");
+              const wrongLanguage = value.data.filter(item => item.language && item.language !== "ar");
+              if (wrongLanguage.length) throw new Error("Arabic RSS endpoint returned non-Arabic rows.");
+              console.log("Arabic news feed passed:", value.data.length, "valid articles");
             });
           '
 
@@ -98,7 +100,58 @@ jobs:
               if (value.source !== "sportscore" || !Array.isArray(value.data)) {
                 throw new Error("Dated matches API response does not match the KORAX contract: " + raw);
               }
-              console.log("Dated matches endpoint passed:", value.data.length, "matches for the current UTC date");
+              if (value.data.length === 0) throw new Error("SportScore returned no scheduled fixtures for the current UTC date.");
+              const first = value.data.find(item => item.id && (item.homeTeam?.name || item.home) && (item.awayTeam?.name || item.away));
+              if (!first) throw new Error("Fixtures are returned but none has a match ID and both team names.");
+              console.log("Fixture schedule passed:", value.data.length, "matches; sample:", first.id);
+            });
+          '
+
+          match_id="$(printf '%s' "$schedule" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              const first = value.data.find(item => item.id && (item.homeTeam?.name || item.home) && (item.awayTeam?.name || item.away));
+              if (!first) process.exit(2);
+              process.stdout.write(String(first.id));
+            });
+          ')"
+          match_detail="$(curl --silent --show-error --fail --max-time 35 "$base/api/matches/$match_id")"
+          printf '%s' "$match_detail" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              const item = value.data;
+              const home = item?.homeTeam?.name || item?.home;
+              const away = item?.awayTeam?.name || item?.away;
+              if (!item || !home || !away) throw new Error("Match detail did not return both teams: " + raw);
+              if (!Array.isArray(item.events) || !Array.isArray(item.lineups) || !Array.isArray(item.statistics)) {
+                throw new Error("Match detail is missing normalized events, lineups or statistics arrays.");
+              }
+              console.log("Match detail passed:", home, "vs", away, "; events:", item.events.length);
+            });
+          '
+
+          first_competition="$(printf '%s' "$competitions" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              const first = value.data.find(item => item.slug || item.id);
+              if (!first) process.exit(2);
+              process.stdout.write(String(first.slug || first.id));
+            });
+          ')"
+          standings="$(curl --silent --show-error --fail --max-time 35 "$base/api/competitions/$first_competition")"
+          printf '%s' "$standings" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              if (!Object.prototype.hasOwnProperty.call(value, "data")) throw new Error("Competition detail/standings response is missing data.");
+              console.log("Competition detail endpoint passed.");
             });
           '
 
