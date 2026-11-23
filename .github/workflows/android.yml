@@ -150,6 +150,80 @@ jobs:
             echo "No fixture with cached detail is available for $match_date; skipping the optional detail probe."
           fi
 
+          # Verify the three match states used by the Android app and ensure
+          # the default match list only contains the curated primary competitions.
+          for mode in upcoming live finished; do
+            state_payload="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches?mode=$mode&scope=main&date=$match_date")"
+            printf '%s' "$state_payload" | MATCH_MODE="$mode" node -e '
+              let raw = "";
+              process.stdin.on("data", chunk => raw += chunk);
+              process.stdin.on("end", () => {
+                const value = JSON.parse(raw);
+                const mode = process.env.MATCH_MODE;
+                if (value.source !== "sportscore-supabase-cache" || value.meta?.mode !== mode || value.meta?.scope !== "main" || !Array.isArray(value.data)) {
+                  throw new Error("Match state endpoint returned an invalid KORAX response for " + mode + ": " + raw);
+                }
+                const allowed = new Set([
+                  "english premier league", "premier league", "spanish la liga", "la liga",
+                  "french ligue 1", "ligue 1", "italian serie a", "serie a", "bundesliga",
+                  "german bundesliga", "saudi professional league", "saudi pro league",
+                  "uefa champions league", "egyptian premier league", "caf champions league",
+                  "caf confederation cup", "afc champions league elite", "uefa europa league",
+                  "uefa europa conference league", "fifa world cup", "africa cup of nations"
+                ]);
+                const unexpected = value.data.filter(item => {
+                  const name = String(item.competitionName || item.competition?.name || "").toLowerCase();
+                  return name && !allowed.has(name);
+                });
+                if (unexpected.length) throw new Error("Primary match list includes unrelated competitions in " + mode + ": " + unexpected.map(item => item.competitionName).join(", "));
+                const badStatus = value.data.filter(item => {
+                  const status = String(item.status || "").toLowerCase();
+                  if (mode === "live") return !/(live|in.?play|مباشر|الشوط|استراحة|وقت إضافي)/i.test(status);
+                  if (mode === "finished") return !/(finished|full.?time|ended|انتهت|نهاية|نهائي|ft)/i.test(status);
+                  return /(live|in.?play|finished|full.?time|ended|مباشر|انتهت)/i.test(status);
+                });
+                if (badStatus.length) throw new Error("Match state filter leaked incorrect statuses in " + mode);
+                console.log(mode + " match state passed:", value.data.length, "matches");
+              });
+            '
+          done
+
+          # Known cached detail fixture with real lineups, substitutions and incidents.
+          full_detail="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches/x7lm7phj64pzm2w")"
+          printf '%s' "$full_detail" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const item = JSON.parse(raw).data;
+              if (!item || item.detailAvailable !== true) throw new Error("Known detailed fixture is not available.");
+              if (!item.homeTeam?.crest?.startsWith("https://") || !item.awayTeam?.crest?.startsWith("https://")) throw new Error("Team badges were not normalized.");
+              if (!item.competition?.imageUrl?.startsWith("https://")) throw new Error("Competition badge was not normalized.");
+              if (!Array.isArray(item.events) || item.events.length === 0) throw new Error("SportScore incidents were not normalized to events.");
+              if (!Array.isArray(item.lineups) || item.lineups.length < 20) throw new Error("SportScore home/away XIs and substitutes were not normalized.");
+              if (!item.lineups.some(row => row.side === "home") || !item.lineups.some(row => row.side === "away")) throw new Error("Lineup team sides were not preserved.");
+              if (!item.lineups.some(row => row.is_substitute)) throw new Error("Substitutes were not preserved.");
+              console.log("Normalized match detail passed:", item.homeTeam.name, "vs", item.awayTeam.name, "; events:", item.events.length, "; lineup entries:", item.lineups.length);
+            });
+          '
+
+          # Provider search endpoints must return usable, real football entities.
+          for search_spec in "teams|Arsenal" "players|Mohamed%20Salah" "competitions|English"; do
+            endpoint="${search_spec%%|*}"
+            query="${search_spec#*|}"
+            search_payload="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/$endpoint?search=$query&per_page=10")"
+            printf '%s' "$search_payload" | SEARCH_ENDPOINT="$endpoint" node -e '
+              let raw = "";
+              process.stdin.on("data", chunk => raw += chunk);
+              process.stdin.on("end", () => {
+                const value = JSON.parse(raw);
+                if (!Array.isArray(value.data) || value.data.length === 0) throw new Error(process.env.SEARCH_ENDPOINT + " search returned no real entities: " + raw);
+                const first = value.data[0];
+                if (!first.name && !first.title) throw new Error(process.env.SEARCH_ENDPOINT + " search row has no display name.");
+                console.log(process.env.SEARCH_ENDPOINT + " search passed:", value.data.length, "results");
+              });
+            '
+          done
+
           first_competition="$(printf '%s' "$competitions" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
