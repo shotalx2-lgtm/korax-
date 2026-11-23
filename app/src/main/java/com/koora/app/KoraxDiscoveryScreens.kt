@@ -67,6 +67,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.Locale
 
 private val DBg get() = KoraxThemePalette.background
 private val DCard get() = KoraxThemePalette.card
