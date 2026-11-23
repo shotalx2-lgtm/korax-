@@ -66,6 +66,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.Instant
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -500,6 +501,7 @@ internal object KoraxSmartAlerts {
     }
 
     private fun matchesFavorite(context: Context, match: JSONObject, event: JSONObject?): Boolean {
+        if (KoraxMatchWatchStore.isWatching(context, match.optString("id"))) return true
         if (!KoraxFavoriteStore.setupComplete(context)) return false
         val all = KoraxFavoriteStore.all(context)
         if (all.isEmpty()) return true
