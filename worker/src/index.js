@@ -365,7 +365,7 @@ const NEWS_FEEDS = [
   { id: "btolat-juventus", source: "بطولات - يوفنتوس", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=11922" },
   { id: "btolat-psg", source: "بطولات - باريس سان جيرمان", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=10061" },
   { id: "btolat-pyramids", source: "بطولات - بيراميدز", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=23165" },
-  { id: "youm7", source: "اليوم السابع", language: "ar", url: "https://www.youm7.com/rss/rss" },
+  { id: "youm7", source: "الإخبارية – تغطية اليوم السابع", language: "ar", url: "https://www.youm7.com/rss/SectionRss?SectionID=298", fallbackUrl: "https://alikhbariya.net/feeds/sources/f903fc12-4e08-4331-b249-81551c16f840.xml" },
   { id: "hesport", source: "هسبورت", language: "ar", url: "https://www.hesport.com/feed" },
   { id: "aljazeera", source: "الجزيرة", language: "ar", url: "https://www.aljazeera.net/rss" },
   { id: "sky-arabia", source: "سكاي نيوز عربية", language: "ar", url: "https://www.skynewsarabia.com/rss" },
@@ -538,8 +538,8 @@ function parseRssFeed(xml, feed) {
   }).filter(Boolean);
 }
 
-async function fetchRssFeed(feed) {
-  const response = await fetch(feed.url, {
+async function fetchRssFeedUrl(url, feed) {
+  const response = await fetch(url, {
     headers: {
       accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
       "user-agent": "Mozilla/5.0 (compatible; KORAX-News/1.0; +https://github.com/shotalx2-lgtm/korax-)",
@@ -550,6 +550,19 @@ async function fetchRssFeed(feed) {
   });
   if (!response.ok) throw new Error(feed.id + " RSS HTTP " + response.status);
   return parseRssFeed(await response.text(), feed);
+}
+
+async function fetchRssFeed(feed) {
+  try {
+    const articles = await fetchRssFeedUrl(feed.url, feed);
+    if (articles.length || !feed.fallbackUrl) return articles;
+    throw new Error(feed.id + " RSS returned no parseable articles");
+  } catch (primaryError) {
+    if (!feed.fallbackUrl) throw primaryError;
+    const fallbackArticles = await fetchRssFeedUrl(feed.fallbackUrl, feed);
+    if (!fallbackArticles.length) throw new Error(feed.id + " primary and fallback RSS feeds returned no articles");
+    return fallbackArticles;
+  }
 }
 
 async function loadPublisherNews() {
@@ -576,7 +589,7 @@ async function loadPublisherNews() {
 
 async function getCachedArabicNews() {
   const cache = caches.default;
-  const cacheKey = new Request("https://korax-cache.invalid/api/news?version=multi-publisher-rss-3");
+  const cacheKey = new Request("https://korax-cache.invalid/api/news?version=multi-publisher-rss-4");
   const cached = await cache.match(cacheKey);
   if (cached) return cached.json();
   const payload = await loadPublisherNews();
