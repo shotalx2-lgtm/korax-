@@ -6,7 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import androidx.activity.compose.setContent\nimport androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -39,7 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.Job\nimport kotlinx.coroutines.delay\nimport kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -60,6 +60,7 @@ private val KMuted = Color(0xFF929AA6)
 private val KBorder = Color(0xFF27303B)
 
 class VisualShellActivity : ComponentActivity() {
+    private var smartAlertsJob: Job? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(7, 9, 13)
@@ -74,6 +75,23 @@ class VisualShellActivity : ComponentActivity() {
                 )) { KoraxSplash() }
             }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        smartAlertsJob?.cancel()
+        smartAlertsJob = lifecycleScope.launch {
+            while (isActive) {
+                runCatching { KoraxSmartAlerts.poll(this@VisualShellActivity) }
+                delay(30_000L)
+            }
+        }
+    }
+
+    override fun onStop() {
+        smartAlertsJob?.cancel()
+        smartAlertsJob = null
+        super.onStop()
     }
 }
 
@@ -261,7 +279,7 @@ private fun KoraxApp() {
                 "transfers" -> TransfersScreen()
                 "matches" -> MatchesScreen(initialLive = matchLiveRequested, selectedDate = matchDate)
                 "favorites" -> StateCard("المفضلة", "تابع أنديتك ولاعبيك لإضافتهم هنا. مزامنة المفضلة بين الأجهزة تحتاج حسابًا سحابيًا.", "♡")
-                "notifications" -> StateCard("الإشعارات", "ستظهر هنا تنبيهات المباريات والأخبار بعد تفعيل خدمة الإشعارات.", "♧")
+                "notifications" -> KoraxNotificationsScreen { tab = "more" }
                 else -> MoreScreen({ tab = "news" }, { tab = "favorites" }, { tab = "notifications" })
             }
         }
