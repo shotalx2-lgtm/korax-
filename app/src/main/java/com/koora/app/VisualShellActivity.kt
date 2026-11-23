@@ -215,9 +215,9 @@ private suspend fun loadTransfers(): List<TransferItem> {
         val name = p?.optString("name").orEmpty().ifBlank { x.optString("playerName") }
         if (name.isBlank()) return@mapNotNull null
         val amount = x.opt("amount")
-        TransferItem(x.optString("id", i.toString()), name, p?.https("image_path").orEmpty(),
-            f?.optString("name").orEmpty().ifBlank { "غير محدد" }, f?.https("image_path").orEmpty(),
-            t?.optString("name").orEmpty().ifBlank { "غير محدد" }, t?.https("image_path").orEmpty(),
+        TransferItem(x.optString("id", i.toString()), name, p?.firstHttps("image_path", "imageUrl", "image_url", "photo_url", "photo", "thumbnail").orEmpty(),
+            f?.optString("name").orEmpty().ifBlank { "غير محدد" }, f?.firstHttps("image_path", "imageUrl", "image_url", "logoUrl", "logo_url", "crest", "badge").orEmpty(),
+            t?.optString("name").orEmpty().ifBlank { "غير محدد" }, t?.firstHttps("image_path", "imageUrl", "image_url", "logoUrl", "logo_url", "crest", "badge").orEmpty(),
             x.optString("typeName").ifBlank { "انتقال" }, x.optString("date"),
             if (amount == null || amount == JSONObject.NULL || amount.toString() == "0") "القيمة غير معلنة" else amount.toString(),
             x.optBoolean("completed"), x.optJSONObject("league")?.optString("name").orEmpty().ifBlank { x.optString("leagueName") })
