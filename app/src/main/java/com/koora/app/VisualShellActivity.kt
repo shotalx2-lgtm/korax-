@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Refresh
@@ -62,6 +63,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneOffset
 
 internal val KBg: Color get() = KoraxThemePalette.background
@@ -151,10 +153,18 @@ internal suspend fun apiJson(path: String): JSONObject = withContext(Dispatchers
     val base = apiBase()
     require(base.startsWith("https://")) { "خدمة البيانات غير مربوطة بعد. اضبط KOORA_API_BASE_URL أولًا." }
     val c = (URL(base + path).openConnection() as HttpURLConnection).apply {
-        connectTimeout = 9000; readTimeout = 13000; setRequestProperty("Accept", "application/json")
+        connectTimeout = 12000
+        readTimeout = 18000
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("Accept-Language", "ar,en;q=0.8")
+        setRequestProperty("User-Agent", "KORAX-Android/0.6")
     }
     try {
-        if (c.responseCode !in 200..299) error("الخادم أعاد HTTP " + c.responseCode)
+        val code = c.responseCode
+        if (code !in 200..299) {
+            val body = runCatching { c.errorStream?.bufferedReader()?.use { it.readText() }.orEmpty() }.getOrDefault("")
+            error("خادم KORAX أعاد HTTP $code" + if (body.isBlank()) "" else ": " + body.take(180))
+        }
         JSONObject(c.inputStream.bufferedReader().use { it.readText() })
     } finally { c.disconnect() }
 }
@@ -162,18 +172,35 @@ internal fun JSONObject.rows() = optJSONArray("data") ?: JSONArray()
 internal fun JSONObject.https(name: String) = optString(name).takeIf { it.startsWith("https://") }.orEmpty()
 
 private suspend fun loadNews(): List<NewsItem> {
-    // The app is Arabic-first: never mix English RSS entries into the Arabic news feed.
-    val data = apiJson("/api/news?language=ar&per_page=60").rows()
-    return (0 until data.length()).mapNotNull { i ->
+    // The endpoint already filters Arabic. Keep older Worker responses that omit
+    // the language field, but never mix explicitly English-only items into the feed.
+    val primary = apiJson("/api/news?language=ar&per_page=100")
+    var data = primary.rows()
+    if (data.length() == 0) {
+        val fallback = apiJson("/api/news?per_page=100").rows()
+        data = JSONArray()
+        for (index in 0 until fallback.length()) {
+            val row = fallback.optJSONObject(index) ?: continue
+            val language = row.optString("language")
+            if (language.isBlank() || language.equals("ar", ignoreCase = true)) data.put(row)
+        }
+    }
+    val parsed = (0 until data.length()).mapNotNull { i ->
         val x = data.optJSONObject(i) ?: return@mapNotNull null
-        if (!x.optString("language").equals("ar", ignoreCase = true)) return@mapNotNull null
+        val language = x.optString("language")
+        if (language.isNotBlank() && !language.equals("ar", ignoreCase = true)) return@mapNotNull null
         val url = x.optString("url")
         val title = x.optString("title").trim()
         if (title.isBlank() || !url.startsWith("https://")) return@mapNotNull null
         NewsItem(x.optString("id", url), title, x.optString("summary"), url,
             x.optString("source", "مصدر رياضي"), x.optString("publishedAt"),
             x.https("imageUrl").takeIf { it.isNotBlank() }, x.optString("category", "football"))
-    }.distinctBy { it.title.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ").trim() }
+    }
+    val seen = HashSet<String>()
+    return parsed.filter { item ->
+        val key = item.title.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ").trim()
+        key.isNotBlank() && seen.add(key)
+    }
 }
 
 private suspend fun loadTransfers(): List<TransferItem> {
@@ -338,7 +365,7 @@ private fun KoraxApp() {
                 val tabs = listOf(
                     Triple("matches", "المباريات", Icons.Filled.CalendarMonth),
                     Triple("news", "الأخبار", Icons.Filled.Search),
-                    Triple("explore", "استكشف", Icons.Filled.Explore),
+                    Triple("competitions", "البطولات", Icons.Filled.Explore),
                     Triple("favorites", "المفضلة", Icons.Filled.Favorite),
                     Triple("more", "المزيد", Icons.Filled.Settings)
                 )
@@ -374,7 +401,16 @@ private fun KoraxApp() {
                     onOpenArticle = { selectedArticle = it }
                 )
                 tab == "transfers" -> KoraxTopicPage(onBack = { tab = "more" }, onOpenArticle = { selectedArticle = it })
-                tab == "matches" -> MatchesScreen(initialLive = matchLiveRequested, selectedDate = matchDate, onOpenMatch = { selectedMatchId = it })
+                tab == "matches" -> MatchesScreen(
+                    initialLive = matchLiveRequested,
+                    selectedDate = matchDate,
+                    onOpenMatch = { selectedMatchId = it },
+                    onChooseDate = { matchDate = it; matchLiveRequested = false }
+                )
+                tab == "competitions" -> KoraxCompetitionsHubPage(
+                    onBack = { tab = "more" },
+                    onOpenProfile = { selectedProfile = it }
+                )
                 tab == "explore" -> KoraxFavoriteSelectionScreen(
                     isFirstRun = false,
                     onFinish = { tab = "favorites" },
@@ -430,7 +466,7 @@ private fun KoraxHeader(title: String, subtitle: String = "", refresh: (() -> Un
 }
 
 @Composable
-private fun BrandToolbar(onSearch: () -> Unit, onLive: () -> Unit, onDate: () -> Unit) {
+private fun BrandToolbar(onSearch: () -> Unit, onLive: () -> Unit, onDate: () -> Unit, onRefresh: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -441,9 +477,13 @@ private fun BrandToolbar(onSearch: () -> Unit, onLive: () -> Unit, onDate: () ->
         }
         Spacer(Modifier.weight(1f))
         Surface(shape = RoundedCornerShape(13.dp), color = KCard2, border = BorderStroke(1.dp, KBorder)) {
+            IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, "تحديث الأخبار", tint = KLime) }
+        }
+        Spacer(Modifier.width(6.dp))
+        Surface(shape = RoundedCornerShape(13.dp), color = KCard2, border = BorderStroke(1.dp, KBorder)) {
             IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, "بحث", tint = KLime) }
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(6.dp))
         Surface(
             modifier = Modifier.clip(RoundedCornerShape(13.dp)).clickable(onClick = onLive),
             shape = RoundedCornerShape(13.dp), color = Color(0xFF28151A),
@@ -545,7 +585,8 @@ private fun NewsScreen(
         BrandToolbar(
             onSearch = { searchExpanded = !searchExpanded },
             onLive = onOpenLive,
-            onDate = { chooseMatchDate() }
+            onDate = { chooseMatchDate() },
+            onRefresh = { scope.launch { refresh() } }
         )
         if (searchExpanded) {
             OutlinedTextField(
@@ -756,7 +797,7 @@ private fun TransfersScreen() {
 }
 
 @Composable
-private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatch: (String) -> Unit) {
+private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatch: (String) -> Unit, onChooseDate: (String) -> Unit) {
     var live by rememberSaveable(selectedDate, initialLive) { mutableStateOf(initialLive) }
     var matches by remember { mutableStateOf<List<MatchItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -769,11 +810,27 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatc
         matches = result.getOrDefault(emptyList()); error = result.exceptionOrNull()?.message.orEmpty(); loading = false
     }
     LaunchedEffect(live, selectedDate) { refresh() }
+    LaunchedEffect(live, selectedDate) {
+        if (live) {
+            while (true) {
+                delay(30_000L)
+                refresh()
+            }
+        }
+    }
     Column(Modifier.fillMaxSize()) {
-        KoraxHeader("المباريات", "التاريخ: $selectedDate", refresh = { scope.launch { refresh() } })
-        Row(Modifier.padding(horizontal = 13.dp), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+        KoraxHeader("المباريات", "جدول المباريات • $selectedDate", refresh = { scope.launch { refresh() } })
+        Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp), verticalAlignment = Alignment.CenterVertically) {
             FilterChip(selected = !live, onClick = { live = false }, label = { Text("حسب التاريخ") })
-            FilterChip(selected = live, onClick = { live = true }, label = { Text("LIVE") })
+            Spacer(Modifier.width(6.dp))
+            FilterChip(selected = live, onClick = { live = true }, label = { Text("مباشر الآن") })
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = { onChooseDate(runCatching { LocalDate.parse(selectedDate).minusDays(1).toString() }.getOrDefault(todayIso())) }) {
+                Text("‹ السابق", color = KLime, fontSize = 10.sp)
+            }
+            TextButton(onClick = { onChooseDate(runCatching { LocalDate.parse(selectedDate).plusDays(1).toString() }.getOrDefault(todayIso())) }) {
+                Text("التالي ›", color = KLime, fontSize = 10.sp)
+            }
         }
         when {
             loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = KLime) }
@@ -828,7 +885,8 @@ private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: (
         Column(Modifier.padding(horizontal = 14.dp)) {
             MoreRow("الأخبار", "العودة إلى مركز الأخبار", "⌂", home)
             MoreRow("المفضلة", "الأندية واللاعبون الذين تتابعهم", "♡", favorites)
-            MoreRow("استكشف", "اكتشف البطولات والأندية والمنتخبات واللاعبين", "⌕", explore)
+            MoreRow("البطولات والدوريات", "عرض المسابقات والجداول والترتيب", "🏆", { tools.invoke(); })
+            MoreRow("استكشف", "اكتشف الأندية والمنتخبات واللاعبين", "⌕", explore)
             MoreRow("الانتقالات", "أخبار وانتقالات اللاعبين المتاحة من المصدر", "⇄", transfers)
             MoreRow("مختبر المميزات الجديدة", "المقارنة والأرشيف والمساعد والنسخ الاحتياطي وفحص المصادر", "✦", tools)
             MoreRow("الإشعارات", "مركز تنبيهات المباريات والأخبار", "♧", notifications)
