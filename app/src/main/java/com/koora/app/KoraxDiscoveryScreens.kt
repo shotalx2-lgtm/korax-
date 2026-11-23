@@ -154,6 +154,11 @@ private suspend fun searchFavoriteItems(kind: String, query: String): List<Korax
         }
         row.asFavorite(actualKind)
     }.filter { it.kind == kind }
+        .filter {
+            query.isBlank() ||
+                it.name.contains(query, ignoreCase = true) ||
+                it.country.contains(query, ignoreCase = true)
+        }
         .distinctBy { it.kind + ":" + it.id }.take(50)
 }
 
