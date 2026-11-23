@@ -344,3 +344,24 @@ test("competition search returns provider-backed leagues and tournaments for fav
     restoreCache();
   }
 });
+
+test("team search distinguishes national teams from club teams for favorites", async () => {
+  const originalFetch = globalThis.fetch;
+  const restoreCache = installCache();
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    teams: [
+      { id: 10, slug: "egypt", name: "Egypt", type: "national_team" },
+      { id: 11, slug: "al-ahly", name: "Al Ahly", type: "club" },
+    ],
+  }), { status: 200, headers: { "content-type": "application/json" } });
+  try {
+    const response = await worker.fetch(new Request("https://korax.test/api/teams?search=Egypt"), {});
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data[0].koraxKind, "national");
+    assert.equal(body.data[1].koraxKind, "club");
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreCache();
+  }
+});
