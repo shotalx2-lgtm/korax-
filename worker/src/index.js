@@ -856,10 +856,52 @@ async function route(request, env) {
     return item ? json({ data: normalizeFixture(item), source: "sportscore" }) : json({ error: "Match not found" }, 404);
   }
 
-  if (path === "/api/competitions") return json({
-    data: KORAX_COMPETITIONS.map((item) => ({ ...item, imageUrl: "", logoUrl: "" })),
-    source: "sportscore-competition-index",
-  });
+  if (path === "/api/competitions") {
+    const search = (url.searchParams.get("search") || "").trim();
+    if (search.length >= 2) {
+      const payload = await cachedProviderRequest("/api/v1/search/", {
+        q: search, sport: "football", limit: perPage,
+      }, env, 300);
+      const root = unwrap(payload);
+      const keys = ["competitions", "leagues", "tournaments", "cups"];
+      let rows = [];
+      for (const key of keys) {
+        if (Array.isArray(root?.[key])) rows.push(...root[key]);
+      }
+      if (!rows.length && Array.isArray(root?.results)) {
+        rows = root.results.filter((row) => {
+          const kind = String(row?.type || row?.entity_type || row?.category || "").toLowerCase();
+          return /competition|league|tournament|cup|championship/.test(kind);
+        });
+      }
+      const data = rows.map((item) => {
+        const rawUrl = String(item?.url || item?.href || item?.link || "");
+        const urlSlug = rawUrl.match(/\/([a-z0-9_-]{5,})\/?(?:\?.*)?$/i)?.[1] || "";
+        const slug = String(item?.slug || item?.competition_slug || item?.league_slug ||
+          item?.url_slug || urlSlug || item?.id || "");
+        const kind = String(item?.type || item?.entity_type || item?.category || "").toLowerCase();
+        const image = item?.image_path || item?.image_url || item?.logo || item?.logo_url || item?.image || "";
+        return {
+          id: String(item?.id || slug),
+          slug,
+          name: nestedName(item) || item?.title || item?.common_name || item?.name || "",
+          country: nestedName(item?.country) || item?.country_name || "",
+          imageUrl: typeof image === "string" && /^https:\/\//i.test(image) ? image : "",
+          kind: /tournament|cup|championship/.test(kind) ? "tournament" : "league",
+          season: item?.season?.name || item?.season || "",
+        };
+      }).filter((item) => item.slug && item.name);
+      return json({ data, source: "sportscore-search", meta: { count: data.length, query: search } });
+    }
+    return json({
+      data: KORAX_COMPETITIONS.map((item) => ({
+        ...item,
+        kind: item.slug === "z8yomo4h7wq0j6l" ? "tournament" : "league",
+        imageUrl: "", logoUrl: "",
+      })),
+      source: "sportscore-competition-index",
+    });
+  }
 
   const competition = path.match(/^\/api\/competitions\/([A-Za-z0-9_-]+)$/);
   if (competition) {
