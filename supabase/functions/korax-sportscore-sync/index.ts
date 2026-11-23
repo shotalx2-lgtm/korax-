@@ -147,11 +147,17 @@ Deno.serve(async (req: Request) => {
       return [{ match_slug: slug, detail: entry.detail, detail_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() }];
     });
     if (detailRows.length) {
-      await rest("/rest/v1/korax_sportscore_matches?on_conflict=match_slug", {
-        method: "POST",
-        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-        body: JSON.stringify(detailRows),
-      });
+      await Promise.all(detailRows.map((row: any) =>
+        rest("/rest/v1/korax_sportscore_matches?match_slug=eq." + encodeURIComponent(row.match_slug), {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({
+            detail: row.detail,
+            detail_updated_at: row.detail_updated_at,
+            updated_at: row.updated_at,
+          }),
+        })
+      ));
     }
 
     const competitionRows = competitionsIn.flatMap((item: any) => {
