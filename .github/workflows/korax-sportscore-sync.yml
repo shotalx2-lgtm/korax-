@@ -26,6 +26,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Test SportScore detail batching
+        run: node --test scripts/sync-sportscore-batching.test.mjs
       - name: Fetch SportScore and sync Supabase cache
         env:
           SUPABASE_URL: https://hwrsjmdcivdluztnhpxo.supabase.co
