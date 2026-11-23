@@ -223,9 +223,13 @@ function normalizeFixture(fixture) {
     : Array.isArray(root.lineup) ? root.lineup : [];
   const statisticRaw = Array.isArray(root.statistics) ? root.statistics
     : Array.isArray(root.stats) ? root.stats : [];
+  const rawUrl = root.url || root.match_url || root.href ||
+    fixture?.url || fixture?.match_url || fixture?.href || "";
+  const urlSlug = String(rawUrl).match(/\/match\/[^/]+\/([A-Za-z0-9_-]+)\/?(?:[?#].*)?$/i)?.[1] ||
+    String(rawUrl).match(/\/([A-Za-z0-9_-]{8,})\/?(?:[?#].*)?$/)?.[1] || "";
   const rawId = root.slug || root.match_slug || root.id || root.fixture_id ||
     root.match_id || root.fixture_slug || fixture?.slug || fixture?.match_slug ||
-    fixture?.id || fixture?.fixture_id || fixture?.match_id || "";
+    fixture?.id || fixture?.fixture_id || fixture?.match_id || urlSlug;
   const rawTime = root.time || root.start_time || root.startTime || root.kickoff ||
     root.date || root.starting_at || root.start_at || "";
   return {

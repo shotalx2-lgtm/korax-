@@ -1063,3 +1063,121 @@ private fun InfoPanel(title: String, detail: String) {
         }
     }
 }
+
+
+@Composable
+internal fun KoraxCompetitionsHubPage(
+    onBack: () -> Unit,
+    onOpenProfile: (KoraxFavorite) -> Unit
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    var competitions by remember { mutableStateOf<List<KoraxFavorite>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+
+    suspend fun refresh(search: String = query) {
+        loading = true
+        error = ""
+        val endpoint = if (search.trim().length >= 2)
+            "/api/competitions?search=" + search.trim().urlEncoded()
+        else "/api/competitions"
+        val result = runCatching {
+            val payload = apiJson(endpoint)
+            val rows = payload.optJSONArray("data") ?: JSONArray()
+            (0 until rows.length()).mapNotNull { index ->
+                val row = rows.optJSONObject(index) ?: return@mapNotNull null
+                val name = row.readText("name", "title", "common_name")
+                val slug = row.readText("slug", "competition_slug", "league_slug", "url_slug", "id")
+                val id = row.readText("id").ifBlank { slug }
+                if (name.isBlank() || slug.isBlank() || id.isBlank()) return@mapNotNull null
+                val rawKind = row.readText("kind", "type", "entity_type").lowercase(Locale.ROOT)
+                val kind = if (rawKind.contains("tournament") || rawKind.contains("cup") || rawKind.contains("championship")) "tournament" else "league"
+                KoraxFavorite(
+                    id = id,
+                    slug = slug,
+                    name = name,
+                    kind = kind,
+                    imageUrl = row.readImage("imageUrl", "image_path", "logoUrl", "logo"),
+                    country = row.readText("country", "country_name")
+                )
+            }.distinctBy { it.kind + ":" + it.id }
+        }
+        competitions = result.getOrDefault(emptyList())
+        error = result.exceptionOrNull()?.message.orEmpty()
+        loading = false
+    }
+
+    LaunchedEffect(Unit) { refresh("") }
+
+    Column(Modifier.fillMaxSize().background(XBg)) {
+        ToolHeader("البطولات والدوريات", "المسابقات المتاحة من SportScore", onBack, onRefresh = { scope.launch { refresh() } })
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                shape = RoundedCornerShape(13.dp),
+                placeholder = { Text("ابحث عن دوري أو بطولة", fontSize = 11.sp) },
+                leadingIcon = { Icon(Icons.Filled.Search, null, tint = XAccent) }
+            )
+            Spacer(Modifier.width(7.dp))
+            Button(
+                onClick = { scope.launch { refresh(query) } },
+                enabled = query.trim().length >= 2 && !loading,
+                colors = ButtonDefaults.buttonColors(containerColor = XAccent, contentColor = Color.Black)
+            ) { Text("بحث", fontSize = 11.sp) }
+        }
+        when {
+            loading -> BusyPanel("تحميل البطولات والدوريات من SportScore...")
+            error.isNotBlank() -> InfoPanel("تعذر تحميل البطولات", error)
+            competitions.isEmpty() -> InfoPanel(
+                "لم تصل مسابقات من المصدر",
+                "جرّب البحث باسم دوري أو بطولة. لن نعرض مسابقات وهمية إذا لم يرجعها المصدر."
+            )
+            else -> LazyColumn(
+                contentPadding = PaddingValues(horizontal = 13.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    Text("${competitions.size} مسابقة متاحة من المصدر", color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+                items(competitions, key = { it.kind + ":" + it.id }) { item ->
+                    Card(
+                        Modifier.fillMaxWidth().clickable { onOpenProfile(item) },
+                        colors = CardDefaults.cardColors(containerColor = XCard),
+                        border = BorderStroke(1.dp, XBorder),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Row(Modifier.fillMaxWidth().padding(11.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier.size(45.dp).clip(RoundedCornerShape(11.dp)).background(XCard2),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (item.imageUrl.isNotBlank() && KoraxSettingsStore.getBoolean(LocalContext.current, "show_images", true)) {
+                                    coil.compose.AsyncImage(item.imageUrl, item.name, Modifier.fillMaxSize().padding(5.dp), contentScale = ContentScale.Fit)
+                                } else {
+                                    Text("🏆", fontSize = 21.sp)
+                                }
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(item.name, color = XText, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    listOf(if (item.kind == "tournament") "بطولة" else "دوري", item.country)
+                                        .filter { it.isNotBlank() }.joinToString(" • "),
+                                    color = XMuted, fontSize = 9.sp
+                                )
+                            }
+                            Text("الترتيب والتفاصيل ←", color = XAccent, fontSize = 9.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
