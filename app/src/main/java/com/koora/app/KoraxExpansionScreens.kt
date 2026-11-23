@@ -632,8 +632,11 @@ private fun MatchDetailContent(match: JSONObject) {
     val context = LocalContext.current
     val matchId = match.optString("id")
     var watching by remember(matchId) { mutableStateOf(KoraxMatchWatchStore.isWatching(context, matchId)) }
+    var detailTab by rememberSaveable(matchId) { mutableStateOf("events") }
 
-    fun belongsTo(row: JSONObject, teamId: String, teamName: String): Boolean {
+    fun belongsTo(row: JSONObject, side: String, teamId: String, teamName: String): Boolean {
+        val rowSide = row.readText("side")
+        if (rowSide == side) return true
         val rowTeam = row.optJSONObject("team")
         val rowId = row.readText("team_id").ifBlank { rowTeam?.optString("id").orEmpty() }
         val rowName = rowTeam?.optString("name").orEmpty().ifBlank { row.readText("team_name") }
@@ -643,9 +646,11 @@ private fun MatchDetailContent(match: JSONObject) {
 
     val lineupRows = (0 until lineups.length()).mapNotNull { lineups.optJSONObject(it) }
         .filter { it.readText("player_name", "name").isNotBlank() }
-    val homeLineup = lineupRows.filter { belongsTo(it, homeId, homeName) }
-    val awayLineup = lineupRows.filter { belongsTo(it, awayId, awayName) }
-    val splitLineups = homeLineup.isNotEmpty() || awayLineup.isNotEmpty()
+    val homePlayers = lineupRows.filter { belongsTo(it, "home", homeId, homeName) && !it.optBoolean("is_substitute") }
+    val awayPlayers = lineupRows.filter { belongsTo(it, "away", awayId, awayName) && !it.optBoolean("is_substitute") }
+    val homeSubs = lineupRows.filter { belongsTo(it, "home", homeId, homeName) && it.optBoolean("is_substitute") }
+    val awaySubs = lineupRows.filter { belongsTo(it, "away", awayId, awayName) && it.optBoolean("is_substitute") }
+    val splitLineups = homePlayers.isNotEmpty() || awayPlayers.isNotEmpty()
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 13.dp, vertical = 10.dp)) {
         Card(
@@ -656,7 +661,7 @@ private fun MatchDetailContent(match: JSONObject) {
         ) {
             Column(
                 Modifier.fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color(0xFF1D2947), XCard)))
+                     .background(Brush.verticalGradient(listOf(XCard2, XCard)))
                     .padding(15.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -696,6 +701,10 @@ private fun MatchDetailContent(match: JSONObject) {
                 val venue = match.optJSONObject("venue")?.optString("name").orEmpty().ifBlank { match.optString("venue") }
                 val referee = match.optJSONObject("referee")?.optString("name").orEmpty()
                 val meta = listOf(venue, referee.takeIf { it.isNotBlank() }?.let { "الحكم $it" }).filter { !it.isNullOrBlank() }
+                val kickoff = match.readText("startTime", "kickoff", "date")
+                if (kickoff.isNotBlank()) {
+                    Text(kickoff.replace("T", " ").take(16), color = XMuted, fontSize = 9.sp)
+                }
                 if (meta.isNotEmpty()) Text(meta.joinToString(" • "), color = XMuted, fontSize = 9.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
@@ -713,102 +722,157 @@ private fun MatchDetailContent(match: JSONObject) {
             Text(if (watching) "✓ تتابع هذه المباراة — إيقاف التنبيه" else "🔔 تابع المباراة ونبّهني بأحداثها", fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
 
-        Text("إحصائيات المباراة", color = XText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
-        if (stats.length() == 0) {
-            Text("الإحصائيات غير متاحة من المصدر لهذا اللقاء.", color = XMuted, fontSize = 10.sp)
-        } else {
-            val statRows = (0 until stats.length()).mapNotNull { stats.optJSONObject(it) }
-                .filter { it.readText("name", "type_name", "type").isNotBlank() }
-                .groupBy { it.readText("name", "type_name", "type") }
-            statRows.forEach { (name, rows) ->
-                val homeValue = rows.firstOrNull { it.readText("team").equals(homeName, true) }?.readText("value", "data").orEmpty()
-                val awayValue = rows.firstOrNull { it.readText("team").equals(awayName, true) }?.readText("value", "data").orEmpty()
-                if (homeValue.isNotBlank() || awayValue.isNotBlank()) {
-                    Column(
-                        Modifier.fillMaxWidth().background(XCard, RoundedCornerShape(12.dp)).padding(horizontal = 11.dp, vertical = 9.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(homeValue.ifBlank { "—" }, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                            Text(name, color = XMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1.5f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                            Text(awayValue.ifBlank { "—" }, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+        Row(
+            Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            listOf(
+                "events" to "الأحداث",
+                "lineups" to "التشكيلة",
+                "stats" to "الإحصائيات",
+                "details" to "التفاصيل"
+            ).forEach { (key, label) ->
+                FilterChip(
+                    selected = detailTab == key,
+                    onClick = { detailTab = key },
+                    modifier = Modifier.weight(1f),
+                    label = { Text(label, fontSize = 9.sp, maxLines = 1) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = XAccent,
+                        selectedLabelColor = Color.Black,
+                        labelColor = XMuted
+                    )
+                )
+            }
+        }
+
+        when (detailTab) {
+            "events" -> {
+                Text("أحداث المباراة", color = XText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(bottom = 8.dp))
+                if (events.length() == 0) {
+                    Text("لم يوفر المصدر أحداثًا تفصيلية لهذا اللقاء.", color = XMuted, fontSize = 10.sp)
+                } else {
+                    repeat(events.length()) { index ->
+                        val row = events.optJSONObject(index) ?: return@repeat
+                        val minute = row.readText("minute").ifBlank { "—" }
+                        val type = row.readText("type_name", "type").ifBlank { "حدث" }
+                        val player = row.readText("player_name", "player")
+                        val detail = row.readText("detail")
+                        val kind = type.lowercase(Locale.ROOT)
+                        val eventSymbol = when {
+                            kind.contains("goal") || kind.contains("هدف") -> "⚽"
+                            kind.contains("yellow") || kind.contains("أصفر") || kind.contains("اصفر") -> "🟨"
+                            kind.contains("red") || kind.contains("أحمر") || kind.contains("احمر") -> "🟥"
+                            kind.contains("sub") || kind.contains("تبديل") -> "🔁"
+                            else -> "•"
                         }
-                        val homeNumber = statNumber(homeValue)
-                        val awayNumber = statNumber(awayValue)
-                        if (homeNumber != null && awayNumber != null && homeNumber >= 0f && awayNumber >= 0f) {
-                            val total = (homeNumber + awayNumber).coerceAtLeast(0.001f)
-                            val firstWeight = (homeNumber / total).coerceAtLeast(0.02f)
-                            val secondWeight = (awayNumber / total).coerceAtLeast(0.02f)
-                            Row(Modifier.fillMaxWidth().height(5.dp).clip(CircleShape).background(XCard2)) {
-                                Box(Modifier.weight(firstWeight).fillMaxHeight().background(XAccent))
-                                Box(Modifier.weight(secondWeight).fillMaxHeight().background(Color(0xFF7082A5)))
+                        Card(
+                            Modifier.fillMaxWidth().padding(bottom = 5.dp),
+                            colors = CardDefaults.cardColors(containerColor = XCard),
+                            border = BorderStroke(1.dp, XBorder),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(minute + "'", color = XAccent, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.width(34.dp))
+                                Text(eventSymbol, fontSize = 15.sp)
+                                Spacer(Modifier.width(9.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(type, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    Text(listOf(player, detail).filter { it.isNotBlank() }.joinToString(" • ").ifBlank { "تفاصيل اللاعب غير متاحة" }, color = XMuted, fontSize = 9.sp)
+                                }
                             }
                         }
                     }
-                    Spacer(Modifier.height(5.dp))
                 }
             }
-        }
-
-        Text("أحداث المباراة", color = XText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
-        if (events.length() == 0) {
-            Text("لم يوفر المصدر أحداثًا تفصيلية لهذا اللقاء.", color = XMuted, fontSize = 10.sp)
-        } else {
-            repeat(events.length()) { index ->
-                val row = events.optJSONObject(index) ?: return@repeat
-                val minute = row.readText("minute").ifBlank { "—" }
-                val type = row.readText("type_name", "type").ifBlank { "حدث" }
-                val player = row.readText("player_name", "player")
-                val detail = row.readText("detail")
-                val kind = type.lowercase(Locale.ROOT)
-                val eventSymbol = when {
-                    kind.contains("goal") || kind.contains("هدف") -> "⚽"
-                    kind.contains("yellow") || kind.contains("أصفر") || kind.contains("اصفر") -> "🟨"
-                    kind.contains("red") || kind.contains("أحمر") || kind.contains("احمر") -> "🟥"
-                    kind.contains("sub") || kind.contains("تبديل") -> "🔁"
-                    else -> "•"
+            "lineups" -> {
+                Text("التشكيلات الرسمية", color = XText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(bottom = 8.dp))
+                when {
+                    lineupRows.isEmpty() -> Text("التشكيلات غير متاحة من المصدر لهذا اللقاء.", color = XMuted, fontSize = 10.sp)
+                    splitLineups -> {
+                        if (homePlayers.isNotEmpty() || homeSubs.isNotEmpty()) {
+                            MatchLineupSide(homeName, homePlayers, homeSubs, match.optString("homeFormation"))
+                        }
+                        if (awayPlayers.isNotEmpty() || awaySubs.isNotEmpty()) {
+                            if (homePlayers.isNotEmpty() || homeSubs.isNotEmpty()) Spacer(Modifier.height(9.dp))
+                            MatchLineupSide(awayName, awayPlayers, awaySubs, match.optString("awayFormation"))
+                        }
+                    }
+                    else -> {
+                        Text("أرسل المصدر أسماء لاعبين دون تحديد الفريق؛ نعرضها كما وصلت دون تخمين.", color = XMuted, fontSize = 9.sp)
+                        lineupRows.forEach { row ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(row.readText("shirt_number").ifBlank { "—" }, color = XAccent, fontSize = 10.sp, modifier = Modifier.width(28.dp))
+                                Text(row.readText("player_name", "name"), color = XText, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                                Text(row.readText("position_name").ifBlank { "المركز غير متاح" }, color = XMuted, fontSize = 9.sp)
+                            }
+                        }
+                    }
                 }
-                Card(
-                    Modifier.fillMaxWidth().padding(bottom = 5.dp),
-                    colors = CardDefaults.cardColors(containerColor = XCard),
-                    border = BorderStroke(1.dp, XBorder),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(minute + "'", color = XAccent, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.width(34.dp))
-                        Text(eventSymbol, fontSize = 15.sp)
-                        Spacer(Modifier.width(9.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(type, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            Text(listOf(player, detail).filter { it.isNotBlank() }.joinToString(" • ").ifBlank { "تفاصيل اللاعب غير متاحة" }, color = XMuted, fontSize = 9.sp)
+            }
+            "stats" -> {
+                Text("إحصائيات المباراة", color = XText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(bottom = 8.dp))
+                if (stats.length() == 0) {
+                    Text("الإحصائيات غير متاحة من المصدر لهذا اللقاء.", color = XMuted, fontSize = 10.sp)
+                } else {
+                    val statRows = (0 until stats.length()).mapNotNull { stats.optJSONObject(it) }
+                        .filter { it.readText("name", "type_name", "type").isNotBlank() }
+                        .groupBy { it.readText("name", "type_name", "type") }
+                    statRows.forEach { (name, rows) ->
+                        val homeValue = rows.firstOrNull { it.readText("team").equals(homeName, true) }?.readText("value", "data").orEmpty()
+                        val awayValue = rows.firstOrNull { it.readText("team").equals(awayName, true) }?.readText("value", "data").orEmpty()
+                        if (homeValue.isNotBlank() || awayValue.isNotBlank()) {
+                            Column(Modifier.fillMaxWidth().background(XCard, RoundedCornerShape(12.dp)).padding(horizontal = 11.dp, vertical = 9.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(homeValue.ifBlank { "—" }, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                    Text(name, color = XMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1.5f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                    Text(awayValue.ifBlank { "—" }, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                                }
+                                val homeNumber = statNumber(homeValue)
+                                val awayNumber = statNumber(awayValue)
+                                if (homeNumber != null && awayNumber != null && homeNumber >= 0f && awayNumber >= 0f) {
+                                    val total = (homeNumber + awayNumber).coerceAtLeast(0.001f)
+                                    val firstWeight = (homeNumber / total).coerceAtLeast(0.02f)
+                                    val secondWeight = (awayNumber / total).coerceAtLeast(0.02f)
+                                    Row(Modifier.fillMaxWidth().height(5.dp).clip(CircleShape).background(XCard2)) {
+                                        Box(Modifier.weight(firstWeight).fillMaxHeight().background(XAccent))
+                                        Box(Modifier.weight(secondWeight).fillMaxHeight().background(Color(0xFF7082A5)))
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(5.dp))
+                        }
+                    }
+                }
+            }
+            else -> {
+                Text("معلومات اللقاء", color = XText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(bottom = 8.dp))
+                val venue = match.optJSONObject("venue")?.optString("name").orEmpty().ifBlank { match.optString("venue") }
+                val referee = match.optJSONObject("referee")?.optString("name").orEmpty()
+                val details = listOf(
+                    "البطولة" to competitionName,
+                    "الحالة" to match.optString("status"),
+                    "الموعد" to match.readText("startTime", "kickoff", "date"),
+                    "الملعب" to venue,
+                    "الحكم" to referee
+                ).filter { it.second.isNotBlank() }
+                if (details.isEmpty()) {
+                    Text("المعلومات الإضافية غير متاحة من المصدر لهذا اللقاء.", color = XMuted, fontSize = 10.sp)
+                } else {
+                    details.forEach { (label, value) ->
+                        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp).background(XCard, RoundedCornerShape(10.dp)).padding(11.dp)) {
+                            Text(label, color = XMuted, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                            Text(value, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
             }
         }
-
-        Text("التشكيلات", color = XText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
-        when {
-            lineups.length() == 0 -> Text("التشكيلات غير متاحة من المصدر لهذا اللقاء.", color = XMuted, fontSize = 10.sp)
-            splitLineups -> {
-                if (homeLineup.isNotEmpty()) MatchLineupSide(homeName, homeLineup)
-                if (awayLineup.isNotEmpty()) {
-                    if (homeLineup.isNotEmpty()) Spacer(Modifier.height(9.dp))
-                    MatchLineupSide(awayName, awayLineup)
-                }
-            }
-            else -> {
-                Text("أرسل المصدر أسماء لاعبين دون تحديد الفريق أو المركز؛ نعرضها كما وصلت دون تخمين.", color = XMuted, fontSize = 9.sp)
-                lineupRows.forEach { row ->
-                    val number = row.readText("shirt_number")
-                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(number.ifBlank { "—" }, color = XAccent, fontSize = 10.sp, modifier = Modifier.width(28.dp))
-                        Text(row.readText("player_name", "name"), color = XText, fontSize = 10.sp, modifier = Modifier.weight(1f))
-                        Text(row.readText("position_name").ifBlank { "المركز غير متاح" }, color = XMuted, fontSize = 9.sp)
-                    }
-                }
-            }
-        }
-        Text("تُعرض فقط البيانات التي أعادها مزوّد البيانات لهذا اللقاء.", color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(vertical = 14.dp))
+        if (!match.optBoolean("detailAvailable")) {
+            Text("يعرض هذا اللقاء البيانات الأساسية فقط؛ لم تصل تفاصيل إضافية من SportScore بعد.", color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(vertical = 12.dp))
+        } else {
+            Text("تُعرض فقط البيانات التي أعادها مزوّد البيانات لهذا اللقاء.", color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(vertical = 12.dp))
+        }        Text("تُعرض فقط البيانات التي أعادها مزوّد البيانات لهذا اللقاء.", color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(vertical = 14.dp))
     }
 }
 
@@ -823,7 +887,12 @@ private fun TeamLogoFallback(name: String) {
 }
 
 @Composable
-private fun MatchLineupSide(teamName: String, players: List<JSONObject>) {
+private fun MatchLineupSide(
+    teamName: String,
+    players: List<JSONObject>,
+    substitutes: List<JSONObject> = emptyList(),
+    formation: String = ""
+) {
     val positionGroups = listOf(
         "G" to "حراسة المرمى",
         "D" to "الدفاع",
@@ -846,7 +915,10 @@ private fun MatchLineupSide(teamName: String, players: List<JSONObject>) {
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(Modifier.fillMaxWidth().padding(10.dp)) {
-            Text(teamName, color = XText, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(teamName, color = XText, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                if (formation.isNotBlank()) Text(formation, color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
             Spacer(Modifier.height(7.dp))
             Box(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
@@ -895,6 +967,19 @@ private fun MatchLineupSide(teamName: String, players: List<JSONObject>) {
                         Text("مراكز غير محددة من المصدر", color = Color.White.copy(alpha = .75f), fontSize = 8.sp, fontWeight = FontWeight.Bold)
                         unknown.forEach { row ->
                             Text(row.readText("player_name", "name"), color = Color.White, fontSize = 9.sp)
+                        }
+                    }
+                    if (substitutes.isNotEmpty()) {
+                        Spacer(Modifier.height(3.dp))
+                        Text("دكة البدلاء", color = Color.White.copy(alpha = .82f), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                        substitutes.forEach { row ->
+                            val number = row.readText("shirt_number")
+                            val name = row.readText("player_name", "name")
+                            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(number.ifBlank { "—" }, color = XAccent, fontSize = 9.sp, modifier = Modifier.width(25.dp))
+                                Text(name, color = Color.White, fontSize = 9.sp, modifier = Modifier.weight(1f))
+                                Text(row.readText("position_name"), color = Color.White.copy(alpha = .68f), fontSize = 8.sp)
+                            }
                         }
                     }
                 }
