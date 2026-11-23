@@ -186,7 +186,7 @@ private suspend fun loadMatches(live: Boolean, selectedDate: String): List<Match
     }.distinctBy { it.id }
 }
 
-private val newsCategories = listOf("الكل", "العالمية", "العربية", "الدوري الإنجليزي", "الدوري الإسباني", "الدوري الإيطالي", "الدوري الألماني", "الدوري الفرنسي", "الدوري السعودي", "الانتقالات", "الإصابات", "الفانتازي")
+private val newsCategories = listOf("الكل", "العالمية", "العربية", "الدوري الإنجليزي", "الدوري الإسباني", "الدوري الإيطالي", "الدوري الألماني", "الدوري الفرنسي", "الدوري السعودي", "الانتقالات", "الإصابات")
 private fun matchesCategory(article: NewsItem, category: String): Boolean {
     val text = (article.title + " " + article.summary).lowercase(Locale.ROOT)
     fun has(vararg words: String) = words.any { text.contains(it.lowercase(Locale.ROOT)) }
