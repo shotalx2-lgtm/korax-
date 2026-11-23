@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import worker from "../src/index.js";
+import { htmlText, classifyNewsCategory, parseRssFeed, normalizeFixture, isLiveFixture } from "../src/index.js";
 
 function installCache() {
   const original = globalThis.caches;
@@ -19,6 +20,7 @@ test("health endpoint confirms both data sources need no API key", async () => {
   assert.equal(body.provider, "SportScore");
   assert.equal(body.apiKeyRequired, false);
   assert.equal(body.newsProvider, "publisher-rss");
+  assert.equal(body.providerStatus, "not_checked");
 });
 
 test("SportScore fixtures normalize into KORAX match contract without an API key", async () => {
@@ -30,7 +32,7 @@ test("SportScore fixtures normalize into KORAX match contract without an API key
     assert.equal(new Headers(init.headers).get("x-api-key"), null);
     assert.equal(new Headers(init.headers).get("authorization"), null);
     return new Response(JSON.stringify({
-      fixtures: [{
+      matches: [{
         id: 987, slug: "al-ahly-vs-zamalek",
         home: "Al Ahly", away: "Zamalek",
         home_logo: "https://images.example/home.png",
@@ -50,7 +52,7 @@ test("SportScore fixtures normalize into KORAX match contract without an API key
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("access-control-allow-origin"), "*");
     assert.match(requestedUrl, /sportscore\.com\/api\/v1\/fixtures\//);
-    assert.match(requestedUrl, /status=live/);
+    assert.match(requestedUrl, /limit=50/);
     const body = await response.json();
     assert.equal(body.source, "sportscore");
     assert.equal(body.data[0].home, "Al Ahly");
@@ -90,6 +92,7 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
     assert.equal(body.source, "publisher-rss");
     assert.equal(body.language, "ar+en");
     assert.equal(body.feedsTotal, 26);
+    assert.ok(calls.includes("https://www.youm7.com/rss/rss"));
     assert.equal(body.feedsAvailable, 26, JSON.stringify(body.feedErrors));
     assert.equal(body.data.length, 26);
     assert.ok(body.data.some(item => item.language === "ar"));
@@ -101,6 +104,78 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
     globalThis.fetch = originalFetch;
     restoreCache();
   }
+});
+
+
+test("RSS text cleanup decodes encoded markup before stripping HTML", () => {
+  assert.equal(
+    htmlText("<![CDATA[&amp;lt;p&amp;gt;خبر مهم عن ريال مدريد&amp;lt;/p&amp;gt;]]>"),
+    "خبر مهم عن ريال مدريد"
+  );
+});
+
+test("news categorization avoids false Saudi labels from generic Arabic words", () => {
+  assert.equal(
+    classifyNewsCategory(
+      "نتائج القسم الثاني لكرة القدم بالمغرب",
+      "فاز الاتحاد الإسلامي الوجدي على منافسه في البطولة المغربية",
+      { id: "hesport" }
+    ),
+    "football"
+  );
+  assert.equal(
+    classifyNewsCategory("الزمالك يحقق الفوز في الدوري المصري", "", { id: "btolat" }),
+    "egypt"
+  );
+  assert.equal(
+    classifyNewsCategory("تطور جديد في صفقة انتقال لاعب", "", { id: "btolat" }),
+    "transfers"
+  );
+});
+
+test("RSS parser reads media thumbnails and sanitizes publisher summaries", () => {
+  const xml = `<?xml version="1.0"?>
+    <rss><channel><item>
+      <title><![CDATA[خبر عن برشلونة]]></title>
+      <link>https://publisher.example/article</link>
+      <description><![CDATA[&amp;lt;p&amp;gt;ملخص الخبر &amp;lt;b&amp;gt;بالتفصيل&amp;lt;/b&amp;gt;&amp;lt;/p&amp;gt;]]></description>
+      <media:thumbnail url="https://images.example/news.jpg" />
+      <pubDate>Sun, 22 Nov 2026 17:00:00 GMT</pubDate>
+    </item></channel></rss>`;
+  const [article] = parseRssFeed(xml, {
+    id: "hesport", source: "هسبورت", language: "ar",
+    url: "https://www.hesport.com/feed"
+  });
+  assert.equal(article.summary, "ملخص الخبر بالتفصيل");
+  assert.equal(article.imageUrl, "https://images.example/news.jpg");
+  assert.equal(article.category, "la-liga");
+});
+
+test("live fixture normalization retains the provider slug and nested scores", () => {
+  const fixture = {
+    fixture: {
+      id: 987,
+      slug: "club-a-vs-club-b",
+      home: { id: 11, name: "Club A", image_path: "https://images.example/a.png" },
+      away: { id: 22, name: "Club B", image_path: "https://images.example/b.png" },
+      status: { name: "1st Half" },
+      starting_at: "2026-11-23T00:00:00Z",
+      competition: { name: "Example League" },
+      scores: [
+        { participant_id: 11, description: "CURRENT", score: { goals: 2 } },
+        { participant_id: 22, description: "CURRENT", score: { goals: 1 } }
+      ]
+    }
+  };
+  const match = normalizeFixture(fixture);
+  assert.equal(match.id, "club-a-vs-club-b");
+  assert.equal(match.homeTeam.id, "11");
+  assert.equal(match.awayTeam.id, "22");
+  assert.equal(match.homeScore, 2);
+  assert.equal(match.awayScore, 1);
+  assert.equal(match.competitionName, "Example League");
+  assert.equal(isLiveFixture(fixture), true);
+  assert.equal(isLiveFixture({ status: "finished" }), false);
 });
 
 test("fantasy uses documented SportScore league leaderboards and exposes their limited scope", async () => {
