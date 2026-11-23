@@ -145,10 +145,12 @@ private suspend fun searchFavoriteItems(kind: String, query: String): List<Korax
                     else -> kind
                 }
             }
+            "club", "national" -> if (row.optString("koraxKind") == "national") "national" else "club"
             else -> kind
         }
         row.asFavorite(actualKind)
-    }.distinctBy { it.kind + ":" + it.id }.take(50)
+    }.filter { it.kind == kind }
+        .distinctBy { it.kind + ":" + it.id }.take(50)
 }
 
 @Composable
