@@ -267,7 +267,7 @@ private fun KoraxApp() {
     val context = LocalContext.current
     val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val themeMode = KoraxSettingsStore.theme(context)
-    KoraxThemePalette.setLight(when (themeMode) {
+    KoraxThemePalette.applyLightMode(when (themeMode) {
         "light" -> true
         "system" -> !systemDark
         else -> false
