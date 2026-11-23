@@ -131,25 +131,32 @@ async function main() {
   }
 
   if (standingsSync) {
-    const targets = [
-      { slug: "premier-league", name: "الدوري الإنجليزي", country: "إنجلترا" },
-      { slug: "la-liga", name: "الدوري الإسباني", country: "إسبانيا" },
-      { slug: "ligue-1", name: "الدوري الفرنسي", country: "فرنسا" },
-      { slug: "serie-a", name: "الدوري الإيطالي", country: "إيطاليا" },
-      { slug: "bundesliga", name: "الدوري الألماني", country: "ألمانيا" },
-      { slug: "saudi-pro-league", name: "الدوري السعودي", country: "السعودية" },
-      { slug: "uefa-champions-league", name: "دوري أبطال أوروبا", country: "أوروبا" },
+    const queries = [
+      "Premier League", "La Liga", "Ligue 1", "Serie A",
+      "Bundesliga", "Saudi Pro League", "UEFA Champions League"
     ];
-    const results = await mapLimit(targets, 3, async target => ({
-      ...target,
-      standings: await sportJson(SPORTScore_BASE + "/api/widget/standings/?sport=football&slug=" + encodeURIComponent(target.slug)),
+    const searchResults = await mapLimit(queries, 4, async query => ({
+      query,
+      payload: await sportJson(SPORTScore_BASE + "/api/v1/search/?sport=football&limit=20&q=" + encodeURIComponent(query))
     }));
-    for (const result of results) {
-      if (!result || result.error) {
-        console.error("Standings fetch warning:", result?.error || "unknown");
+    for (const result of searchResults) {
+      if (result?.error) {
+        console.error("Competition search warning:", result.error);
         continue;
       }
-      competitions.push(result);
+      const root = result.payload?.data ?? result.payload;
+      const items = [];
+      for (const key of ["competitions", "leagues", "tournaments", "cups"]) {
+        if (Array.isArray(root?.[key])) items.push(...root[key]);
+      }
+      if (Array.isArray(root?.results)) items.push(...root.results);
+      console.log("SportScore competition search:", result.query,
+        JSON.stringify(items.slice(0, 8).map(item => ({
+          name: item?.name || item?.title || item?.common_name || "",
+          slug: item?.slug || item?.competition_slug || item?.league_slug || item?.url_slug || "",
+          url: item?.url || item?.href || "",
+          type: item?.type || item?.entity_type || ""
+        }))));
     }
   }
 
