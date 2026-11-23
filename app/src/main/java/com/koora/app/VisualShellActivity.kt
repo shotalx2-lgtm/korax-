@@ -444,6 +444,7 @@ private fun BrandToolbar(onSearch: () -> Unit, onLive: () -> Unit, onDate: () ->
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun KoraxDatePickerDialog(
     onDismiss: () -> Unit,
