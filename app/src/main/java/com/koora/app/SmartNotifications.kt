@@ -356,7 +356,6 @@ internal object KoraxSmartAlerts {
     }
 
     private fun notifyEvent(context: Context, kind: String, match: JSONObject, event: JSONObject) {
-        if (!isEnabled(context, kind)) return
         val home = match.optJSONObject("homeTeam")
         val away = match.optJSONObject("awayTeam")
         val teamId = event.optString("team_id")
@@ -406,7 +405,9 @@ internal object KoraxSmartAlerts {
         val iconImage = teamLogo?.takeIf { it.startsWith("https://") } ?: competitionImage
         val key = listOf(match.optString("id"), kind, event.optString("minute"), player, event.optString("detail"))
             .joinToString("|")
-        send(context, kind, title, message.ifBlank { matchLabel }, iconImage, playerImage, key)
+        if (isEnabled(context, kind)) {
+            send(context, kind, title, message.ifBlank { matchLabel }, iconImage, playerImage, key)
+        }
 
         if (kind == "goal" && assist.isNotBlank() && isEnabled(context, "assist")) {
             send(
