@@ -40,6 +40,12 @@ class FootballNewsFilterTest {
         assertFalse(FootballNewsFilter.isFootballNews("Real Madrid wins basketball final", ""))
     }
 
+    @Test fun nonFootballPublisherRowsAreRejectedEvenWhenTheSourceIsTrusted() {
+        assertFalse(FootballNewsFilter.isFootballNews("الزمالك يشارك في نهائي كرة السلة", "", "بطولات - الأهلي"))
+        assertFalse(FootballNewsFilter.isFootballNews("Kooora: tennis news", "", "كووورة"))
+        assertFalse(FootballNewsFilter.isFootballNews("World Cup hosts prepare for tournament", ""))
+    }
+
     @Test fun genericFootballWordsDoNotPassByThemselves() {
         assertFalse(FootballNewsFilter.isFootballNews("مباراة مهمة غدًا", ""))
         assertFalse(FootballNewsFilter.isFootballNews("المدرب يعلن التشكيل", ""))
