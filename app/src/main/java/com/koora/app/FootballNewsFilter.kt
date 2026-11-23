@@ -35,6 +35,7 @@ internal object FootballNewsFilter {
         "ألعاب القوى", "العاب القوي", "athletics",
         "دراجات هوائية", "cycling",
         "كرة الطاولة", "table tennis",
+        "rugby", "رجبي", "كرة الرجبي",
         "الاسكواش", "squash",
         "الريشة الطائرة", "badminton"
     )
