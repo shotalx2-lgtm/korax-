@@ -528,7 +528,7 @@ internal object KoraxSmartAlerts {
             .setCategory(if (kind == "news") NotificationCompat.CATEGORY_RECOMMENDATION else NotificationCompat.CATEGORY_EVENT)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
         if (iconBitmap != null) builder.setLargeIcon(iconBitmap)
-        if (pictureBitmap != null && (kind == "news" || kind == "goal" || kind == "assist")) {
+        if (pictureBitmap != null) {
             builder.setStyle(NotificationCompat.BigPictureStyle().bigPicture(pictureBitmap).setSummaryText(message))
         }
         runCatching {
@@ -578,11 +578,26 @@ internal object KoraxSmartAlerts {
         }
     }
 
-    fun sendTest(context: Context) {
+    fun sendTest(context: Context, kind: String = "goal") {
+        val label = when (kind) {
+            "goal" -> "⚽ الهدف"
+            "assist" -> "🎯 التمريرة الحاسمة"
+            "var" -> "📺 مراجعة VAR"
+            "cancel" -> "🚫 إلغاء الهدف"
+            "red_card" -> "🟥 البطاقة الحمراء"
+            "yellow_card" -> "🟨 البطاقة الصفراء"
+            "penalty" -> "⚽ ركلة الجزاء"
+            "kickoff" -> "🚩 بداية المباراة"
+            "halftime" -> "⏸️ الاستراحة"
+            "fulltime" -> "🏁 نهاية المباراة"
+            "substitution" -> "🔄 التبديل"
+            "injury" -> "🩺 الإصابة"
+            else -> "📰 الخبر العاجل"
+        }
         send(
-            context, "goal", "⚽ اختبار صوت الهدف",
-            "إشعارات KORAX تعمل. هذا صوت تجريبي خاص بالأهداف.",
-            "", "", "korax-test-goal-${System.currentTimeMillis()}"
+            context, kind, "اختبار صوت $label",
+            "هذا مؤثر صوتي تجريبي مخصص لهذا النوع من تنبيهات KORAX.",
+            "", "", "korax-test-$kind-${System.currentTimeMillis()}"
         )
     }
 }
@@ -674,13 +689,24 @@ internal fun KoraxNotificationsScreen(onBack: () -> Unit) {
                             Text(setting.title, color = Color.White, fontWeight = FontWeight.SemiBold)
                             Text(setting.description, color = Color(0xFF929AA6), fontSize = 11.sp)
                         }
-                        Switch(
-                            checked = toggles[setting.key] ?: true,
-                            onCheckedChange = { checked ->
-                                toggles[setting.key] = checked
-                                KoraxSmartAlerts.setEnabled(context, setting.key, checked)
-                            }
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Switch(
+                                checked = toggles[setting.key] ?: true,
+                                onCheckedChange = { checked ->
+                                    toggles[setting.key] = checked
+                                    KoraxSmartAlerts.setEnabled(context, setting.key, checked)
+                                }
+                            )
+                            Text(
+                                "اختبار",
+                                color = if (permissionGranted) Color(0xFFD5FF00) else Color(0xFF718092),
+                                fontSize = 10.sp,
+                                modifier = Modifier.clickable(enabled = permissionGranted) {
+                                    KoraxSmartAlerts.sendTest(context, setting.key)
+                                    history = KoraxSmartAlerts.history(context)
+                                }.padding(4.dp)
+                            )
+                        }
                     }
                     if (index < alertSettings.lastIndex) Divider(color = Color(0xFF27303B))
                 }
