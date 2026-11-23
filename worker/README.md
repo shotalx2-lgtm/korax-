@@ -24,6 +24,7 @@ The `GET /api/news` route aggregates public RSS feeds without a news API key:
 - هسبورت
 - الجزيرة (football-filtered items)
 - سكاي نيوز عربية (football-filtered items)
+- كووورة العربية (football RSS feed)
 - BBC Sport: football، Premier League، Champions League وEuropean Football
 - Sky Sports: football وPremier League
 - The Guardian Football
