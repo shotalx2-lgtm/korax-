@@ -20,7 +20,7 @@ Important coverage limits: SportScore does not document a full squad/player-cata
 The `GET /api/news` route aggregates public RSS feeds without a news API key:
 
 - بطولات: feed عام، الدوري المصري، الدوري الإسباني، الدوري الإنجليزي، الأهلي، الزمالك، بيراميدز، ريال مدريد، برشلونة، ليفربول، مانشستر سيتي، مانشستر يونايتد، آرسنال، يوفنتوس وباريس سان جيرمان
-- اليوم السابع (sports section)
+- اليوم السابع (public RSS; football relevance is filtered by title and summary)
 - هسبورت
 - الجزيرة (football-filtered items)
 - سكاي نيوز عربية (football-filtered items)
@@ -28,14 +28,14 @@ The `GET /api/news` route aggregates public RSS feeds without a news API key:
 - Sky Sports: football وPremier League
 - The Guardian Football
 
-The response includes title, short summary, original article URL, publisher, publication date, language, category, and an image URL only when the feed supplies one. News is cached for five minutes. Feed availability and images depend on the publisher; no article body or image is copied from the article page. Respect publisher terms and image rights before commercial redistribution.
+The response includes a cleaned title and short plain-text summary, original article URL, publisher, publication date, language, a conservative football category, and an HTTPS image URL when the feed supplies one. RSS markup and HTML entities are decoded before tags are removed. Duplicate URLs are removed. News is cached for five minutes. The public Youm7 RSS endpoint is used because the sports-section RSS endpoint may redirect repeatedly. Feed availability and images depend on the publisher; no article body or image is copied from the article page. Respect publisher terms and image rights before commercial redistribution.
 
 ## Routes
 
 - `GET /health`
 - `GET /api/news?per_page=40` (optional `language=ar|en`, `category=...`)
 - `GET /api/matches?date=YYYY-MM-DD`
-- `GET /api/matches?live=1`
+- `GET /api/matches?live=1` (uses SportScore's current match-summary widget and filters active match states)
 - `GET /api/matches/{slug}`
 - `GET /api/competitions`
 - `GET /api/competitions/{slug}` (standings)
