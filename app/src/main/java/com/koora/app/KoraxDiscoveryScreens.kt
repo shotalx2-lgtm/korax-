@@ -111,7 +111,10 @@ private fun JSONObject.asFavorite(kind: String): KoraxFavorite? {
     val nested = optJSONObject("team") ?: optJSONObject("player")
         ?: optJSONObject("competition") ?: optJSONObject("league") ?: this
     val name = nested.firstString("name", "title", "common_name", "display_name", "short_name")
+    val urlValue = nested.firstString("url", "href", "link")
+    val urlSlug = Regex("/([A-Za-z0-9_-]{4,})/?(?:\\?.*)?$").find(urlValue)?.groupValues?.getOrNull(1).orEmpty()
     val slug = nested.firstString("slug", "url_slug", "team_slug", "player_slug", "competition_slug", "league_slug")
+        .ifBlank { urlSlug }
         .ifBlank { nested.firstString("id") }
     val id = nested.firstString("id").ifBlank { slug }
     if (name.isBlank() || slug.isBlank() || id.isBlank()) return null
