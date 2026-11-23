@@ -83,11 +83,21 @@ class VisualShellActivity : ComponentActivity() {
         @Suppress("DEPRECATION") window.decorView.systemUiVisibility = 0
         setContent {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                MaterialTheme(colorScheme = darkColorScheme(
-                    primary = KLime, onPrimary = Color.Black, secondary = KLime,
-                    background = KBg, onBackground = KText, surface = KCard,
-                    onSurface = KText, outline = KBorder
-                )) { KoraxSplash() }
+                val paletteLight = KoraxThemePalette.light
+                val scheme = if (paletteLight) {
+                    lightColorScheme(
+                        primary = KLime, onPrimary = Color.Black, secondary = KLime,
+                        background = KBg, onBackground = KText, surface = KCard,
+                        onSurface = KText, outline = KBorder
+                    )
+                } else {
+                    darkColorScheme(
+                        primary = KLime, onPrimary = Color.Black, secondary = KLime,
+                        background = KBg, onBackground = KText, surface = KCard,
+                        onSurface = KText, outline = KBorder
+                    )
+                }
+                MaterialTheme(colorScheme = scheme) { KoraxSplash() }
             }
         }
     }
