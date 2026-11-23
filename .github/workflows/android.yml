@@ -265,6 +265,9 @@ jobs:
         run: |
           cp app/build/outputs/apk/release/app-release.apk KORAX-Android.apk
           file KORAX-Android.apk
+      - name: Verify signed APK with apksigner
+        run: "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs KORAX-Android.apk
+
       - name: Publish optimized APK as a GitHub prerelease
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.release_config.outputs.ready == 'true' && vars.KORAX_RELEASE_ENABLED == 'true'
         uses: softprops/action-gh-release@v2
