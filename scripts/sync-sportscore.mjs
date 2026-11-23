@@ -131,32 +131,56 @@ async function main() {
   }
 
   if (standingsSync) {
-    const queries = [
-      "Premier League", "La Liga", "Ligue 1", "Serie A",
-      "Bundesliga", "Saudi Pro League", "UEFA Champions League"
+    const targets = [
+      { name: "الدوري الإنجليزي", country: "إنجلترا", queries: ["English Premier League", "Premier League"] },
+      { name: "الدوري الإسباني", country: "إسبانيا", queries: ["Spanish La Liga", "La Liga"] },
+      { name: "الدوري الفرنسي", country: "فرنسا", queries: ["French Ligue 1", "Ligue 1"] },
+      { name: "الدوري الإيطالي", country: "إيطاليا", queries: ["Italian Serie A", "Serie A"] },
+      { name: "الدوري الألماني", country: "ألمانيا", queries: ["Bundesliga"] },
+      { name: "الدوري السعودي", country: "السعودية", queries: ["Saudi Pro League", "Saudi Professional League", "Saudi Roshn League", "Roshn Saudi League"] },
+      { name: "دوري أبطال أوروبا", country: "أوروبا", queries: ["UEFA Champions League"] },
     ];
-    const searchResults = await mapLimit(queries, 4, async query => ({
-      query,
-      payload: await sportJson(SPORTScore_BASE + "/api/v1/search/?sport=football&limit=20&q=" + encodeURIComponent(query))
+
+    const discovered = await mapLimit(targets, 3, async target => {
+      for (const query of target.queries) {
+        const payload = await sportJson(SPORTScore_BASE + "/api/v1/search/?sport=football&limit=30&q=" + encodeURIComponent(query));
+        const root = payload?.data ?? payload;
+        const items = [];
+        for (const key of ["competitions", "leagues", "tournaments", "cups"]) {
+          if (Array.isArray(root?.[key])) items.push(...root[key]);
+        }
+        if (Array.isArray(root?.results)) items.push(...root.results);
+        const wanted = target.name.includes("الإنجليزي") ? ["english premier league", "premier league"]
+          : target.name.includes("الإسباني") ? ["spanish la liga", "la liga"]
+          : target.name.includes("الفرنسي") ? ["french ligue 1", "ligue 1"]
+          : target.name.includes("الإيطالي") ? ["italian serie a", "serie a"]
+          : target.name.includes("الألماني") ? ["bundesliga"]
+          : target.name.includes("السعودي") ? ["saudi pro league", "saudi professional league", "saudi roshn league", "roshn saudi league"]
+          : ["uefa champions league"];
+        const normalName = item => String(item?.name || item?.title || item?.common_name || "").trim().toLowerCase();
+        const selected = items.find(item => wanted.includes(normalName(item))) ||
+          items.find(item => wanted.some(name => normalName(item).includes(name)));
+        if (!selected) continue;
+        const url = String(selected.url || selected.href || "");
+        const pathSlug = url.match(/\/competition\/[^/]+\/([^/]+)\/[A-Za-z0-9_-]{8,}/i)?.[1] || "";
+        const slug = String(selected.slug || selected.competition_slug || selected.league_slug || selected.url_slug || pathSlug || "");
+        if (slug) return { slug, name: target.name, country: target.country, matchedName: normalName(selected) };
+      }
+      return null;
+    });
+
+    const validTargets = discovered.filter(Boolean);
+    console.log("SportScore resolved standings slugs:", JSON.stringify(validTargets));
+    const standingsResults = await mapLimit(validTargets, 3, async target => ({
+      ...target,
+      standings: await sportJson(SPORTScore_BASE + "/api/widget/standings/?sport=football&slug=" + encodeURIComponent(target.slug)),
     }));
-    for (const result of searchResults) {
-      if (result?.error) {
-        console.error("Competition search warning:", result.error);
+    for (const result of standingsResults) {
+      if (!result || result.error) {
+        console.error("Standings fetch warning:", result?.error || "unknown");
         continue;
       }
-      const root = result.payload?.data ?? result.payload;
-      const items = [];
-      for (const key of ["competitions", "leagues", "tournaments", "cups"]) {
-        if (Array.isArray(root?.[key])) items.push(...root[key]);
-      }
-      if (Array.isArray(root?.results)) items.push(...root.results);
-      console.log("SportScore competition search:", result.query,
-        JSON.stringify(items.slice(0, 8).map(item => ({
-          name: item?.name || item?.title || item?.common_name || "",
-          slug: item?.slug || item?.competition_slug || item?.league_slug || item?.url_slug || "",
-          url: item?.url || item?.href || "",
-          type: item?.type || item?.entity_type || ""
-        }))));
+      competitions.push(result);
     }
   }
 
