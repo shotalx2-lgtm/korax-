@@ -1,49 +1,61 @@
 # KORAX Football News and Data Worker
 
-This Cloudflare Worker has two independent jobs:
+Cloudflare Worker adapter for the KORAX Android app. It does not require third-party API keys for the selected public data sources.
 
-1. **News collection** — fetches public pages from the selected football publishers and returns their headlines, short excerpts, publication details and available article images.
-2. **Football data** — optionally calls Sportmonks for match, player, team, competition and transfer records.
+## Providers
 
-## News sources (no news API key)
+### Football data: SportScore
 
-The `GET /api/news` route reads directly from these publisher pages:
+- Public REST API: https://sportscore.com/developers/api/
+- No API key is required for the public attribution tier.
+- Covers live/recent matches, date fixtures, match detail, team schedules, standings, top scorers/assists, and player search/profile data where available.
+- Public free allowance is approximately 10,000 requests per 24 hours per source IP, subject to SportScore fair-use terms and change.
+- Responses are cached at the edge to avoid one upstream request per app user.
+- Required attribution is displayed in the Android matches screen as a clickable **Powered by SportScore** link to https://sportscore.com/.
 
-- 365Scores Arabic news
-- GOAL Arabic news
-- YallaKora news listing
-- Kooora news listing
-- MercatoDay homepage, with its public RSS feed as a fallback if the page is unavailable
+Important coverage limits: SportScore does not document a full squad/player-catalogue endpoint or a confirmed transfers endpoint. KORAX therefore exposes a fantasy catalogue built from available league top-scorer/assist leaderboards only; this is not a complete player market and does not provide live gameweek scoring. The transfers endpoint returns an explicit unavailable state rather than inventing transfer records. Verify that the required competition slugs are supported by the live provider before enabling a league.
 
-News collection does **not** read `SPORTMONKS_API_TOKEN`, does not use Google News, and does not require a paid news provider or news API key. It collects headline-level content and short excerpts, keeps the source name and original article URL, and caches results at the edge for 180 seconds. Article images are used when supplied by the publisher page/feed. Access, page structure, availability and image rights remain controlled by each publisher; a blocked or changed publisher page can temporarily reduce results from that source.
+### News: publisher RSS feeds
 
-The Android app still needs the HTTPS base URL of this Worker in `KOORA_API_BASE_URL` so it knows where to request the aggregated news. This is an endpoint address, not an API key.
+The `GET /api/news` route aggregates public RSS feeds without a news API key:
 
-## Deploy
+- بطولات: feed عام، الدوري المصري، الدوري الإسباني، الدوري الإنجليزي، الأهلي، الزمالك، بيراميدز، ريال مدريد، برشلونة، ليفربول، مانشستر سيتي، مانشستر يونايتد، آرسنال، يوفنتوس وباريس سان جيرمان
+- اليوم السابع (public RSS; football relevance is filtered by title and summary)
+- هسبورت
+- الجزيرة (football-filtered items)
+- سكاي نيوز عربية (football-filtered items)
+- BBC Sport: football، Premier League، Champions League وEuropean Football
+- Sky Sports: football وPremier League
+- The Guardian Football
 
-1. Create or open the Cloudflare Worker named `koora-api`.
-2. Deploy the `worker/` directory.
-3. Set the Android build property `KOORA_API_BASE_URL` to the Worker's HTTPS base URL.
-4. For live sports-data routes only, optionally add the Sportmonks token as a Worker secret:
-   `npx wrangler secret put SPORTMONKS_API_TOKEN`
-
-The news route remains available without that secret. Sportmonks credentials must never be put in the Android application.
+The response includes a cleaned title and short plain-text summary, original article URL, publisher, publication date, language, a conservative football category, and an HTTPS image URL when the feed supplies one. RSS markup and HTML entities are decoded before tags are removed. Duplicate URLs are removed. News is cached for five minutes. The public Youm7 RSS endpoint is used because the sports-section RSS endpoint may redirect repeatedly. Feed availability and images depend on the publisher; no article body or image is copied from the article page. Respect publisher terms and image rights before commercial redistribution.
 
 ## Routes
 
 - `GET /health`
-- `GET /api/news?per_page=40`
-- `GET /api/transfers?per_page=40&page=1`
+- `GET /api/news?per_page=40` (optional `language=ar|en`, `category=...`)
 - `GET /api/matches?date=YYYY-MM-DD`
-- `GET /api/matches?live=1`
-- `GET /api/matches/{id}`
-- `GET /api/teams`, `GET /api/teams/{id}`
-- `GET /api/players`, `GET /api/players?search=name`, `GET /api/players/{id}`
-- `GET /api/competitions`, `GET /api/competitions/{id}`
+- `GET /api/matches?live=1` (uses SportScore's current match-summary widget and filters active match states)
+- `GET /api/matches/{slug}`
+- `GET /api/competitions`
+- `GET /api/competitions/{slug}` (standings)
+- `GET /api/teams?search=name`, `GET /api/teams/{slug}`
+- `GET /api/players?search=name`, `GET /api/players/{slug}`
+- `GET /api/fantasy/players` (leaderboard-only catalogue)
+- `GET /api/transfers` (explicitly unavailable with current provider)
 
-## Notes
+## Deploy
 
-- News and football-data routes are independent: news failures do not change fantasy scoring or match results.
-- Sportmonks access is required only for the sports-data routes that call that provider. Coverage depends on the subscribed plan.
-- Preserve source attribution and article links. Do not republish full protected articles.
-- Confirm image and logo usage rights before commercial redistribution.
+For a Git-connected Cloudflare Worker whose repository root is the checkout root, use this deploy command so Wrangler runs from the Worker package directory:
+
+```bash
+npx wrangler deploy --config worker/wrangler.toml
+```
+
+For a local deployment, run `npx wrangler deploy` from the `worker/` directory. The Cloudflare Worker name must match `name` in `worker/wrangler.toml`.
+2. Copy the deployed `https://<worker-name>.<account-subdomain>.workers.dev` URL.
+3. Set the Android build property `KOORA_API_BASE_URL` to that Worker HTTPS origin. This is the backend URL, not a sports/news API key.
+4. No SportScore key or news API key is required for the documented public tiers.
+5. Restrict `ALLOWED_ORIGINS` if you later expose the Worker to browser clients; the Android app itself is not restricted by browser CORS.
+
+Never put provider credentials or signing keys in the Android APK. For higher-volume or commercial use, confirm SportScore licensing and fair-use requirements directly with its maintainers.

@@ -38,14 +38,130 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
+      - name: Configure and validate Firebase Android app
+        env:
+          FIREBASE_CONFIG_JSON_B64: ${{ secrets.FIREBASE_CONFIG_JSON_B64 }}
+        run: |
+          set -euo pipefail
+          rm -f app/google-services.json
+          if [ -z "$FIREBASE_CONFIG_JSON_B64" ]; then
+            echo "FIREBASE_CONFIG_VALID=false" >> "$GITHUB_ENV"
+            echo "Firebase config not supplied; Firebase sign-in and cloud sync will be disabled in this build."
+            exit 0
+          fi
+
+          if ! python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          value = os.environ["FIREBASE_CONFIG_JSON_B64"]
+          candidates = []
+          compact = "".join(value.split())
+          try:
+              candidates.append(base64.b64decode(compact, validate=True).decode("utf-8"))
+          except Exception:
+              pass
+          candidates.append(value)
+
+          for candidate in candidates:
+              try:
+                  data = json.loads(candidate)
+              except Exception:
+                  continue
+              if not isinstance(data, dict) or not isinstance(data.get("project_info"), dict):
+                  continue
+              info = data["project_info"]
+              if str(info.get("project_id", "")) != "kora-x-c5e62":
+                  continue
+              if str(info.get("project_number", "")) != "25280637301":
+                  continue
+              clients = data.get("client")
+              if not isinstance(clients, list) or not clients:
+                  continue
+              packages = [
+                  item.get("client_info", {}).get("android_client_info", {}).get("package_name")
+                  for item in clients if isinstance(item, dict)
+              ]
+              if "com.koora.app" not in packages:
+                  continue
+              web_clients = [
+                  oauth for item in clients if isinstance(item, dict)
+                  for oauth in item.get("oauth_client", []) if isinstance(oauth, dict)
+                  if str(oauth.get("client_type")) == "3"
+              ]
+              if not web_clients:
+                  continue
+              Path("app/google-services.json").write_text(candidate, encoding="utf-8")
+              sys.exit(0)
+
+          raise SystemExit("Secret must be valid base64 or raw google-services JSON for project kora-x-c5e62, package com.koora.app, with a Web OAuth client.")
+          PY
+          then
+            rm -f app/google-services.json
+            echo "FIREBASE_CONFIG_VALID=false" >> "$GITHUB_ENV"
+            echo "::warning::Firebase configuration is malformed or incomplete. Firebase features are disabled for this build."
+            exit 0
+          fi
+
+          echo "FIREBASE_CONFIG_VALID=true" >> "$GITHUB_ENV"
+          echo "Validated Firebase config for KORAX Android and Google OAuth."
+      - name: Configure Android release signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'korax-release' }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/korax-release.jks"
+            echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/korax-release.jks" >> "$GITHUB_ENV"
+            echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "Stable Android release signing key configured."
+          else
+            echo "Stable Android release signing key not supplied."
+          fi
+      - name: Validate release integration configuration
+        id: release_config
+        env:
+          KOORA_API_BASE_URL: ${{ secrets.KOORA_API_BASE_URL }}
+          FIREBASE_CONFIG_JSON_B64: ${{ secrets.FIREBASE_CONFIG_JSON_B64 }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ready=true
+          if [ -z "$KOORA_API_BASE_URL" ] || [[ "$KOORA_API_BASE_URL" != https://* ]]; then
+            echo "Release APK blocked: configure KOORA_API_BASE_URL with the deployed Cloudflare Worker HTTPS URL."
+            ready=false
+          fi
+          if [ "$FIREBASE_CONFIG_VALID" != "true" ]; then
+            echo "Release APK blocked: a valid Firebase JSON for com.koora.app with Web OAuth is required for Google sign-in and cloud fantasy sync."
+            ready=false
+          fi
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "Release APK blocked: configure all Android release signing secrets."
+            ready=false
+          fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+      - name: Run Android unit tests
+        run: gradle :app:testDebugUnitTest --stacktrace
       - name: Build optimized release APK
         run: gradle :app:assembleRelease --stacktrace -PKOORA_API_BASE_URL="${{ secrets.KOORA_API_BASE_URL }}"
+      - name: Print Android signing fingerprints for Firebase setup
+        run: gradle :app:signingReport --console=plain
       - name: Prepare public APK asset
+        if: steps.release_config.outputs.ready == 'true'
         run: |
           cp app/build/outputs/apk/release/app-release.apk KORAX-Android.apk
           file KORAX-Android.apk
       - name: Publish optimized APK as a GitHub prerelease
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.release_config.outputs.ready == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-release-${{ github.run_number }}
@@ -61,6 +177,7 @@ jobs:
           make_latest: false
           files: KORAX-Android.apk
       - name: Upload APK workflow artifact
+        if: steps.release_config.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: KORAX-optimized-apk

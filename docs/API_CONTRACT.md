@@ -1,60 +1,37 @@
-# KOORA backend API contract
+# KORAX backend API contract
 
-The Android client intentionally contains no sports-provider secret. Set KOORA_API_BASE_URL to the public HTTPS origin of a backend you control. That backend must own provider keys, enforce rate limits, cache data and return licensed data only.
+The Android client talks only to the KORAX HTTPS backend. The current public-source integration requires no third-party API keys. Set `KOORA_API_BASE_URL` to the deployed Worker origin; this is an endpoint address, not an API key.
 
-## News endpoint
+## News
 
-- GET /api/news?per_page=40
+- `GET /api/news?per_page=40`
+- Optional filters: `language=ar|en`, `category=transfers|premier-league|la-liga|serie-a|bundesliga|ligue-1|saudi|egypt|football`
 
-Returns Arabic football articles with `id`, `title`, `summary`, `url`, `source`, `publishedAt`, and optional `imageUrl`. It aggregates RSS sources and caches responses at the edge. Images are publisher-supplied and may be unavailable for some articles.
+Returns a mixed Arabic/English football-news feed with `id`, `title`, `summary`, `url`, `source`, `publishedAt`, `language`, `category`, and optional `imageUrl`. It aggregates publisher RSS feeds and caches at the edge for five minutes. Feed markup/entities are sanitized into plain text, image URLs are read from supported RSS media tags, and category classification avoids broad ambiguous keywords. Images may legitimately be absent when a publisher feed provides none. The original Youm7 sports RSS endpoint is retained; if it fails or returns no parseable items because of redirect loops, KORAX retries through the publisher-indexed alikhbariya.net Youm7 source feed and labels it as an aggregator mirror. Images are only included when supplied by the publisher feed; image availability and reuse rights are not guaranteed.
 
-## List endpoints
+## Football data
 
-All endpoints return either a JSON array or an object containing a data array.
+SportScore public REST endpoints are used without an API key on the attribution tier. See https://sportscore.com/developers/api/ for current endpoint schemas and terms.
 
-- GET /api/matches
-- GET /api/teams
-- GET /api/players
-- GET /api/competitions
+- `GET /api/matches?date=YYYY-MM-DD`
+- `GET /api/matches?live=1` (SportScore current match-summary widget; only active statuses are returned)
+- `GET /api/matches/{slug}`
+- `GET /api/competitions`
+- `GET /api/competitions/{slug}` (standings)
+- `GET /api/teams?search=name`, `GET /api/teams/{slug}`
+- `GET /api/players?search=name`, `GET /api/players/{slug}`
 
-## Detail endpoints
+The Android matches screen displays the required clickable “Powered by SportScore” attribution. The documented anonymous tier is approximately 10,000 requests per 24 hours per IP, subject to provider fair-use terms; KORAX caches upstream responses to reduce usage.
 
-- GET /api/matches/{id}
-- GET /api/teams/{id}
-- GET /api/players/{id}
-- GET /api/competitions/{id}
+## Fantasy limitations
 
-## Record fields
+- `GET /api/fantasy/players` collects the players returned by the league top-scorer and assist leaderboards for the English, Spanish, French, Italian, German and Saudi leagues.
+- SportScore does not document a full squad catalogue endpoint. This is therefore not a complete player market; some players or leagues may be missing.
+- The current returned points are a limited season aggregate derived from leaderboard statistics, not matchweek points.
+- No confirmed transfers endpoint is documented by SportScore. `GET /api/transfers` returns an empty data list with `meta.available=false`, rather than fabricated transfers.
 
-Common fields:
-- id (required stable string or number)
-- name or title
-- subtitle (optional)
-- imageUrl or logoUrl (optional HTTPS URL to official/licensed image)
+A complete 15-player market, locked gameweeks, live match-event scoring, automatic substitutions and official rankings require a provider/source with full squad and event-stat coverage plus a backend round engine. Do not advertise these as live features until implemented and verified.
 
-Match fields:
-- homeTeam and awayTeam (string or object with name and crest/logoUrl)
-- homeScore and awayScore (only when confirmed)
-- status
-- startTime or utcDate
-- competition (string or object with name)
+## Response integrity
 
-Player fields may include position and team. Team fields may include country and stadium. Competition fields may include country.
-
-The app never fabricates missing fields. If a score, image, lineup or event is unavailable, the UI says it is unavailable instead of using sample data.
-
-## Example shapes
-
-A match may look like:
-{
-  "id": "provider-match-id",
-  "homeTeam": { "name": "Club A", "crest": "https://licensed.example/club-a.png" },
-  "awayTeam": { "name": "Club B", "crest": "https://licensed.example/club-b.png" },
-  "homeScore": 1,
-  "awayScore": 0,
-  "status": "LIVE",
-  "startTime": "2026-11-19T18:00:00Z",
-  "competition": { "name": "Competition" }
-}
-
-The example is a schema illustration only, not real match data.
+The app does not fabricate match scores, player positions, images, or transfer details. Missing fields remain empty or unavailable. All article items retain the publisher name and original link. Do not republish full protected articles or assume that a feed image is licensed for redistribution.

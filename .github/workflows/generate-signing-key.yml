@@ -1,0 +1,68 @@
+name: KORAX Generate Release Signing Key
+
+on:
+  push:
+    branches: [ feature/korax-sportscore-rss-integration ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generate-signing-key:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate signing password secrets
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Add ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_PASSWORD in Settings > Secrets and variables > Actions, then run this workflow again."
+            exit 1
+          fi
+          if [ "$STORE_PASSWORD" = "$KEY_PASSWORD" ]; then
+            echo "::error::Use two different passwords for the keystore and key."
+            exit 1
+          fi
+
+      - name: Generate stable Android release keystore
+        env:
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p signing-output
+          keytool -genkeypair -v \
+            -keystore signing-output/korax-release.jks \
+            -storetype JKS \
+            -storepass:env STORE_PASSWORD \
+            -alias korax-release \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -keypass:env KEY_PASSWORD \
+            -dname "CN=KORAX, OU=Android, O=KORAX, L=Unknown, ST=Unknown, C=EG"
+          keytool -list -v \
+            -keystore signing-output/korax-release.jks \
+            -storepass:env STORE_PASSWORD \
+            -alias korax-release > signing-output/certificate-fingerprints.txt
+          cat > signing-output/SETUP.txt <<'EOF'
+          KORAX release signing key
+          Alias: korax-release
+          GitHub repository secrets required:
+          - ANDROID_KEYSTORE_PASSWORD: the keystore password you created in GitHub Secrets
+          - ANDROID_KEY_PASSWORD: the private key password you created in GitHub Secrets
+          - ANDROID_KEY_ALIAS: korax-release
+          - ANDROID_KEYSTORE_BASE64: base64-encode korax-release.jks locally before adding it as a GitHub secret
+          IMPORTANT: Keep korax-release.jks and its passwords backed up securely.
+          Never commit this keystore or its passwords to the repository.
+          EOF
+
+      - name: Upload signing materials (private workflow artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: KORAX-encrypted-signing-keystore
+          path: signing-output/
+          if-no-files-found: error
+          retention-days: 1
+
+# Trigger a fresh run after repository secrets are configured.

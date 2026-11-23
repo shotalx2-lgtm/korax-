@@ -40,6 +40,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.credentials.ClearCredentialStateRequest
+import androidx.credentials.CredentialManager
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -100,7 +110,7 @@ private fun KoraxSplash() {
     } else KoraxApp()
 }
 
-private data class NewsItem(val id: String, val title: String, val summary: String, val url: String, val source: String, val date: String, val image: String?)
+private data class NewsItem(val id: String, val title: String, val summary: String, val url: String, val source: String, val date: String, val image: String?, val category: String = "football")
 private data class TransferItem(val id: String, val player: String, val playerImage: String, val from: String, val fromLogo: String, val to: String, val toLogo: String, val type: String, val date: String, val amount: String, val completed: Boolean, val league: String)
 private data class MatchItem(val id: String, val home: String, val away: String, val homeLogo: String, val awayLogo: String, val score: String, val status: String, val kickoff: String, val league: String)
 
@@ -127,7 +137,8 @@ private suspend fun loadNews(): List<NewsItem> {
         val title = x.optString("title").trim()
         if (title.isBlank() || !url.startsWith("https://")) return@mapNotNull null
         NewsItem(x.optString("id", url), title, x.optString("summary"), url,
-            x.optString("source", "مصدر رياضي"), x.optString("publishedAt"), x.https("imageUrl").takeIf { it.isNotBlank() })
+            x.optString("source", "مصدر رياضي"), x.optString("publishedAt"),
+            x.https("imageUrl").takeIf { it.isNotBlank() }, x.optString("category", "football"))
     }.distinctBy { it.url }
 }
 
@@ -172,16 +183,25 @@ private fun matchesCategory(article: NewsItem, category: String): Boolean {
     fun has(vararg words: String) = words.any { text.contains(it.lowercase(Locale.ROOT)) }
     return when (category) {
         "الكل" -> true
-        "العربية" -> has("الدوري السعودي", "دوري روشن", "الدوري المصري", "الأهلي", "الزمالك", "الهلال", "النصر", "الاتحاد", "الترجي", "الوداد", "الكرة العربية")
-        "العالمية" -> !has("الدوري السعودي", "دوري روشن", "الدوري المصري", "الأهلي", "الزمالك", "الكرة العربية")
-        "الدوري الإنجليزي" -> has("الدوري الإنجليزي", "بريميرليغ", "premier league", "ليفربول", "مانشستر سيتي", "أرسنال", "تشيلسي", "توتنهام")
-        "الدوري الإسباني" -> has("الدوري الإسباني", "الليغا", "la liga", "ريال مدريد", "برشلونة", "أتلتيكو مدريد")
-        "الدوري الإيطالي" -> has("الدوري الإيطالي", "serie a", "إنتر ميلان", "يوفنتوس", "ميلان", "نابولي")
-        "الدوري الألماني" -> has("الدوري الألماني", "bundesliga", "بايرن ميونخ", "دورتموند")
-        "الدوري الفرنسي" -> has("الدوري الفرنسي", "ligue 1", "باريس سان جيرمان", "مارسيليا", "موناكو")
-        "الدوري السعودي" -> has("الدوري السعودي", "دوري روشن", "الهلال", "النصر", "الاتحاد", "الأهلي السعودي", "الشباب السعودي")
-        "الانتقالات" -> has("انتقال", "صفقة", "ميركاتو", "إعارة", "تجديد عقد", "مفاوضات", "ضم اللاعب")
-        "الإصابات" -> has("إصابة", "مصاب", "غياب", "إيقاف", "جاهزية", "عودة للتدريبات", "تأهيل")
+        "العربية" -> article.category in setOf("egypt", "saudi") ||
+            has("الدوري المغربي", "المغرب", "المغربي", "الترجي", "الوداد", "الرجاء", "الكرة العربية", "منتخب مصر", "منتخب المغرب", "منتخب الجزائر", "منتخب تونس", "منتخب العراق", "منتخب السعودية")
+        "العالمية" -> article.category !in setOf("egypt", "saudi") &&
+            !has("الدوري المغربي", "المغرب", "المغربي", "الترجي", "الوداد", "الرجاء", "الكرة العربية", "منتخب مصر", "منتخب المغرب", "منتخب الجزائر", "منتخب تونس", "منتخب العراق", "منتخب السعودية")
+        "الدوري الإنجليزي" -> article.category == "premier-league" ||
+            has("الدوري الإنجليزي", "بريميرليغ", "premier league", "ليفربول", "مانشستر سيتي", "أرسنال", "تشيلسي", "توتنهام")
+        "الدوري الإسباني" -> article.category == "la-liga" ||
+            has("الدوري الإسباني", "الليغا", "la liga", "ريال مدريد", "برشلونة", "أتلتيكو مدريد")
+        "الدوري الإيطالي" -> article.category == "serie-a" ||
+            has("الدوري الإيطالي", "serie a", "إنتر ميلان", "يوفنتوس", "ميلان", "نابولي")
+        "الدوري الألماني" -> article.category == "bundesliga" ||
+            has("الدوري الألماني", "bundesliga", "بايرن ميونخ", "دورتموند")
+        "الدوري الفرنسي" -> article.category == "ligue-1" ||
+            has("الدوري الفرنسي", "ligue 1", "باريس سان جيرمان", "مارسيليا", "موناكو")
+        "الدوري السعودي" -> article.category == "saudi" ||
+            has("الدوري السعودي", "دوري روشن", "الهلال السعودي", "النصر السعودي", "الاتحاد السعودي", "الأهلي السعودي", "الشباب السعودي", "saudi pro league", "al-hilal", "al-nassr", "al-ittihad", "al-ahli")
+        "الانتقالات" -> article.category == "transfers" ||
+            has("انتقال", "صفقة", "ميركاتو", "إعارة", "تجديد عقد", "مفاوضات", "ضم اللاعب")
+        "الإصابات" -> has("إصابة", "مصاب", "غياب", "إيقاف", "جاهزية", "عودة للتدريبات", "تأهيل", "injury", "injured", "suspended")
         "الفانتازي" -> has("فانتازي", "fantasy", "fantasy premier league", "الكابتن", "تشكيلة الجولة", "دبل جيم ويك", "وايلد كارد")
         else -> false
     }
@@ -533,8 +553,8 @@ private fun TransfersScreen() {
         }
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = KLime) }
-            error.isNotBlank() -> StateCard("الانتقالات غير متاحة", "$error\nيلزم نشر Worker وضبط SPORTMONKS_API_TOKEN وKOORA_API_BASE_URL.", "⇄")
-            shown.isEmpty() -> StateCard("لا توجد انتقالات مطابقة", "لا توجد سجلات من المصدر لهذا الاختيار حاليًا. لا نعرض صفقات تجريبية.", "⇄")
+            error.isNotBlank() -> StateCard("الانتقالات غير متاحة", "$error\nيلزم نشر Worker وضبط KOORA_API_BASE_URL فقط؛ لا يلزم مفتاح API للمصدر الحالي.", "⇄")
+            shown.isEmpty() -> StateCard("بيانات الانتقالات غير متاحة", "SportScore لا يوفر حاليًا مسارًا موثقًا للانتقالات المؤكدة. تابع أخبار الانتقالات في قسم الأخبار؛ لن نعرض صفقات غير مؤكدة كأنها رسمية.", "⇄")
             else -> LazyColumn(contentPadding = PaddingValues(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(shown, key = { it.id }) { item ->
                     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = KCard), border = BorderStroke(1.dp, KBorder)) {
@@ -574,6 +594,7 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     suspend fun refresh() {
         loading = true
         val result = runCatching { loadMatches(live, selectedDate) }
@@ -616,6 +637,184 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
                 }
             }
         }
+        Text(
+            "Powered by SportScore",
+            color = KMuted,
+            fontSize = 9.sp,
+            modifier = Modifier.align(Alignment.CenterHorizontally).clickable {
+                uriHandler.openUri("https://sportscore.com/")
+            }.padding(vertical = 7.dp)
+        )
+    }
+}
+
+
+@Composable
+private fun AccountCard() {
+    val context = LocalContext.current
+    val auth: FirebaseAuth? = remember {
+        if (FirebaseApp.getApps(context).isNotEmpty()) runCatching { FirebaseAuth.getInstance() }.getOrNull()
+        else null
+    }
+    var currentUser by remember(auth) { mutableStateOf(auth?.currentUser) }
+    var busy by remember { mutableStateOf(false) }
+    var feedback by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var creatingAccount by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    DisposableEffect(auth) {
+        if (auth != null) {
+            val listener = FirebaseAuth.AuthStateListener { currentUser = it.currentUser }
+            auth.addAuthStateListener(listener)
+            onDispose { auth.removeAuthStateListener(listener) }
+        } else onDispose { }
+    }
+
+    fun runEmailAuth(create: Boolean) {
+        val firebaseAuth = auth
+        if (firebaseAuth == null) {
+            feedback = "يلزم إعداد Firebase أولًا."
+            return
+        }
+        scope.launch {
+            busy = true
+            feedback = ""
+            runCatching {
+                val cleanEmail = email.trim()
+                check(cleanEmail.contains("@")) { "اكتب بريدًا إلكترونيًا صحيحًا." }
+                check(password.length >= 6) { "كلمة المرور يجب أن تكون 6 أحرف على الأقل." }
+                if (create) firebaseAuth.createUserWithEmailAndPassword(cleanEmail, password).await()
+                else firebaseAuth.signInWithEmailAndPassword(cleanEmail, password).await()
+            }.onSuccess {
+                feedback = if (create) "تم إنشاء الحساب وتسجيل الدخول." else "تم تسجيل الدخول بنجاح."
+            }.onFailure { error ->
+                feedback = error.localizedMessage ?: "تعذر إكمال تسجيل الدخول."
+            }
+            busy = false
+        }
+    }
+
+    fun runGoogleAuth() {
+        val firebaseAuth = auth
+        if (firebaseAuth == null) {
+            feedback = "يلزم إعداد Firebase أولًا."
+            return
+        }
+        scope.launch {
+            busy = true
+            feedback = ""
+            runCatching {
+                val clientIdResource = context.resources.getIdentifier(
+                    "default_web_client_id", "string", context.packageName
+                )
+                check(clientIdResource != 0) {
+                    "إعداد OAuth غير موجود. أضف google-services.json بعد تفعيل Google في Firebase."
+                }
+                val googleOption = GetGoogleIdOption.Builder()
+                    .setServerClientId(context.getString(clientIdResource))
+                    .setFilterByAuthorizedAccounts(false)
+                    .build()
+                val request = GetCredentialRequest.Builder()
+                    .addCredentialOption(googleOption)
+                    .build()
+                val result = CredentialManager.create(context).getCredential(context, request)
+                val credential = result.credential
+                check(
+                    credential is CustomCredential &&
+                        credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+                ) { "لم يتم استلام بيانات اعتماد Google صالحة." }
+                val googleToken = GoogleIdTokenCredential.createFrom(credential.data)
+                val firebaseCredential = GoogleAuthProvider.getCredential(googleToken.idToken, null)
+                firebaseAuth.signInWithCredential(firebaseCredential).await()
+            }.onSuccess {
+                feedback = "تم تسجيل الدخول بنجاح."
+            }.onFailure { error ->
+                feedback = error.localizedMessage ?: "تعذر تسجيل الدخول. تحقق من إعداد Firebase."
+            }
+            busy = false
+        }
+    }
+
+    Card(
+        Modifier.fillMaxWidth().padding(bottom = 10.dp),
+        shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(containerColor = KCard),
+        border = BorderStroke(1.dp, KBorder)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(15.dp)) {
+            Text("حساب KORAX", color = KText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(5.dp))
+            when {
+                currentUser != null -> {
+                    Text(currentUser?.displayName ?: currentUser?.email.orEmpty(), color = KLime, fontSize = 12.sp)
+                    Text(currentUser?.email.orEmpty(), color = KMuted, fontSize = 10.sp)
+                    Button(
+                        enabled = !busy,
+                        onClick = {
+                            scope.launch {
+                                busy = true
+                                auth?.signOut()
+                                runCatching {
+                                    CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
+                                }
+                                feedback = "تم تسجيل الخروج من حساب KORAX."
+                                busy = false
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = KCard2, contentColor = KText)
+                    ) { Text(if (busy) "جارٍ التنفيذ..." else "تسجيل الخروج") }
+                }
+                auth == null -> {
+                    Text(
+                        "تسجيل البريد وGoogle جاهز برمجيًا، لكن يلزم إضافة إعداد Firebase الخاص بتطبيق KORAX وتفعيل طريقتَي الدخول من لوحة Firebase.",
+                        color = KMuted, fontSize = 11.sp, lineHeight = 17.sp
+                    )
+                }
+                else -> {
+                    Text("سجّل الدخول لحفظ حسابك وربط بياناتك.", color = KMuted, fontSize = 11.sp)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = email, onValueChange = { email = it },
+                        label = { Text("البريد الإلكتروني") }, singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(7.dp))
+                    OutlinedTextField(
+                        value = password, onValueChange = { password = it },
+                        label = { Text("كلمة المرور") }, singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        enabled = !busy,
+                        onClick = { runEmailAuth(creatingAccount) },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = KLime, contentColor = Color.Black)
+                    ) {
+                        Text(if (busy) "جارٍ التنفيذ..." else if (creatingAccount) "إنشاء حساب بالبريد" else "تسجيل الدخول بالبريد")
+                    }
+                    TextButton(
+                        enabled = !busy,
+                        onClick = { creatingAccount = !creatingAccount; feedback = "" },
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
+                        Text(if (creatingAccount) "لديك حساب؟ سجّل الدخول" else "ليس لديك حساب؟ أنشئ حسابًا")
+                    }
+                    Button(
+                        enabled = !busy,
+                        onClick = { runGoogleAuth() },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = KCard2, contentColor = KText)
+                    ) { Text(if (busy) "جارٍ تسجيل الدخول..." else "تسجيل الدخول باستخدام Google") }
+                }
+            }
+            if (feedback.isNotBlank()) {
+                Text(feedback, color = if (currentUser != null) KLime else KMuted, fontSize = 10.sp)
+            }
+        }
     }
 }
 
@@ -624,6 +823,7 @@ private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: (
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         KoraxHeader("المزيد", "إعدادات وتجربتك في KORAX")
         Column(Modifier.padding(horizontal = 14.dp)) {
+            AccountCard()
             MoreRow("الأخبار", "العودة إلى مركز الأخبار", "⌂", home)
             MoreRow("المفضلة", "الأندية واللاعبون الذين تتابعهم", "♡", favorites)
             MoreRow("الإشعارات", "مركز تنبيهات المباريات والأخبار", "♧", notifications)

@@ -34,6 +34,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.tasks.await
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,13 +62,27 @@ private val FxText = Color(0xFFF4F6FA)
 private val FxMuted = Color(0xFF9AA5B5)
 private val FxGreen = Color(0xFFD5FF00)
 
+private val RequiredFantasyLeagues = listOf(
+    "الدوري الإنجليزي", "الدوري الإسباني", "الدوري الفرنسي",
+    "الدوري الإيطالي", "الدوري الألماني", "الدوري السعودي"
+)
+
+private fun fantasyCoverageSummary(players: List<FantasyPlayer>): String {
+    val available = players.map { it.league }.filter { it.isNotBlank() }.distinct()
+    val missing = RequiredFantasyLeagues.filterNot { it in available }
+    return if (missing.isEmpty()) "تم تحميل بيانات الهدافين وصانعي الأهداف من الدوريات الستة فقط؛ سوق اللاعبين الكامل واحتساب نقاط الجولة المباشرة غير متاحين من المصدر الحالي."
+    else "بيانات الهدافين وصانعي الأهداف غير متاحة لهذه الدوريات: " + missing.joinToString("، ") + ". كما أن المصدر لا يوفر سوقًا كاملًا لكل اللاعبين."
+}
+
 private data class FantasyPlayer(
     val id: String,
     val name: String,
     val club: String,
     val position: String,
     val price: Double,
-    val points: Int
+    val points: Int,
+    val imageUrl: String? = null,
+    val league: String = ""
 )
 
 private data class FantasyState(
@@ -85,7 +107,10 @@ private class FantasyLocalStore(context: Context) {
 
     fun load(): FantasyState {
         val raw = prefs.getString("state", null) ?: return FantasyState()
-        return runCatching {
+        return decode(raw)
+    }
+
+    fun decode(raw: String): FantasyState = runCatching {
             val root = JSONObject(raw)
             val playersJson = root.optJSONArray("catalogue") ?: JSONArray()
             val players = (0 until playersJson.length()).mapNotNull { index ->
@@ -96,7 +121,9 @@ private class FantasyLocalStore(context: Context) {
                     club = item.optString("club"),
                     position = item.optString("position"),
                     price = item.optDouble("price"),
-                    points = item.optInt("points")
+                    points = item.optInt("points"),
+                    imageUrl = item.optString("imageUrl").takeIf { it.startsWith("https://") },
+                    league = item.optString("league")
                 ).takeIf { it.id.isNotBlank() && it.name.isNotBlank() }
             }
             val ownedJson = root.optJSONArray("owned") ?: JSONArray()
@@ -114,13 +141,37 @@ private class FantasyLocalStore(context: Context) {
                 transferLog = log
             )
         }.getOrDefault(FantasyState())
+
+    fun importRaw(raw: String) {
+        runCatching { JSONObject(raw) }.onSuccess {
+            prefs.edit().putString("state", raw).apply()
+        }
+    }
+
+    fun exportRaw(): String? = prefs.getString("state", null)
+
+    fun exportCloudState(state: FantasyState): String {
+        val owned = JSONArray()
+        state.ownedIds.forEach { owned.put(it) }
+        val log = JSONArray()
+        state.transferLog.forEach { log.put(it) }
+        return JSONObject()
+            .put("owned", owned)
+            .put("budget", state.budget)
+            .put("teamName", state.teamName)
+            .put("formation", state.formation)
+            .put("captainId", state.captainId)
+            .put("viceId", state.viceId)
+            .put("log", log)
+            .toString()
     }
 
     fun save(state: FantasyState) {
         val players = JSONArray()
         state.catalogue.forEach { p ->
             players.put(JSONObject().put("id", p.id).put("name", p.name).put("club", p.club)
-                .put("position", p.position).put("price", p.price).put("points", p.points))
+                .put("position", p.position).put("price", p.price).put("points", p.points)
+                .put("imageUrl", p.imageUrl ?: "").put("league", p.league))
         }
         val owned = JSONArray()
         state.ownedIds.forEach { owned.put(it) }
@@ -142,7 +193,7 @@ private class FantasyLocalStore(context: Context) {
 private suspend fun loadFantasyPlayersFromApi(): List<FantasyPlayer> = withContext(Dispatchers.IO) {
     val base = BuildConfig.KOORA_API_BASE_URL.trim().trimEnd('/')
     require(base.startsWith("https://")) { "مصدر البيانات غير مربوط بعد." }
-    val connection = (URL(base + "/api/players?per_page=50&page=1").openConnection() as HttpURLConnection).apply {
+    val connection = (URL(base + "/api/fantasy/players").openConnection() as HttpURLConnection).apply {
         connectTimeout = 8000
         readTimeout = 10000
         setRequestProperty("Accept", "application/json")
@@ -168,10 +219,12 @@ private suspend fun loadFantasyPlayersFromApi(): List<FantasyPlayer> = withConte
                 else -> return@mapNotNull null
             }
             val teamValue = item.opt("team")
-            val club = when (teamValue) {
-                is JSONObject -> teamValue.optString("name")
-                is String -> teamValue
-                else -> ""
+            val club = item.optString("club").ifBlank {
+                when (teamValue) {
+                    is JSONObject -> teamValue.optString("name")
+                    is String -> teamValue
+                    else -> ""
+                }
             }.ifBlank { item.optString("teamName", "نادي غير محدد") }
             if (id.isBlank() || name.isBlank()) return@mapNotNull null
             val initialPrice = when (position) {
@@ -185,10 +238,12 @@ private suspend fun loadFantasyPlayersFromApi(): List<FantasyPlayer> = withConte
                 name = name,
                 club = club,
                 position = position,
-                price = initialPrice,
-                points = item.optInt("fantasyPoints", 0)
+                price = item.optDouble("price", initialPrice),
+                points = item.optInt("points", item.optInt("fantasyPoints", 0)),
+                imageUrl = item.optString("imageUrl").takeIf { it.startsWith("https://") },
+                league = item.optString("league")
             )
-        }.distinctBy { it.id }.take(50)
+        }.distinctBy { it.id }
     } finally {
         connection.disconnect()
     }
@@ -196,8 +251,15 @@ private suspend fun loadFantasyPlayersFromApi(): List<FantasyPlayer> = withConte
 
 @Composable
 fun FantasyScreen() {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val store = remember { FantasyLocalStore(context) }
+    val firebaseConfigured = remember { FirebaseApp.getApps(context).isNotEmpty() }
+    val auth: FirebaseAuth? = remember(firebaseConfigured) {
+        if (firebaseConfigured) runCatching { FirebaseAuth.getInstance() }.getOrNull() else null
+    }
+    var signedInUid by remember(auth) { mutableStateOf(auth?.currentUser?.uid) }
+    var cloudReady by remember { mutableStateOf(false) }
     var state by remember { mutableStateOf(store.load()) }
     var section by remember { mutableStateOf("team") }
     var query by remember { mutableStateOf("") }
@@ -211,6 +273,56 @@ fun FantasyScreen() {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val apiConfigured = BuildConfig.KOORA_API_BASE_URL.trim().startsWith("https://")
 
+    DisposableEffect(auth) {
+        if (auth != null) {
+            val listener = FirebaseAuth.AuthStateListener { signedInUid = it.currentUser?.uid }
+            auth.addAuthStateListener(listener)
+            onDispose { auth.removeAuthStateListener(listener) }
+        } else onDispose { }
+    }
+
+    LaunchedEffect(signedInUid) {
+        cloudReady = false
+        val uid = signedInUid
+        if (!firebaseConfigured || uid.isNullOrBlank()) return@LaunchedEffect
+        runCatching {
+            val document = FirebaseFirestore.getInstance()
+                .collection("fantasyTeams").document(uid).get().await()
+            val cloudJson = document.getString("stateJson")
+            if (!cloudJson.isNullOrBlank()) {
+                state = store.decode(cloudJson).copy(catalogue = state.catalogue)
+                store.save(state)
+                message = "تمت استعادة تشكيلتك من حسابك."
+            } else {
+                val localJson = store.exportCloudState(state)
+                if (localJson.isNotBlank()) {
+                    FirebaseFirestore.getInstance().collection("fantasyTeams").document(uid)
+                        .set(mapOf("stateJson" to localJson, "updatedAt" to FieldValue.serverTimestamp())).await()
+                }
+            }
+        }.onFailure {
+            message = "تعذر تحميل الحفظ السحابي: " + (it.localizedMessage ?: "تحقق من إعداد Firestore وقواعد الأمان.")
+        }
+        cloudReady = true
+    }
+
+    LaunchedEffect(state, signedInUid, cloudReady) {
+        val uid = signedInUid
+        if (!cloudReady || uid.isNullOrBlank()) return@LaunchedEffect
+        delay(700)
+        runCatching {
+            FirebaseFirestore.getInstance().collection("fantasyTeams").document(uid)
+                .set(
+                    mapOf(
+                        "stateJson" to store.exportCloudState(state),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+        }.onFailure {
+            message = "تعذر مزامنة الفريق: " + (it.localizedMessage ?: "تحقق من اتصال الإنترنت.")
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(apiConfigured) {
         if (apiConfigured && state.catalogue.isEmpty()) {
             importing = true
@@ -220,7 +332,7 @@ fun FantasyScreen() {
                 val next = state.copy(catalogue = fetched)
                 state = next
                 store.save(next)
-                message = "تم تحميل " + fetched.size + " لاعبًا من مصدر البيانات."
+                message = "تم تحميل " + fetched.size + " لاعبًا. " + fantasyCoverageSummary(fetched)
             } else if (result.isFailure) {
                 message = result.exceptionOrNull()?.message ?: "تعذر تحميل سوق اللاعبين."
             }
@@ -254,7 +366,7 @@ fun FantasyScreen() {
                 Text("إدارة فريقك ومنافستك", color = FxMuted, fontSize = 12.sp)
             }
             Surface(color = FxPanel2, shape = RoundedCornerShape(12.dp)) {
-                Text("محلي", color = FxGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                Text(if (signedInUid != null && cloudReady) "سحابي" else "محلي", color = FxGreen, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
             }
         }
@@ -273,7 +385,7 @@ fun FantasyScreen() {
                 }
                 Spacer(Modifier.height(12.dp))
                 Text("المجموعة: ${owned.size}/15 لاعبًا", color = FxMuted, fontSize = 12.sp)
-                Text("أسماء اللاعبين تأتي من مزود البيانات عند ربطه. الأسعار الافتراضية خاصة بلعبة KORAX، والنقاط الرسمية تحتاج إحصائيات الجولات.", color = FxMuted, fontSize = 10.sp)
+                Text("اللاعبون وإحصائيات الموسم تُجلب من مزود البيانات للدوريات الستة. الأسعار الابتدائية وقواعد نقاط الموسم خاصة بلعبة KORAX.", color = FxMuted, fontSize = 10.sp)
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -284,7 +396,7 @@ fun FantasyScreen() {
         ) {
             Column(Modifier.fillMaxWidth().padding(14.dp)) {
                 Text("استيراد اللاعبين الحقيقيين", color = FxText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text("يتم جلب الأسماء والأندية والمراكز من مصدر البيانات المتصل. الأسعار الحالية قيم ابتدائية داخل لعبة KORAX وليست أسعارًا رسمية، والنقاط تبدأ من صفر حتى ربط إحصائيات الجولات.", color = FxMuted, fontSize = 10.sp, lineHeight = 16.sp)
+                Text("يتم تحميل لاعبي الدوريات الستة مع صورهم وإحصائيات الموسم. الأسعار الأساسية وقواعد احتساب نقاط الموسم محددة داخل KORAX وليست أسعارًا رسمية من المزود.", color = FxMuted, fontSize = 10.sp, lineHeight = 16.sp)
                 Spacer(Modifier.height(8.dp))
                 Button(
                     enabled = apiConfigured && !importing,
@@ -294,13 +406,21 @@ fun FantasyScreen() {
                             message = "جارٍ تحميل اللاعبين من المصدر..."
                             val result = runCatching { loadFantasyPlayersFromApi() }
                             result.onSuccess { fetched ->
-                                val existing = state.catalogue.map { it.id }.toSet()
-                                val added = fetched.filter { it.id !in existing }
                                 if (fetched.isEmpty()) {
                                     message = "المصدر لم يُرجع لاعبين متاحين. تحقق من اشتراك مزود البيانات."
                                 } else {
-                                    commit(state.copy(catalogue = state.catalogue + added))
-                                    message = if (added.isEmpty()) "قائمة اللاعبين محدثة بالفعل." else "تم استيراد " + added.size + " لاعبًا حقيقيًا إلى السوق."
+                                    val existingById = state.catalogue.associateBy { it.id }
+                                    val refreshed = fetched.map { fresh ->
+                                        val previous = existingById[fresh.id]
+                                        if (previous == null) fresh else fresh.copy(
+                                            price = previous.price,
+                                            points = previous.points
+                                        )
+                                    }
+                                    val refreshedIds = refreshed.map { it.id }.toSet()
+                                    val retained = state.catalogue.filter { it.id !in refreshedIds }
+                                    commit(state.copy(catalogue = retained + refreshed))
+                                    message = "تم تحديث بيانات " + refreshed.size + " لاعبًا مع الاحتفاظ بأسعارك. " + fantasyCoverageSummary(refreshed)
                                     section = "market"
                                 }
                             }.onFailure { error ->
@@ -343,20 +463,21 @@ fun FantasyScreen() {
                 } else {
                     remaining.forEach { player ->
                         PlayerCard(player, owned = false, onAction = {
-                            val positionLimit = mapOf("GK" to 2, "DEF" to 5, "MID" to 5, "FWD" to 3).getValue(player.position)
-                            when {
-                                owned.size >= 15 -> message = "اكتمل الفريق: لا يمكن تجاوز 15 لاعبًا."
-                                state.count(player.position) >= positionLimit -> message = "اكتمل العدد المسموح لمركز ${positionLabel(player.position)}."
-                                owned.count { it.club.equals(player.club, true) } >= 3 -> message = "الحد الأقصى ثلاثة لاعبين من النادي الواحد."
-                                player.price > state.budget -> message = "الميزانية المتبقية لا تكفي."
-                                else -> {
-                                    commit(state.copy(
-                                        ownedIds = state.ownedIds + player.id,
-                                        budget = state.budget - player.price,
-                                        transferLog = (listOf("شراء: ${player.name}") + state.transferLog).take(50)
-                                    ))
-                                    message = "تم شراء ${player.name} وحفظ العملية على الجهاز."
-                                }
+                            val candidate = FantasyRulePlayer(player.id, player.club, player.position, player.price, player.points)
+                            val validation = FantasyRules.validateAdd(
+                                owned.map { FantasyRulePlayer(it.id, it.club, it.position, it.price, it.points) },
+                                candidate,
+                                state.budget
+                            )
+                            if (!validation.allowed) {
+                                message = validation.reason
+                            } else {
+                                commit(state.copy(
+                                    ownedIds = state.ownedIds + player.id,
+                                    budget = state.budget - player.price,
+                                    transferLog = (listOf("شراء: ${player.name}") + state.transferLog).take(50)
+                                ))
+                                message = "تم شراء ${player.name} وحفظ العملية على الجهاز."
                             }
                         }, actionLabel = "شراء")
                     }
@@ -413,7 +534,13 @@ fun FantasyScreen() {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         row.forEach { formation ->
                             FilterChip(selected = state.formation == formation,
-                                onClick = { commit(state.copy(formation = formation)); message = "تم حفظ خطة $formation." },
+                                onClick = {
+                                val validation = FantasyRules.validateFormation(formation)
+                                if (validation.allowed) {
+                                    commit(state.copy(formation = formation))
+                                    message = "تم حفظ خطة $formation."
+                                } else message = validation.reason
+                            },
                                 label = { Text(formation) })
                         }
                     }
@@ -438,7 +565,7 @@ fun FantasyScreen() {
             }
             "points" -> {
                 Text("نظام النقاط", color = FxText, fontWeight = FontWeight.Bold, fontSize = 19.sp)
-                Text("النقاط الحالية مدخلة يدويًا في بطاقة كل لاعب أثناء إضافته للسوق، وليست نتائج مباشرة من جهة رسمية.", color = FxMuted, fontSize = 11.sp)
+                Text("نقاط الموسم محسوبة تلقائيًا من إحصائيات اللاعبين المتاحة لدى مزود البيانات وفق قواعد KORAX.", color = FxMuted, fontSize = 11.sp)
                 Spacer(Modifier.height(10.dp))
                 owned.forEach { player ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -448,13 +575,11 @@ fun FantasyScreen() {
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text(player.points.toString() + " نقطة", color = FxGold, fontWeight = FontWeight.Bold)
-                            Text("−1", color = FxMuted, modifier = Modifier.clickable { adjustPoints(player, -1) }.padding(5.dp))
-                            Text("+1", color = FxGreen, modifier = Modifier.clickable { adjustPoints(player, 1) }.padding(5.dp))
                         }
                     }
                 }
                 if (owned.isNotEmpty()) {
-                    InfoPanel("مجموع الفريق: ${state.points()} نقطة", "يحصل القائد على مضاعفة نقاطه في الحساب المحلي. لم يتم توصيل محرك اعتماد نقاط رسمي أو جولات مباشرة.")
+                    InfoPanel("مجموع الفريق: ${state.points()} نقطة", "هذه نقاط الموسم من إحصائيات المزود وفق نظام KORAX. مضاعفة القائد تُطبق على مجموع النقاط المعروض.")
                 }
                 if (owned.isEmpty()) InfoPanel("لا توجد نقاط بعد", "أضف لاعبين إلى السوق ثم اشترِ تشكيلتك.")
             }
@@ -496,6 +621,14 @@ fun FantasyScreen() {
                 InfoPanel("قواعد التشكيلة الافتراضية", "15 لاعبًا: حارسا مرمى، 5 مدافعين، 5 وسط، 3 مهاجمين. الميزانية 100 مليون، والحد الأقصى 3 لاعبين من النادي الواحد.")
             }
         }
+        Text(
+            "Powered by SportScore",
+            color = FxMuted,
+            fontSize = 9.sp,
+            modifier = Modifier.align(Alignment.CenterHorizontally).clickable {
+                uriHandler.openUri("https://sportscore.com/")
+            }.padding(vertical = 7.dp)
+        )
         Spacer(Modifier.height(20.dp))
     }
 }
@@ -517,10 +650,19 @@ private fun PlayerCard(player: FantasyPlayer, owned: Boolean, onAction: () -> Un
         border = BorderStroke(1.dp, Color(0xFF303A49))
     ) {
         Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (!player.imageUrl.isNullOrBlank()) {
+                coil.compose.AsyncImage(
+                    model = player.imageUrl,
+                    contentDescription = player.name,
+                    modifier = Modifier.width(48.dp).height(56.dp).padding(end = 7.dp),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
+            }
             Column(Modifier.weight(1f)) {
                 Text(player.name, color = FxText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 Text("${player.club} • ${positionLabel(player.position)}", color = FxMuted, fontSize = 10.sp)
-                Text(String.format("%.1f مليون", player.price) + " • ${player.points} نقطة مدخلة", color = FxGold, fontSize = 10.sp)
+                if (player.league.isNotBlank()) Text(player.league, color = FxMuted, fontSize = 9.sp)
+                Text(String.format("%.1f مليون", player.price) + " • ${player.points} نقطة موسم", color = FxGold, fontSize = 10.sp)
             }
             Button(onClick = onAction, colors = ButtonDefaults.buttonColors(containerColor = if (owned) FxPanel2 else FxGold, contentColor = if (owned) FxText else Color.Black)) {
                 Text(actionLabel)
