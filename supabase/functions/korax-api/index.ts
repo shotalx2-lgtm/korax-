@@ -1014,7 +1014,9 @@ async function route(request, env) {
       },
       source: "sportscore-supabase-cache", updatedAt: new Date().toISOString(),
     });
-  }  const match = path.match(/^\/api\/matches\/([A-Za-z0-9_-]+)$/);
+  }
+
+  const match = path.match(/^\/api\/matches\/([A-Za-z0-9_-]+)$/);
   if (match) {
     const slug = encodeURIComponent(match[1]);
     const rows = await dbRows("/rest/v1/korax_sportscore_matches?select=*&match_slug=eq." + slug + "&limit=1");
@@ -1083,7 +1085,9 @@ async function route(request, env) {
       return json({ data: fallback, source: "sportscore-search", meta: { count: fallback.length, query: search } });
     }
     return json({ data, source: "sportscore-competition-index" });
-  }  const competition = path.match(/^\/api\/competitions\/([A-Za-z0-9_-]+)$/);
+  }
+
+  const competition = path.match(/^\/api\/competitions\/([A-Za-z0-9_-]+)$/);
   if (competition) {
     const slug = encodeURIComponent(competition[1]);
     const rows = await dbRows("/rest/v1/korax_sportscore_competitions?select=slug,name,country,standings,updated_at&slug=eq." + slug + "&limit=1");
