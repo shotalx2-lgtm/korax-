@@ -26,10 +26,10 @@ jobs:
           npm run check
           npm test
 
-      - name: Smoke-test deployed KORAX Worker (diagnostic while Worker publish access is pending)
+      - name: Smoke-test configured KORAX API endpoint (diagnostic)
         continue-on-error: true
         env:
-          KOORA_API_BASE_URL: ${{ secrets.KOORA_API_BASE_URL || 'https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-api' }}
+          KOORA_API_BASE_URL: https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-api
         run: |
           set -euo pipefail
           base="${KOORA_API_BASE_URL%/}"
@@ -207,7 +207,7 @@ jobs:
       - name: Validate release integration configuration
         id: release_config
         env:
-          KOORA_API_BASE_URL: ${{ secrets.KOORA_API_BASE_URL || 'https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-api' }}
+          KOORA_API_BASE_URL: https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-api
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -226,7 +226,7 @@ jobs:
       - name: Run Android unit tests
         run: gradle :app:testDebugUnitTest --stacktrace
       - name: Build optimized release APK
-        run: gradle :app:assembleRelease --stacktrace -PKOORA_API_BASE_URL="${{ secrets.KOORA_API_BASE_URL || 'https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-api' }}"
+        run: gradle :app:assembleRelease --stacktrace -PKOORA_API_BASE_URL="https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-api"
       - name: Prepare test APK asset
         run: |
           cp app/build/outputs/apk/release/app-release.apk KORAX-Android.apk
