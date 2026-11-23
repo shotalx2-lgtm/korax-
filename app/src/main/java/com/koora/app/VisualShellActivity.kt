@@ -147,7 +147,7 @@ private fun KoraxSplash() {
 
 internal data class NewsItem(val id: String, val title: String, val summary: String, val url: String, val source: String, val date: String, val image: String?, val category: String = "football")
 private data class TransferItem(val id: String, val player: String, val playerImage: String, val from: String, val fromLogo: String, val to: String, val toLogo: String, val type: String, val date: String, val amount: String, val completed: Boolean, val league: String)
-private data class MatchItem(val id: String, val home: String, val away: String, val homeLogo: String, val awayLogo: String, val score: String, val status: String, val kickoff: String, val league: String)
+private data class MatchItem(val id: String, val home: String, val away: String, val homeLogo: String, val awayLogo: String, val score: String, val status: String, val kickoff: String, val league: String, val detailsAvailable: Boolean)
 
 private fun apiBase() = BuildConfig.KOORA_API_BASE_URL.trim().trimEnd('/')
 internal suspend fun apiJson(path: String): JSONObject = withContext(Dispatchers.IO) {
@@ -256,14 +256,16 @@ private suspend fun loadMatches(live: Boolean, selectedDate: String): List<Match
         val hs = x.opt("homeScore"); val ascore = x.opt("awayScore")
         val score = if (hs != null && ascore != null && hs != JSONObject.NULL && ascore != JSONObject.NULL) "$hs - $ascore" else "VS"
         // Avoid duplicate empty keys when a provider fixture omits its stable ID.
-        val fixtureId = x.optString("id").takeIf { it.isNotBlank() } ?: listOf(
+        val stableMatchId = x.optString("id").takeIf { it.isNotBlank() }
+        val fixtureId = stableMatchId ?: listOf(
             home, away, x.optString("startTime"), x.optString("competitionName")
         ).filter { it.isNotBlank() }.joinToString("|").ifBlank { "match-$i" }
         MatchItem(fixtureId, home, away,
             h?.https("crest").orEmpty().ifBlank { h?.https("logoUrl").orEmpty() },
             a?.https("crest").orEmpty().ifBlank { a?.https("logoUrl").orEmpty() },
             score, localizeMatchStatus(x.optString("status", "غير متاحة")), x.optString("startTime"),
-            x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") })
+            x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") },
+            detailsAvailable = stableMatchId != null)
     }.distinctBy { it.id }
 }
 
@@ -818,6 +820,7 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatc
     var matches by remember { mutableStateOf<List<MatchItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
+    var selectedSummary by remember { mutableStateOf<MatchItem?>(null) }
     val scope = rememberCoroutineScope()
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     suspend fun refresh() {
@@ -858,7 +861,7 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatc
             }
             else -> LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(matches, key = { it.id }) { match ->
-                    Card(Modifier.fillMaxWidth().clickable { onOpenMatch(match.id) }, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = KCard), border = BorderStroke(1.dp, KBorder)) {
+                    Card(Modifier.fillMaxWidth().clickable { if (match.detailsAvailable) onOpenMatch(match.id) else selectedSummary = match }, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = KCard), border = BorderStroke(1.dp, KBorder)) {
                         Column(Modifier.padding(11.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(match.league.ifBlank { "بطولة" }, color = KLime, fontSize = 10.sp, modifier = Modifier.weight(1f))
@@ -889,6 +892,23 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatc
             modifier = Modifier.align(Alignment.CenterHorizontally).clickable {
                 uriHandler.openUri("https://sportscore.com/")
             }.padding(vertical = 7.dp)
+        )
+    }
+    selectedSummary?.let { match ->
+        AlertDialog(
+            onDismissRequest = { selectedSummary = null },
+            title = { Text(match.home + " × " + match.away, color = KText, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("النتيجة: " + match.score, color = KLime, fontWeight = FontWeight.Bold)
+                    Text("الحالة: " + match.status, color = KMuted, fontSize = 11.sp)
+                    Text("الموعد: " + displayKickoff(match.kickoff), color = KMuted, fontSize = 11.sp)
+                    Text("البطولة: " + match.league.ifBlank { "غير متاحة" }, color = KMuted, fontSize = 11.sp)
+                    Text("لم يصل معرّف التفاصيل من الخادم لهذه المباراة بعد. لا نفتح رابطًا غير صحيح.", color = KMuted, fontSize = 10.sp)
+                }
+            },
+            confirmButton = { TextButton(onClick = { selectedSummary = null }) { Text("إغلاق", color = KLime) } },
+            containerColor = KCard
         )
     }
 }
