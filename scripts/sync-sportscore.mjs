@@ -23,8 +23,15 @@ function listOf(value) {
 
 function slugOf(match) {
   const url = String(match?.url || match?.match_url || match?.href || "");
-  return String(match?.slug || match?.match_slug || match?.fixture_slug ||
-    url.match(/\/match\/[^/]+\/([A-Za-z0-9_-]+)\/?(?:[?#].*)?$/i)?.[1] || "");
+  return String(match?.match_slug || match?.fixture_slug ||
+    url.match(/\/match\/[^/]+\/([A-Za-z0-9_-]+)\/?(?:[?#].*)?$/i)?.[1] || match?.slug || "");
+}
+
+function detailSlugOf(match) {
+  const url = String(match?.url || match?.match_url || match?.href || "");
+  return String(match?.detail_slug ||
+    url.match(/\/match\/([^/]+)\/[A-Za-z0-9_-]+\/?(?:[?#].*)?$/i)?.[1] ||
+    match?.slug || slugOf(match));
 }
 
 async function mapLimit(items, concurrency, callback) {
@@ -115,7 +122,7 @@ async function main() {
       const slug = slugOf(match);
       return {
         slug,
-        detail: await sportJson(SPORTScore_BASE + "/api/widget/match/?sport=football&slug=" + encodeURIComponent(slug)),
+        detail: await sportJson(SPORTScore_BASE + "/api/widget/match/?sport=football&slug=" + encodeURIComponent(detailSlugOf(match))),
       };
     });
     details = detailResults.filter(result => result && !result.error && result.slug && result.detail);
@@ -125,13 +132,13 @@ async function main() {
 
   if (standingsSync) {
     const targets = [
-      { slug: "jednm9whz0ryox8", name: "الدوري الإنجليزي", country: "إنجلترا" },
-      { slug: "vl7oqdehlyr510j", name: "الدوري الإسباني", country: "إسبانيا" },
-      { slug: "yl5ergphnzr8k0o", name: "الدوري الفرنسي", country: "فرنسا" },
-      { slug: "4zp5rzghp5q82w1", name: "الدوري الإيطالي", country: "إيطاليا" },
-      { slug: "gy0or5jhg6qwzv3", name: "الدوري الألماني", country: "ألمانيا" },
+      { slug: "premier-league", name: "الدوري الإنجليزي", country: "إنجلترا" },
+      { slug: "la-liga", name: "الدوري الإسباني", country: "إسبانيا" },
+      { slug: "ligue-1", name: "الدوري الفرنسي", country: "فرنسا" },
+      { slug: "serie-a", name: "الدوري الإيطالي", country: "إيطاليا" },
+      { slug: "bundesliga", name: "الدوري الألماني", country: "ألمانيا" },
       { slug: "saudi-pro-league", name: "الدوري السعودي", country: "السعودية" },
-      { slug: "z8yomo4h7wq0j6l", name: "دوري أبطال أوروبا", country: "أوروبا" },
+      { slug: "uefa-champions-league", name: "دوري أبطال أوروبا", country: "أوروبا" },
     ];
     const results = await mapLimit(targets, 3, async target => ({
       ...target,
