@@ -168,6 +168,70 @@ jobs:
         run: gradle :app:testDebugUnitTest --stacktrace
       - name: Build optimized release APK
         run: gradle :app:assembleRelease --stacktrace -PKOORA_API_BASE_URL="${{ secrets.KOORA_API_BASE_URL || 'https://korax.shotalx2.workers.dev' }}"
+      - name: Smoke-test deployed KORAX Worker
+        env:
+          KOORA_API_BASE_URL: ${{ secrets.KOORA_API_BASE_URL || 'https://korax.shotalx2.workers.dev' }}
+        run: |
+          set -euo pipefail
+          base="${KOORA_API_BASE_URL%/}"
+
+          health="$(curl --silent --show-error --fail --retry 18 --retry-all-errors --retry-delay 5 --max-time 20 "$base/health")"
+          printf '%s' "$health" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              if (value.ok !== true || value.service !== "KORAX API") {
+                throw new Error("Unexpected production Worker health response: " + raw);
+              }
+              console.log("KORAX Worker health passed:", value.service);
+            });
+          '
+
+          competitions="$(curl --silent --show-error --fail --max-time 25 "$base/api/competitions")"
+          printf '%s' "$competitions" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              if (!Array.isArray(value.data) || value.data.length === 0) {
+                throw new Error("Competition API returned no usable data: " + raw);
+              }
+              console.log("Competitions endpoint passed:", value.data.length, "items");
+            });
+          '
+
+          news="$(curl --silent --show-error --fail --max-time 60 "$base/api/news?per_page=5")"
+          printf '%s' "$news" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              if (value.source !== "publisher-rss" || !Array.isArray(value.data)) {
+                throw new Error("News API response does not match the KORAX contract: " + raw);
+              }
+              console.log("News endpoint passed:", value.data.length, "articles returned");
+              if (value.data.length === 0) {
+                console.warn("Warning: RSS sources returned no articles in this check.");
+              }
+            });
+          '
+
+          if matches="$(curl --silent --show-error --fail --max-time 35 "$base/api/matches?live=1")"; then
+            printf '%s' "$matches" | node -e '
+              let raw = "";
+              process.stdin.on("data", chunk => raw += chunk);
+              process.stdin.on("end", () => {
+                const value = JSON.parse(raw);
+                if (!Array.isArray(value.data)) {
+                  throw new Error("Live matches API response is malformed: " + raw);
+                }
+                console.log("Live matches endpoint responded:", value.data.length, "live matches");
+              });
+            '
+          else
+            echo "::warning::Live matches endpoint is reachable only when the upstream SportScore service is available; inspect the Worker logs if this continues."
+          fi
       - name: Print Android signing fingerprints for Firebase setup
         run: gradle :app:signingReport --console=plain
       - name: Prepare public APK asset
