@@ -139,6 +139,8 @@ private suspend fun searchFavoriteItems(kind: String, query: String): List<Korax
     }
     val payload = apiJson(path)
     val rows = payload.optJSONArray("data") ?: JSONArray()
+    val localCompetitionFallback = kind in setOf("league", "tournament") &&
+        payload.optString("source") != "sportscore-search"
     return (0 until rows.length()).mapNotNull { index ->
         val row = rows.optJSONObject(index) ?: return@mapNotNull null
         val competitionSlug = row.firstString(
@@ -164,7 +166,7 @@ private suspend fun searchFavoriteItems(kind: String, query: String): List<Korax
         row.asFavorite(actualKind)
     }.filter { it.kind == kind }
         .filter {
-            query.isBlank() ||
+            !localCompetitionFallback || query.isBlank() ||
                 it.name.contains(query, ignoreCase = true) ||
                 it.country.contains(query, ignoreCase = true)
         }
