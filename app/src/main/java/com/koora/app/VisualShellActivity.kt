@@ -338,26 +338,6 @@ private fun KoraxApp() {
         }
     }
 
-    if (!setupComplete) {
-        if (selectedProfile != null) {
-            KoraxEntityProfileScreen(
-                favorite = selectedProfile!!,
-                onBack = { selectedProfile = null },
-                onOpenPlayer = { selectedProfile = it }
-            )
-        } else {
-            KoraxFavoriteSelectionScreen(
-                isFirstRun = true,
-                onFinish = {
-                    setupComplete = true
-                    tab = "news"
-                },
-                onOpenProfile = { selectedProfile = it }
-            )
-        }
-        return
-    }
-
     Scaffold(containerColor = KBg, bottomBar = {
         if (selectedArticle == null && selectedProfile == null && selectedMatchId == null && tab != "settings" && tab != "notifications") {
             NavigationBar(containerColor = KCard) {
@@ -397,7 +377,8 @@ private fun KoraxApp() {
                 tab == "news" -> NewsScreen(
                     onOpenLive = { matchLiveRequested = true; tab = "matches" },
                     onChooseDate = { selected -> matchDate = selected; matchLiveRequested = false; tab = "matches" },
-                    onOpenArticle = { selectedArticle = it }
+                    onOpenArticle = { selectedArticle = it },
+                    onExplore = { tab = "explore" }
                 )
                 tab == "transfers" -> KoraxTopicPage(onBack = { tab = "more" }, onOpenArticle = { selectedArticle = it })
                 tab == "matches" -> MatchesScreen(
@@ -412,7 +393,13 @@ private fun KoraxApp() {
                 )
                 tab == "explore" -> KoraxFavoriteSelectionScreen(
                     isFirstRun = false,
-                    onFinish = { tab = "favorites" },
+                    onFinish = {
+                        if (!setupComplete) {
+                            KoraxFavoriteStore.setSetupComplete(context, true)
+                            setupComplete = true
+                        }
+                        tab = "favorites"
+                    },
                     onOpenProfile = { selectedProfile = it }
                 )
                 tab == "favorites" -> KoraxFavoritesScreen(
@@ -544,7 +531,8 @@ private fun KoraxDatePickerDialog(
 private fun NewsScreen(
     onOpenLive: () -> Unit,
     onChooseDate: (String) -> Unit,
-    onOpenArticle: (NewsItem) -> Unit
+    onOpenArticle: (NewsItem) -> Unit,
+    onExplore: () -> Unit
 ) {
     var articles by remember { mutableStateOf<List<NewsItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -604,6 +592,22 @@ private fun NewsScreen(
                 shape = RoundedCornerShape(14.dp)
             )
             Spacer(Modifier.height(7.dp))
+        }
+        if (!setupComplete) {
+            Card(
+                Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = KCard),
+                border = BorderStroke(1.dp, KBorder),
+                shape = RoundedCornerShape(13.dp)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 11.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("خصص أخبار KORAX", color = KText, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        Text("اختر أنديتك ودورياتك لتفعيل التنبيهات المخصصة", color = KMuted, fontSize = 9.sp)
+                    }
+                    TextButton(onClick = onExplore) { Text("اختيار", color = KLime, fontSize = 10.sp) }
+                }
+            }
         }
         LazyRow(contentPadding = PaddingValues(horizontal = 13.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items(newsCategories) { option ->
