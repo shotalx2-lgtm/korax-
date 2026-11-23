@@ -23,7 +23,7 @@ test("health endpoint confirms both data sources need no API key", async () => {
   assert.equal(body.providerStatus, "not_checked");
 });
 
-test("SportScore fixtures normalize into KORAX match contract without an API key", async () => {
+test("SportScore live match summaries use stable slugs and normalize into the KORAX contract", async () => {
   const originalFetch = globalThis.fetch;
   const restoreCache = installCache();
   let requestedUrl = "";
@@ -51,7 +51,7 @@ test("SportScore fixtures normalize into KORAX match contract without an API key
     );
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("access-control-allow-origin"), "*");
-    assert.match(requestedUrl, /sportscore\.com\/api\/v1\/fixtures\//);
+    assert.match(requestedUrl, /sportscore\.com\/api\/widget\/matches\//);
     assert.match(requestedUrl, /limit=50/);
     const body = await response.json();
     assert.equal(body.source, "sportscore");
