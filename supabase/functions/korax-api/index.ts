@@ -488,6 +488,297 @@ function cacheWrite(key, payload, ttlSeconds) {
   }
 }
 
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLocaleLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/[ـ]/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function cachedEntitySlug(kind, name) {
+  let hash = 2166136261;
+  const normalized = normalizeSearchText(name);
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash ^= normalized.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return "cached-" + kind + "-" + (hash >>> 0).toString(36);
+}
+
+async function getCachedEntityMatchRows() {
+  const cacheKey = "entity-search:match-rows:v1";
+  const cached = cacheRead(cacheKey);
+  if (cached !== null) return cached;
+  const select = "select=match_slug,match_date,kickoff_at,home_team,away_team,home_image,away_image,home_score,away_score,status,status_text,competition_name,competition_slug,competition_image,updated_at";
+  const base = "/rest/v1/korax_sportscore_matches?" + select + "&order=updated_at.desc&limit=1000&offset=";
+  const [first, second] = await Promise.all([
+    dbRows(base + "0"),
+    dbRows(base + "1000"),
+  ]);
+  const rows = [...(Array.isArray(first) ? first : []), ...(Array.isArray(second) ? second : [])];
+  cacheWrite(cacheKey, rows, 180);
+  return rows;
+}
+
+async function getCachedEntityDetailRows() {
+  const cacheKey = "entity-search:detail-rows:v1";
+  const cached = cacheRead(cacheKey);
+  if (cached !== null) return cached;
+  const path = "/rest/v1/korax_sportscore_matches?select=match_slug,match_date,kickoff_at,home_team,away_team,home_image,away_image,competition_name,competition_image,detail&detail=not.is.null&order=detail_updated_at.desc&limit=300";
+  const rows = await dbRows(path);
+  const result = Array.isArray(rows) ? rows : [];
+  cacheWrite(cacheKey, result, 180);
+  return result;
+}
+
+function searchCachedTeamEntities(rows, query, limit) {
+  const needle = normalizeSearchText(query);
+  const found = new Map();
+  for (const row of rows) {
+    for (const side of ["home", "away"]) {
+      const name = String(row?.[side + "_team"] || "").trim();
+      if (!name || !normalizeSearchText(name).includes(needle)) continue;
+      const key = normalizeSearchText(name);
+      if (found.has(key)) continue;
+      const imageUrl = httpsImage(row?.[side + "_image"]);
+      const slug = cachedEntitySlug("team", name);
+      const national = /national team|منتخب/i.test(name);
+      found.set(key, {
+        id: slug,
+        slug,
+        name,
+        imageUrl,
+        image_path: imageUrl,
+        country: "",
+        type: "team",
+        koraxKind: national ? "national" : "club",
+        source: "sportscore-supabase-cache",
+      });
+    }
+  }
+  return Array.from(found.values()).slice(0, limit);
+}
+
+function extractCachedLineupPlayers(matchRoot, row) {
+  const lineup = matchRoot?.lineups;
+  if (Array.isArray(lineup)) {
+    return lineup.map((player) => ({
+      ...player,
+      side: player?.side || "",
+      team_name: nestedName(player?.team) || player?.team_name || "",
+      is_substitute: Boolean(player?.is_substitute),
+    }));
+  }
+  if (!lineup || typeof lineup !== "object") return [];
+  const groups = [
+    ["home_xi", "home", row.home_team, false],
+    ["away_xi", "away", row.away_team, false],
+    ["home_subs", "home", row.home_team, true],
+    ["away_subs", "away", row.away_team, true],
+  ];
+  return groups.flatMap(([key, side, teamName, substitute]) =>
+    (Array.isArray(lineup[key]) ? lineup[key] : []).map((player) => ({
+      ...player,
+      side,
+      team_name: teamName,
+      is_substitute: substitute,
+    }))
+  );
+}
+
+async function getCachedPlayerIndex() {
+  const cacheKey = "entity-search:players:v1";
+  const cached = cacheRead(cacheKey);
+  if (cached !== null) return cached;
+  const rows = await getCachedEntityDetailRows();
+  const found = new Map();
+  for (const row of rows) {
+    const root = row?.detail ? unwrap(row.detail) : null;
+    const match = root?.match && typeof root.match === "object" ? root.match : root || {};
+    const players = extractCachedLineupPlayers(match, row);
+    const incidents = Array.isArray(match?.incidents) ? match.incidents
+      : Array.isArray(match?.events) ? match.events : [];
+    const addPlayer = (nameValue, details = {}) => {
+      const name = nestedName(nameValue) || (typeof nameValue === "string" ? nameValue : "") ||
+        details?.player_name || details?.name || "";
+      if (!name.trim()) return;
+      const teamName = details?.team_name || nestedName(details?.team) ||
+        (details?.side === "home" ? row.home_team : details?.side === "away" ? row.away_team : "");
+      const key = normalizeSearchText(name) + "|" + normalizeSearchText(teamName);
+      const current = found.get(key) || {
+        id: cachedEntitySlug("player", name + "|" + teamName),
+        slug: cachedEntitySlug("player", name + "|" + teamName),
+        name,
+        position: nestedName(details?.position) || details?.position_name || "",
+        shirt_number: details?.number ?? details?.shirt_number ?? details?.jersey_number ?? null,
+        team_name: teamName || "",
+        imageUrl: httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl),
+        image_path: httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl),
+        matchesInCache: [],
+        source: "sportscore-supabase-cache",
+      };
+      if (row.match_slug && !current.matchesInCache.includes(row.match_slug)) {
+        current.matchesInCache.push(row.match_slug);
+      }
+      if (!current.position) current.position = nestedName(details?.position) || details?.position_name || "";
+      if (!current.imageUrl) {
+        current.imageUrl = httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl);
+        current.image_path = current.imageUrl;
+      }
+      found.set(key, current);
+    };
+    for (const player of players) addPlayer(player?.player || player?.name || player?.player_name, player);
+    for (const event of incidents) {
+      if (event?.player && typeof event.player === "object") {
+        addPlayer(event.player, {
+          ...event.player,
+          player_name: nestedName(event.player),
+          side: event?.side || "",
+        });
+      } else {
+        addPlayer(event?.player || event?.player_name, {
+          player_name: event?.player || event?.player_name,
+          side: event?.side || "",
+          image_path: event?.player_image_url || "",
+        });
+      }
+      addPlayer(event?.assist || event?.assist_player || event?.assist_player_name, {
+        player_name: nestedName(event?.assist || event?.assist_player) || event?.assist_player_name,
+        side: event?.side || "",
+      });
+    }
+  }
+  const result = Array.from(found.values()).sort((a, b) => a.name.localeCompare(b.name));
+  cacheWrite(cacheKey, result, 180);
+  return result;
+}
+
+async function searchCachedPlayers(query, limit) {
+  const needle = normalizeSearchText(query);
+  const players = await getCachedPlayerIndex();
+  return players.filter((player) =>
+    normalizeSearchText(player.name).includes(needle) ||
+    normalizeSearchText(player.team_name).includes(needle)
+  ).slice(0, limit);
+}
+
+async function searchCachedCompetitions(query, limit) {
+  const needle = normalizeSearchText(query);
+  const [rows, stored] = await Promise.all([
+    getCachedEntityMatchRows(),
+    dbRows("/rest/v1/korax_sportscore_competitions?select=slug,standings&limit=100"),
+  ]);
+  const badges = new Map((Array.isArray(stored) ? stored : []).map((row) => [
+    String(row.slug || ""),
+    httpsImage(row.standings?.competition_logo, row.standings?.competition_image,
+      row.standings?.imageUrl, row.standings?.logoUrl),
+  ]));
+  const found = new Map();
+  for (const row of rows) {
+    const providerName = String(row?.competition_name || "").trim();
+    if (!providerName) continue;
+    const key = normalizeSearchText(providerName);
+    if (found.has(key)) continue;
+    const known = KORAX_COMPETITIONS.find((item) =>
+      normalizeSearchText(item.providerName || item.name) === key
+    );
+    const slug = known?.slug || cachedEntitySlug("competition", providerName);
+    const imageUrl = httpsImage(badges.get(slug), row?.competition_image);
+    const typeText = providerName.toLowerCase();
+    const kind = /cup|champions|championship|world cup|confederation|trophy|tournament|كأس|ابطال|كأس العالم/i.test(providerName)
+      ? "tournament" : "league";
+    found.set(key, {
+      id: known?.id || slug,
+      slug,
+      name: known?.name || providerName,
+      providerName,
+      country: known?.country || "",
+      kind: known ? (known.slug === "uefa-champions-league" ? "tournament" : "league") : kind,
+      imageUrl,
+      logoUrl: imageUrl,
+      source: "sportscore-supabase-cache",
+    });
+  }
+  for (const known of KORAX_COMPETITIONS) {
+    const key = normalizeSearchText(known.providerName || known.name);
+    if (!found.has(key)) {
+      const imageUrl = httpsImage(badges.get(known.slug));
+      found.set(key, {
+        id: known.id, slug: known.slug, name: known.name, providerName: known.providerName,
+        country: known.country, kind: known.slug === "uefa-champions-league" ? "tournament" : "league",
+        imageUrl, logoUrl: imageUrl, source: "sportscore-supabase-cache",
+      });
+    }
+  }
+  return Array.from(found.values()).filter((item) =>
+    normalizeSearchText([item.name, item.providerName, item.country].join(" ")).includes(needle)
+  ).slice(0, limit);
+}
+
+async function getCachedTeamProfile(slug) {
+  const rows = await getCachedEntityMatchRows();
+  const entries = [];
+  for (const row of rows) {
+    for (const side of ["home", "away"]) {
+      const name = String(row?.[side + "_team"] || "").trim();
+      if (name && cachedEntitySlug("team", name) === slug) entries.push({
+        matchSlug: row.match_slug,
+        competition: row.competition_name || "",
+        kickoff_at: row.kickoff_at || "",
+        status: row.status_text || row.status || "",
+      });
+    }
+  }
+  const row = rows.find((item) =>
+    cachedEntitySlug("team", String(item.home_team || "")) === slug ||
+    cachedEntitySlug("team", String(item.away_team || "")) === slug
+  );
+  if (!row) return null;
+  const home = cachedEntitySlug("team", String(row.home_team || "")) === slug;
+  const name = home ? row.home_team : row.away_team;
+  const imageUrl = httpsImage(home ? row.home_image : row.away_image);
+  return {
+    team: {
+      id: slug, slug, name, imageUrl, logoUrl: imageUrl, image_path: imageUrl,
+      cached_matches: entries.length,
+      competitions: [...new Set(entries.map((item) => item.competition).filter(Boolean))],
+    },
+  };
+}
+
+async function getCachedPlayerProfile(slug) {
+  const players = await getCachedPlayerIndex();
+  const player = players.find((item) => item.slug === slug);
+  return player ? { player } : null;
+}
+
+async function getCachedCompetitionProfile(slug) {
+  const rows = await getCachedEntityMatchRows();
+  const entries = rows.filter((row) =>
+    row?.competition_name && cachedEntitySlug("competition", row.competition_name) === slug
+  );
+  if (!entries.length) return null;
+  const row = entries[0];
+  return {
+    competition: {
+      id: slug, slug, name: row.competition_name,
+      imageUrl: httpsImage(row.competition_image),
+      logoUrl: httpsImage(row.competition_image),
+      cached_matches: entries.length,
+    },
+  };
+}
+
 async function cachedProviderRequest(path, params, env, ttlSeconds) {
   const url = new URL(path, SPORTSCORE);
   for (const [key, value] of Object.entries(params || {})) {
