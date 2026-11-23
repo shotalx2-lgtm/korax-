@@ -67,10 +67,25 @@ jobs:
           candidates.append(value)
 
           for candidate in candidates:
+              decoded_candidates = [candidate]
+              # Some Android text editors save Base64 text files as UTF-16.
               try:
-                  data = json.loads(candidate)
+                  raw = base64.b64decode("".join(candidate.split()), validate=True)
+                  for encoding in ("utf-16", "utf-16-le", "utf-16-be"):
+                      try:
+                          decoded = raw.decode(encoding)
+                          if decoded not in decoded_candidates:
+                              decoded_candidates.append(decoded)
+                      except Exception:
+                          pass
               except Exception:
-                  continue
+                  pass
+
+              for decoded_candidate in decoded_candidates:
+                  try:
+                      data = json.loads(decoded_candidate)
+                  except Exception:
+                      continue
               if not isinstance(data, dict) or not isinstance(data.get("project_info"), dict):
                   continue
               info = data["project_info"]
@@ -94,7 +109,7 @@ jobs:
               ]
               if not web_clients:
                   continue
-              Path("app/google-services.json").write_text(candidate, encoding="utf-8")
+              Path("app/google-services.json").write_text(decoded_candidate, encoding="utf-8")
               sys.exit(0)
 
           raise SystemExit("Secret must be valid base64 or raw google-services JSON for project kora-x-c5e62, package com.koora.app, with a Web OAuth client.")
@@ -128,7 +143,7 @@ jobs:
       - name: Validate release integration configuration
         id: release_config
         env:
-          KOORA_API_BASE_URL: ${{ secrets.KOORA_API_BASE_URL }}
+          KOORA_API_BASE_URL: ${{ secrets.KOORA_API_BASE_URL || 'https://korax.shotalx2.workers.dev' }}
           FIREBASE_CONFIG_JSON_B64: ${{ secrets.FIREBASE_CONFIG_JSON_B64 }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -152,7 +167,7 @@ jobs:
       - name: Run Android unit tests
         run: gradle :app:testDebugUnitTest --stacktrace
       - name: Build optimized release APK
-        run: gradle :app:assembleRelease --stacktrace -PKOORA_API_BASE_URL="${{ secrets.KOORA_API_BASE_URL }}"
+        run: gradle :app:assembleRelease --stacktrace -PKOORA_API_BASE_URL="${{ secrets.KOORA_API_BASE_URL || 'https://korax.shotalx2.workers.dev' }}"
       - name: Print Android signing fingerprints for Firebase setup
         run: gradle :app:signingReport --console=plain
       - name: Prepare public APK asset
