@@ -298,6 +298,7 @@ test("match events preserve player, assister, team and competition image metadat
   const match = normalizeFixture(fixture);
   assert.equal(match.competition.imageUrl, "https://images.example/league.png");
   assert.equal(match.events[0].player_image_url, "https://images.example/player.png");
+  assert.equal(match.events[0].assist_player_id, 92);
   assert.equal(match.events[0].assist_player_name, "Creator");
   assert.equal(match.events[0].assist_player_image_url, "https://images.example/creator.png");
   assert.equal(match.events[0].team_image_url, "https://images.example/a.png");
