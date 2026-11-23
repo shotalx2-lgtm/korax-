@@ -1042,11 +1042,45 @@ async function route(request, env) {
       };
     });
     if (search.length >= 2) {
+      const payload = await cachedProviderRequest(
+        "/api/v1/search/", { q: search, sport: "football", limit: perPage }, env, 300
+      );
+      const root = unwrap(payload);
+      let rows = [];
+      for (const key of ["competitions", "leagues", "tournaments", "competition", "league", "tournament"]) {
+        if (Array.isArray(root?.[key])) rows.push(...root[key]);
+        else if (root?.[key] && typeof root[key] === "object") rows.push(root[key]);
+      }
+      if (Array.isArray(root?.results)) {
+        rows.push(...root.results.filter((row) =>
+          /competition|league|tournament/i.test(String(row?.type || row?.entity_type || ""))
+        ));
+      }
+      const mapped = rows.map((row) => {
+        const name = nestedName(row?.name) || row?.title || row?.competition_name || "";
+        const slug = String(row?.slug || row?.url_slug || row?.competition_slug || row?.league_slug || row?.id || "");
+        const kindText = String(row?.type || row?.entity_type || row?.kind || "").toLowerCase();
+        const kind = /tournament|cup|champions|world cup/.test(kindText + " " + name.toLowerCase()) ? "tournament" : "league";
+        const imageUrl = httpsImage(row?.image_path, row?.image_url, row?.logo, row?.logo_url, row?.badge);
+        return {
+          id: String(row?.id || slug),
+          slug,
+          name,
+          country: nestedName(row?.country) || row?.country_name || "",
+          kind,
+          imageUrl,
+          logoUrl: imageUrl,
+        };
+      }).filter((row) => row.name && row.slug);
+      const unique = [...new Map(mapped.map((row) => [row.kind + ":" + row.slug, row])).values()];
+      if (unique.length) {
+        return json({ data: unique.slice(0, perPage), source: "sportscore-search", meta: { count: unique.length, query: search } });
+      }
       const needle = search.toLocaleLowerCase();
-      const filtered = data.filter((item) =>
+      const fallback = data.filter((item) =>
         (item.name + " " + item.country + " " + item.providerName).toLocaleLowerCase().includes(needle)
       );
-      return json({ data: filtered.slice(0, perPage), source: "sportscore-supabase-index", meta: { count: filtered.length, query: search } });
+      return json({ data: fallback, source: "sportscore-search", meta: { count: fallback.length, query: search } });
     }
     return json({ data, source: "sportscore-competition-index" });
   }  const competition = path.match(/^\/api\/competitions\/([A-Za-z0-9_-]+)$/);
