@@ -476,13 +476,26 @@ function classifyNewsCategory(title, summary, feed = {}) {
   if (/transfer|transfers|انتقال|ميركاتو|سوق الانتقالات|صفقة جديدة/i.test(text)) return "transfers";
   if (feed.id === "btolat-egypt") return "egypt";
   if (feed.id === "btolat-spain") return "la-liga";
-  if (feed.id === "btolat-england" || feed.id === "bbc-premier" || feed.id === "sky-premier") return "premier-league";
+  if (["btolat-egypt", "btolat-ahly", "btolat-zamalek", "btolat-pyramids"].includes(feed.id)) return "egypt";
+  if (["btolat-spain", "btolat-barcelona", "btolat-real-madrid"].includes(feed.id)) return "la-liga";
+  if (["btolat-england", "btolat-liverpool", "btolat-man-city", "btolat-man-utd", "btolat-arsenal", "bbc-premier", "sky-premier"].includes(feed.id)) return "premier-league";
+  if (feed.id === "btolat-juventus") return "serie-a";
+  if (feed.id === "btolat-psg") return "ligue-1";
 
   if (/la liga|الدوري الإسباني|ريال مدريد|برشلونة|فياريال|أتلتيكو مدريد|اتلتيكو مدريد|real madrid|barcelona|villarreal|atletico madrid/i.test(text)) {
     return "la-liga";
   }
   if (/premier league|الدوري الإنجليزي|ليفربول|مانشستر سيتي|مانشستر يونايتد|آرسنال|ارسنال|تشيلسي|tottenham|liverpool|manchester city|manchester united|arsenal|chelsea/i.test(text)) {
     return "premier-league";
+  }
+  if (/serie a|الدوري الإيطالي|إنتر ميلان|انتر ميلان|يوفنتوس|ميلان|نابولي|inter milan|juventus|ac milan|napoli/i.test(text)) {
+    return "serie-a";
+  }
+  if (/bundesliga|الدوري الألماني|بايرن ميونخ|بوروسيا دورتموند|bayern munich|borussia dortmund/i.test(text)) {
+    return "bundesliga";
+  }
+  if (/ligue 1|الدوري الفرنسي|باريس سان جيرمان|باريس سان|مارسيليا|موناكو|paris saint-germain|marseille/i.test(text)) {
+    return "ligue-1";
   }
   if (/الدوري السعودي|السعودية|دوري روشن|saudi pro league|الهلال السعودي|النصر السعودي|الاتحاد السعودي|الأهلي السعودي|الاهلي السعودي|al.?hilal|al.?nassr|al.?ittihad|al.?ahli/i.test(text)) {
     return "saudi";
