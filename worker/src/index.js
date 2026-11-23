@@ -925,6 +925,18 @@ async function route(request, env) {
     let rows = [];
     for (const key of keys) if (Array.isArray(root?.[key])) { rows = root[key]; break; }
     if (!rows.length && Array.isArray(root?.results)) rows = root.results.filter((row) => String(row.type || "").toLowerCase().includes(kind));
+    if (kind === "team") {
+      rows = rows.map((row) => {
+        const descriptor = [
+          row?.type, row?.entity_type, row?.team_type, row?.category,
+          row?.gender, row?.name, row?.common_name,
+        ].map((value) => nestedName(value) || String(value || "")).join(" ").toLowerCase();
+        const explicitlyNational = row?.national === true || row?.is_national === true ||
+          row?.national_team === true || row?.type === "national_team" ||
+          row?.entity_type === "national_team" || /national team|men national|women national|منتخب/.test(descriptor);
+        return { ...row, koraxKind: explicitlyNational ? "national" : "club" };
+      });
+    }
     return json({ data: rows, source: "sportscore" });
   }
 
