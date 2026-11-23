@@ -74,7 +74,7 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
   globalThis.fetch = async (input) => {
     const url = String(input);
     calls.push(url);
-    const arabic = /btolat|youm7|hesport|aljazeera|skynewsarabia|footballco\\.com\\/kooora/.test(url);
+    const arabic = /btolat|youm7|hesport|aljazeera|skynewsarabia/.test(url) || url.includes("feeds.footballco.com/kooora");
     const sourceTitle = arabic ? "خبر جديد عن كرة القدم والدوري" : "Latest football transfer and league news";
     const xml = "<?xml version=\"1.0\"?><rss><channel><item>" +
       "<title>" + sourceTitle + "</title>" +
