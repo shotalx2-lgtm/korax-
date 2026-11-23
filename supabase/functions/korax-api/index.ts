@@ -876,12 +876,12 @@ async function getCachedFantasyPlayers(env) {
 }
 
 const KORAX_COMPETITIONS = [
-  { id: "premier-league", slug: "premier-league", name: "الدوري الإنجليزي", country: "إنجلترا" },
-  { id: "la-liga", slug: "la-liga", name: "الدوري الإسباني", country: "إسبانيا" },
-  { id: "ligue-1", slug: "ligue-1", name: "الدوري الفرنسي", country: "فرنسا" },
-  { id: "serie-a", slug: "serie-a", name: "الدوري الإيطالي", country: "إيطاليا" },
+  { id: "english-premier-league", slug: "english-premier-league", name: "الدوري الإنجليزي", country: "إنجلترا" },
+  { id: "spanish-la-liga", slug: "spanish-la-liga", name: "الدوري الإسباني", country: "إسبانيا" },
+  { id: "french-ligue-1", slug: "french-ligue-1", name: "الدوري الفرنسي", country: "فرنسا" },
+  { id: "italian-serie-a", slug: "italian-serie-a", name: "الدوري الإيطالي", country: "إيطاليا" },
   { id: "bundesliga", slug: "bundesliga", name: "الدوري الألماني", country: "ألمانيا" },
-  { id: "saudi-pro-league", slug: "saudi-pro-league", name: "الدوري السعودي", country: "السعودية" },
+  { id: "saudi-professional-league", slug: "saudi-professional-league", name: "الدوري السعودي", country: "السعودية" },
   { id: "uefa-champions-league", slug: "uefa-champions-league", name: "دوري أبطال أوروبا", country: "أوروبا" },
 ];
 
