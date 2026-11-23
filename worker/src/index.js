@@ -367,6 +367,7 @@ const NEWS_FEEDS = [
   { id: "btolat-pyramids", source: "بطولات - بيراميدز", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=23165" },
   { id: "youm7", source: "الإخبارية – تغطية اليوم السابع", language: "ar", url: "https://www.youm7.com/rss/SectionRss?SectionID=298", fallbackUrl: "https://alikhbariya.net/feeds/sources/f903fc12-4e08-4331-b249-81551c16f840.xml" },
   { id: "hesport", source: "هسبورت", language: "ar", url: "https://www.hesport.com/feed" },
+  { id: "kooora", source: "كووورة", language: "ar", url: "https://feeds.footballco.com/kooora/feed/6p5bsxot7te8yick" },
   { id: "aljazeera", source: "الجزيرة", language: "ar", url: "https://www.aljazeera.net/rss" },
   { id: "sky-arabia", source: "سكاي نيوز عربية", language: "ar", url: "https://www.skynewsarabia.com/rss" },
   { id: "bbc-football", source: "BBC Sport", language: "en", url: "https://feeds.bbci.co.uk/sport/football/rss.xml" },

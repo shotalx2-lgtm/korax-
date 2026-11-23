@@ -335,6 +335,8 @@ fun FantasyScreen() {
                 message = "تم تحميل " + fetched.size + " لاعبًا. " + fantasyCoverageSummary(fetched)
             } else if (result.isFailure) {
                 message = result.exceptionOrNull()?.message ?: "تعذر تحميل سوق اللاعبين."
+            } else {
+                message = "مصدر البيانات لم يُرجع لاعبين متاحين حاليًا. جرّب التحديث لاحقًا؛ لن نضيف أسماء أو نقاطًا وهمية."
             }
             importing = false
         }
@@ -385,7 +387,7 @@ fun FantasyScreen() {
                 }
                 Spacer(Modifier.height(12.dp))
                 Text("المجموعة: ${owned.size}/15 لاعبًا", color = FxMuted, fontSize = 12.sp)
-                Text("اللاعبون وإحصائيات الموسم تُجلب من مزود البيانات للدوريات الستة. الأسعار الابتدائية وقواعد نقاط الموسم خاصة بلعبة KORAX.", color = FxMuted, fontSize = 10.sp)
+                Text("اللاعبون المتاحون حاليًا من المصدر هم الهدافون وصنّاع الأهداف فقط، وليسوا قائمة كاملة لكل لاعبي الدوريات. لذلك قد لا تكتمل تشكيلة 15 لاعبًا، والنقاط المعروضة ليست نقاط جولة مباشرة.", color = FxMuted, fontSize = 10.sp)
             }
         }
         Spacer(Modifier.height(14.dp))
@@ -440,6 +442,13 @@ fun FantasyScreen() {
             }
         }
         Spacer(Modifier.height(14.dp))
+        if (state.catalogue.isEmpty()) {
+            InfoPanel("سوق اللاعبين غير متاح حاليًا", "لم يصل للتطبيق أي لاعب من مزود البيانات. استخدم تحديث سوق اللاعبين لاحقًا؛ لن نعرض لاعبين وهميين بدل البيانات الحقيقية.")
+            Spacer(Modifier.height(10.dp))
+        } else {
+            InfoPanel("حدود بيانات الفانتازي الحالية", "القائمة مقتصرة على الهدافين وصنّاع الأهداف من المصدر، ولا تتضمن كل الحراس والمدافعين ولا احتساب نقاط الجولة لحظة بلحظة.")
+            Spacer(Modifier.height(10.dp))
+        }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
             listOf("team" to "فريقي", "market" to "السوق", "formation" to "التشكيلة", "points" to "النقاط", "admin" to "إضافة للسوق").forEach { (key, label) ->
                 FilterChip(selected = section == key, onClick = { section = key }, label = { Text(label) })
