@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -842,6 +843,7 @@ internal fun KoraxSettingsScreen(
     var dataSaver by remember { mutableStateOf(KoraxSettingsStore.getBoolean(context, "data_saver", false)) }
     var backgroundUpdates by remember { mutableStateOf(KoraxSettingsStore.getBoolean(context, "background_updates", true)) }
     var sounds by remember { mutableStateOf(KoraxSmartAlerts.soundEnabled(context)) }
+    var infoDialog by remember { mutableStateOf<String?>(null) }
 
     Column(Modifier.fillMaxSize().background(DBg).verticalScroll(rememberScrollState()).padding(horizontal = 15.dp)) {
         DiscoveryHeader("الإعدادات", "تحكم كامل في تجربة KORAX", onBack = onBack)
@@ -886,9 +888,28 @@ internal fun KoraxSettingsScreen(
         })
         Text("المتابعة", color = DText, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 17.dp, bottom = 7.dp))
         SettingsRow("إدارة المفضلة", "الأندية والدوريات والبطولات واللاعبون والتنبيهات الخاصة بهم", onManageFavorites)
-        SettingsRow("الخصوصية والبيانات", "المفضلة والتعليقات المحلية محفوظة على هذا الجهاز", {})
-        SettingsRow("حول KORAX", "مصادر النتائج والأخبار وحقوق البيانات", {})
+        SettingsRow("الخصوصية والبيانات", "المفضلة والتعليقات المحلية محفوظة على هذا الجهاز", { infoDialog = "privacy" })
+        SettingsRow("حول KORAX", "مصادر النتائج والأخبار وحقوق البيانات", { infoDialog = "about" })
         Spacer(Modifier.height(25.dp))
+    }
+    infoDialog?.let { key ->
+        val title = if (key == "privacy") "الخصوصية والبيانات" else "حول KORAX"
+        val body = if (key == "privacy") {
+            "المفضلة والإعجابات وعناصر الحفظ والتعليقات الحالية تُخزّن محليًا على هذا الجهاز. لا يوجد تسجيل دخول أو مزامنة بين الأجهزة في هذه النسخة. لا تكتب معلومات شخصية في التعليقات."
+        } else {
+            "يجمع KORAX الأخبار من موجزات الناشرين، ويستخدم SportScore للمباريات والبطولات وملفات الفرق واللاعبين. قد تختلف الصور والإحصائيات حسب ما يقدمه المصدر، وتُفتح المقالات الكاملة لدى الناشر حفاظًا على حقوقه."
+        }
+        AlertDialog(
+            onDismissRequest = { infoDialog = null },
+            title = { Text(title, color = DText, fontWeight = FontWeight.Bold) },
+            text = { Text(body, color = DMuted, fontSize = 12.sp, lineHeight = 19.sp) },
+            confirmButton = {
+                TextButton(onClick = { infoDialog = null }) {
+                    Text("حسنًا", color = DAccent, fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = DCard
+        )
     }
 }
 
