@@ -65,8 +65,16 @@ private fun JSONObject.readText(vararg keys: String): String {
     return ""
 }
 
-private fun JSONObject.readImage(vararg keys: String): String =
-    keys.firstNotNullOfOrNull { key -> optString(key).takeIf { it.startsWith("https://") } }.orEmpty()
+private fun JSONObject.readImage(vararg keys: String): String {
+    val aliases = listOf(
+        "imageUrl", "image_path", "imagePath", "image_url", "photo_url", "photo",
+        "thumbnail", "logoUrl", "logo", "logo_url", "logo_path",
+        "crest", "crestUrl", "crest_url", "badge", "emblem"
+    )
+    return (keys.toList() + aliases).distinct()
+        .firstNotNullOfOrNull { key -> optString(key).takeIf { it.startsWith("https://") } }
+        .orEmpty()
+}
 
 private fun String.urlEncoded(): String = URLEncoder.encode(this, "UTF-8")
 
