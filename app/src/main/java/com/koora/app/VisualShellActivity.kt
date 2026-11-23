@@ -83,8 +83,8 @@ class VisualShellActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         KoraxSmartAlerts.ensureChannels(this)
         KoraxSmartAlerts.setBackgroundUpdates(this, KoraxSettingsStore.getBoolean(this, "background_updates", true))
-        window.statusBarColor = android.graphics.Color.rgb(11, 16, 32)
-        window.navigationBarColor = android.graphics.Color.rgb(11, 16, 32)
+        window.statusBarColor = android.graphics.Color.rgb(7, 9, 13)
+        window.navigationBarColor = android.graphics.Color.rgb(7, 9, 13)
         @Suppress("DEPRECATION") window.decorView.systemUiVisibility = 0
         setContent {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
@@ -130,11 +130,11 @@ private fun KoraxSplash() {
     var intro by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(1050); intro = false }
     if (intro) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF0B1020)), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(Color(0xFF07090D)), contentAlignment = Alignment.Center) {
             Image(
                 painter = painterResource(R.drawable.korax_brand),
                 contentDescription = "KORAX",
-                modifier = Modifier.size(310.dp),
+                modifier = Modifier.size(264.dp),
                 contentScale = androidx.compose.ui.layout.ContentScale.Fit
             )
         }
@@ -452,19 +452,30 @@ private fun KoraxApp() {
 private fun todayIso(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
 @Composable
-private fun KoraxHeader(title: String, subtitle: String = "", refresh: (() -> Unit)? = null) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun KoraxHeader(
+    title: String,
+    subtitle: String = "",
+    refresh: (() -> Unit)? = null,
+    search: (() -> Unit)? = null
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("KORA", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Black, letterSpacing = .8.sp)
-                Text("X", color = KLime, fontSize = 23.sp, fontWeight = FontWeight.Black)
-                Spacer(Modifier.width(9.dp))
-                Text(title, color = KText, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
-            }
+            Text(title, color = KText, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
             if (subtitle.isNotBlank()) Text(subtitle, color = KMuted, fontSize = 10.sp)
         }
-        if (refresh != null) Surface(shape = CircleShape, color = KCard2, border = BorderStroke(1.dp, KBorder)) {
-            IconButton(onClick = refresh) { Icon(Icons.Filled.Refresh, "تحديث", tint = KLime) }
+        if (search != null) {
+            Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
+                IconButton(onClick = search) { Icon(Icons.Filled.Search, contentDescription = "بحث", tint = KLime) }
+            }
+        }
+        if (refresh != null) {
+            Spacer(Modifier.width(7.dp))
+            Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
+                IconButton(onClick = refresh) { Icon(Icons.Filled.Refresh, contentDescription = "تحديث", tint = KLime) }
+            }
         }
     }
 }
@@ -472,36 +483,36 @@ private fun KoraxHeader(title: String, subtitle: String = "", refresh: (() -> Un
 @Composable
 private fun BrandToolbar(onSearch: () -> Unit, onLive: () -> Unit, onDate: () -> Unit, onRefresh: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("KORA", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = 1.1.sp)
-            Text("X", color = KLime, fontSize = 28.sp, fontWeight = FontWeight.Black)
-        }
-        Spacer(Modifier.weight(1f))
-        Surface(shape = RoundedCornerShape(13.dp), color = KCard2, border = BorderStroke(1.dp, KBorder)) {
-            IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, "تحديث الأخبار", tint = KLime) }
-        }
-        Spacer(Modifier.width(6.dp))
-        Surface(shape = RoundedCornerShape(13.dp), color = KCard2, border = BorderStroke(1.dp, KBorder)) {
-            IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, "بحث", tint = KLime) }
-        }
-        Spacer(Modifier.width(6.dp))
-        Surface(
-            modifier = Modifier.clip(RoundedCornerShape(13.dp)).clickable(onClick = onLive),
-            shape = RoundedCornerShape(13.dp), color = Color(0xFF28151A),
-            border = BorderStroke(1.dp, Color(0xFF65303A))
-        ) {
-            Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(7.dp).clip(CircleShape).background(Color(0xFFFF5268)))
-                Spacer(Modifier.width(6.dp))
-                Text("LIVE", color = Color(0xFFFF7283), fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+        Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
+            IconButton(onClick = onDate) {
+                Icon(Icons.Filled.CalendarMonth, contentDescription = "اختيار التاريخ", tint = KText)
             }
         }
-        Spacer(Modifier.width(8.dp))
-        Surface(shape = RoundedCornerShape(13.dp), color = KCard2, border = BorderStroke(1.dp, KBorder)) {
-            IconButton(onClick = onDate) { Icon(Icons.Filled.CalendarMonth, "اختيار التاريخ", tint = KText) }
+        Surface(
+            modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onLive),
+            shape = RoundedCornerShape(12.dp), color = Color(0xFF24151A),
+            border = BorderStroke(1.dp, Color(0xFF65303A))
+        ) {
+            Row(Modifier.padding(horizontal = 13.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(7.dp).clip(CircleShape).background(Color(0xFFFF5268)))
+                Spacer(Modifier.width(6.dp))
+                Text("مباشر", color = Color(0xFFFF7283), fontSize = 11.sp, fontWeight = FontWeight.Black)
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
+            IconButton(onClick = onSearch) {
+                Icon(Icons.Filled.Search, contentDescription = "بحث في الأخبار", tint = KLime)
+            }
+        }
+        Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
+            IconButton(onClick = onRefresh) {
+                Icon(Icons.Filled.Refresh, contentDescription = "تحديث الأخبار", tint = KText)
+            }
         }
     }
 }
