@@ -436,6 +436,7 @@ private fun KoraxApp() {
                     favorites = { tab = "favorites" },
                     notifications = { tab = "notifications" },
                     explore = { tab = "explore" },
+                    competitions = { tab = "competitions" },
                     settings = { tab = "settings" },
                     transfers = { tab = "transfers" },
                     tools = { tab = "tools" }
@@ -879,13 +880,13 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatc
 
 
 @Composable
-private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit, explore: () -> Unit, settings: () -> Unit, transfers: () -> Unit, tools: () -> Unit) {
+private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit, explore: () -> Unit, competitions: () -> Unit, settings: () -> Unit, transfers: () -> Unit, tools: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         KoraxHeader("المزيد", "كل أخبار ومباريات كرة القدم في مكان واحد")
         Column(Modifier.padding(horizontal = 14.dp)) {
             MoreRow("الأخبار", "العودة إلى مركز الأخبار", "⌂", home)
             MoreRow("المفضلة", "الأندية واللاعبون الذين تتابعهم", "♡", favorites)
-            MoreRow("البطولات والدوريات", "عرض المسابقات والجداول والترتيب", "🏆", { tools.invoke(); })
+            MoreRow("البطولات والدوريات", "عرض المسابقات والجداول والترتيب", "🏆", competitions)
             MoreRow("استكشف", "اكتشف الأندية والمنتخبات واللاعبين", "⌕", explore)
             MoreRow("الانتقالات", "أخبار وانتقالات اللاعبين المتاحة من المصدر", "⇄", transfers)
             MoreRow("مختبر المميزات الجديدة", "المقارنة والأرشيف والمساعد والنسخ الاحتياطي وفحص المصادر", "✦", tools)
