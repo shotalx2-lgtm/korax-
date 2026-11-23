@@ -38,16 +38,61 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
-      - name: Configure Firebase Android app (optional until project setup)
+      - name: Configure and validate Firebase Android app
         env:
           FIREBASE_CONFIG_JSON_B64: ${{ secrets.FIREBASE_CONFIG_JSON_B64 }}
         run: |
-          if [ -n "$FIREBASE_CONFIG_JSON_B64" ]; then
-            printf '%s' "$FIREBASE_CONFIG_JSON_B64" | base64 --decode > app/google-services.json
-            echo "Firebase Android configuration installed for this build."
-          else
-            echo "Firebase config not supplied; Google sign-in will remain unavailable in this build."
+          set -euo pipefail
+          rm -f app/google-services.json
+          if [ -z "$FIREBASE_CONFIG_JSON_B64" ]; then
+            echo "FIREBASE_CONFIG_VALID=false" >> "$GITHUB_ENV"
+            echo "Firebase config not supplied; Firebase sign-in and cloud sync will be disabled in this build."
+            exit 0
           fi
+
+          if ! printf '%s' "$FIREBASE_CONFIG_JSON_B64" | base64 --decode > app/google-services.json 2>/dev/null; then
+            rm -f app/google-services.json
+            echo "FIREBASE_CONFIG_VALID=false" >> "$GITHUB_ENV"
+            echo "::warning::FIREBASE_CONFIG_JSON_B64 is not valid base64. Firebase features are disabled for this build."
+            exit 0
+          fi
+
+          if ! python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("app/google-services.json")
+          try:
+              data = json.loads(path.read_text(encoding="utf-8"))
+          except Exception as exc:
+              raise SystemExit(f"Invalid Firebase JSON: {exc}")
+          if not isinstance(data, dict) or not isinstance(data.get("project_info"), dict):
+              raise SystemExit("Firebase JSON is missing project_info.")
+          clients = data.get("client")
+          if not isinstance(clients, list) or not clients:
+              raise SystemExit("Firebase JSON is missing client entries.")
+          packages = [
+              item.get("client_info", {}).get("android_client_info", {}).get("package_name")
+              for item in clients if isinstance(item, dict)
+          ]
+          if "com.koora.app" not in packages:
+              raise SystemExit("Firebase JSON does not contain Android package com.koora.app.")
+          web_clients = [
+              oauth for item in clients if isinstance(item, dict)
+              for oauth in item.get("oauth_client", []) if isinstance(oauth, dict)
+              if str(oauth.get("client_type")) == "3"
+          ]
+          if not web_clients:
+              raise SystemExit("Firebase JSON has no Web OAuth client (client_type 3) for Google sign-in.")
+          PY
+          then
+            rm -f app/google-services.json
+            echo "FIREBASE_CONFIG_VALID=false" >> "$GITHUB_ENV"
+            echo "::warning::Firebase configuration is malformed or incomplete. Firebase features are disabled for this build."
+            exit 0
+          fi
+
+          echo "FIREBASE_CONFIG_VALID=true" >> "$GITHUB_ENV"
+          echo "Validated Firebase config for com.koora.app and Google OAuth."
       - name: Configure Android release signing key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -80,8 +125,8 @@ jobs:
             echo "Release APK blocked: configure KOORA_API_BASE_URL with the deployed Cloudflare Worker HTTPS URL."
             ready=false
           fi
-          if [ -z "$FIREBASE_CONFIG_JSON_B64" ]; then
-            echo "Release APK blocked: Firebase config is required for Google sign-in and cloud fantasy sync."
+          if [ "$FIREBASE_CONFIG_VALID" != "true" ]; then
+            echo "Release APK blocked: a valid Firebase JSON for com.koora.app with Web OAuth is required for Google sign-in and cloud fantasy sync."
             ready=false
           fi
           if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
