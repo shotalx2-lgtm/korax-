@@ -7,14 +7,14 @@ The Android client talks only to the KORAX HTTPS backend. The current public-sou
 - `GET /api/news?per_page=40`
 - Optional filters: `language=ar|en`, `category=transfers|premier-league|la-liga|saudi|egypt|football`
 
-Returns a mixed Arabic/English football-news feed with `id`, `title`, `summary`, `url`, `source`, `publishedAt`, `language`, `category`, and optional `imageUrl`. It aggregates publisher RSS feeds and caches at the edge for five minutes. Images are only included when supplied by the publisher feed; image availability and reuse rights are not guaranteed.
+Returns a mixed Arabic/English football-news feed with `id`, `title`, `summary`, `url`, `source`, `publishedAt`, `language`, `category`, and optional `imageUrl`. It aggregates publisher RSS feeds and caches at the edge for five minutes. Feed markup/entities are sanitized into plain text, image URLs are read from supported RSS media tags, and category classification avoids broad ambiguous keywords. Images may legitimately be absent when a publisher feed provides none. The Youm7 public RSS endpoint is used because its sports-section RSS may redirect repeatedly. Images are only included when supplied by the publisher feed; image availability and reuse rights are not guaranteed.
 
 ## Football data
 
 SportScore public REST endpoints are used without an API key on the attribution tier. See https://sportscore.com/developers/api/ for current endpoint schemas and terms.
 
 - `GET /api/matches?date=YYYY-MM-DD`
-- `GET /api/matches?live=1`
+- `GET /api/matches?live=1` (SportScore current match-summary widget; only active statuses are returned)
 - `GET /api/matches/{slug}`
 - `GET /api/competitions`
 - `GET /api/competitions/{slug}` (standings)
