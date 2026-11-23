@@ -16,12 +16,12 @@ SportScore public REST endpoints are used without an API key on the attribution 
 - `GET /api/matches?date=YYYY-MM-DD`
 - `GET /api/matches?live=1` (SportScore current match-summary widget; only active statuses are returned)
 - `GET /api/matches/{slug}`
-- `GET /api/competitions`
+- `GET /api/competitions`\n- `GET /api/competitions?search=name` (provider-backed league, cup and tournament search for discovery/favorites)
 - `GET /api/competitions/{slug}` (standings)
 - `GET /api/teams?search=name`, `GET /api/teams/{slug}`
 - `GET /api/players?search=name`, `GET /api/players/{slug}`
 
-The Android matches screen displays the required clickable “Powered by SportScore” attribution. The documented anonymous tier is approximately 10,000 requests per 24 hours per IP, subject to provider fair-use terms; KORAX caches upstream responses to reduce usage.
+The Android matches screen displays the required clickable “Powered by SportScore” attribution. The app also offers in-app news summaries with an optional publisher link; it does not republish full protected articles. Favorites, article likes, bookmarks and comments are stored locally on the device until a shared account/community backend is introduced. The documented anonymous tier is approximately 10,000 requests per 24 hours per IP, subject to provider fair-use terms; KORAX caches upstream responses to reduce usage.
 
 ## Fantasy limitations
 

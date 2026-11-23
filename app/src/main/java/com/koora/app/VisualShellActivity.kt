@@ -1,11 +1,15 @@
 package com.koora.app
 
-import android.app.DatePickerDialog
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.BorderStroke
@@ -21,11 +25,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
+import androidx.core.content.ContextCompat
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -54,31 +61,43 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.time.Instant
+import java.time.ZoneOffset
 
-private val KBg = Color(0xFF07090D)
-private val KCard = Color(0xFF11161E)
-private val KCard2 = Color(0xFF1A202A)
-private val KLime = Color(0xFFD5FF00)
-private val KText = Color(0xFFF4F6F8)
-private val KMuted = Color(0xFF929AA6)
-private val KBorder = Color(0xFF27303B)
+internal val KBg: Color get() = KoraxThemePalette.background
+internal val KCard: Color get() = KoraxThemePalette.card
+internal val KCard2: Color get() = KoraxThemePalette.card2
+internal val KLime: Color get() = KoraxThemePalette.accent
+internal val KText: Color get() = KoraxThemePalette.text
+internal val KMuted: Color get() = KoraxThemePalette.muted
+internal val KBorder: Color get() = KoraxThemePalette.border
 
 class VisualShellActivity : ComponentActivity() {
     private var smartAlertsJob: Job? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         KoraxSmartAlerts.ensureChannels(this)
-        KoraxSmartAlerts.scheduleBackground(this)
+        KoraxSmartAlerts.setBackgroundUpdates(this, KoraxSettingsStore.getBoolean(this, "background_updates", true))
         window.statusBarColor = android.graphics.Color.rgb(7, 9, 13)
         window.navigationBarColor = android.graphics.Color.rgb(7, 9, 13)
         @Suppress("DEPRECATION") window.decorView.systemUiVisibility = 0
         setContent {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-                MaterialTheme(colorScheme = darkColorScheme(
-                    primary = KLime, onPrimary = Color.Black, secondary = KLime,
-                    background = KBg, onBackground = KText, surface = KCard,
-                    onSurface = KText, outline = KBorder
-                )) { KoraxSplash() }
+                val paletteLight = KoraxThemePalette.light
+                val scheme = if (paletteLight) {
+                    lightColorScheme(
+                        primary = KLime, onPrimary = Color.Black, secondary = KLime,
+                        background = KBg, onBackground = KText, surface = KCard,
+                        onSurface = KText, outline = KBorder
+                    )
+                } else {
+                    darkColorScheme(
+                        primary = KLime, onPrimary = Color.Black, secondary = KLime,
+                        background = KBg, onBackground = KText, surface = KCard,
+                        onSurface = KText, outline = KBorder
+                    )
+                }
+                MaterialTheme(colorScheme = scheme) { KoraxSplash() }
             }
         }
     }
@@ -123,12 +142,12 @@ private fun KoraxSplash() {
     } else KoraxApp()
 }
 
-private data class NewsItem(val id: String, val title: String, val summary: String, val url: String, val source: String, val date: String, val image: String?, val category: String = "football")
+internal data class NewsItem(val id: String, val title: String, val summary: String, val url: String, val source: String, val date: String, val image: String?, val category: String = "football")
 private data class TransferItem(val id: String, val player: String, val playerImage: String, val from: String, val fromLogo: String, val to: String, val toLogo: String, val type: String, val date: String, val amount: String, val completed: Boolean, val league: String)
 private data class MatchItem(val id: String, val home: String, val away: String, val homeLogo: String, val awayLogo: String, val score: String, val status: String, val kickoff: String, val league: String)
 
 private fun apiBase() = BuildConfig.KOORA_API_BASE_URL.trim().trimEnd('/')
-private suspend fun apiJson(path: String): JSONObject = withContext(Dispatchers.IO) {
+internal suspend fun apiJson(path: String): JSONObject = withContext(Dispatchers.IO) {
     val base = apiBase()
     require(base.startsWith("https://")) { "خدمة البيانات غير مربوطة بعد. اضبط KOORA_API_BASE_URL أولًا." }
     val c = (URL(base + path).openConnection() as HttpURLConnection).apply {
@@ -139,8 +158,8 @@ private suspend fun apiJson(path: String): JSONObject = withContext(Dispatchers.
         JSONObject(c.inputStream.bufferedReader().use { it.readText() })
     } finally { c.disconnect() }
 }
-private fun JSONObject.rows() = optJSONArray("data") ?: JSONArray()
-private fun JSONObject.https(name: String) = optString(name).takeIf { it.startsWith("https://") }.orEmpty()
+internal fun JSONObject.rows() = optJSONArray("data") ?: JSONArray()
+internal fun JSONObject.https(name: String) = optString(name).takeIf { it.startsWith("https://") }.orEmpty()
 
 private suspend fun loadNews(): List<NewsItem> {
     // The app is Arabic-first: never mix English RSS entries into the Arabic news feed.
@@ -255,38 +274,128 @@ private class LocalComments(context: Context) {
 
 @Composable
 private fun KoraxApp() {
+    val context = LocalContext.current
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
+    val themeMode = KoraxSettingsStore.theme(context)
+    KoraxThemePalette.applyLightMode(when (themeMode) {
+        "light" -> true
+        "system" -> !systemDark
+        else -> false
+    })
+
     var tab by rememberSaveable { mutableStateOf("news") }
     var matchLiveRequested by rememberSaveable { mutableStateOf(false) }
     var matchDate by rememberSaveable { mutableStateOf(todayIso()) }
-    Scaffold(containerColor = KBg, bottomBar = {
-        NavigationBar(containerColor = KCard) {
-            val tabs = listOf(
-                Triple("matches", "المباريات", Icons.Filled.CalendarMonth),
-                Triple("news", "الأخبار", Icons.Filled.Search),
-                Triple("transfers", "الانتقالات", Icons.Filled.SwapHoriz),
-                Triple("more", "المزيد", Icons.Filled.Settings)
+    var selectedArticle by remember { mutableStateOf<NewsItem?>(null) }
+    var selectedProfile by remember { mutableStateOf<KoraxFavorite?>(null) }
+    var setupComplete by remember { mutableStateOf(KoraxFavoriteStore.setupComplete(context)) }
+    var permissionAsked by remember { mutableStateOf(KoraxSettingsStore.requestPermissionAsked(context)) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        permissionAsked = true
+        KoraxSettingsStore.markPermissionAsked(context)
+        if (granted) KoraxSmartAlerts.ensureChannels(context)
+    }
+
+    LaunchedEffect(Unit) {
+        if (!permissionAsked) {
+            KoraxSettingsStore.markPermissionAsked(context)
+            permissionAsked = true
+            if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    if (!setupComplete) {
+        if (selectedProfile != null) {
+            KoraxEntityProfileScreen(
+                favorite = selectedProfile!!,
+                onBack = { selectedProfile = null },
+                onOpenPlayer = { selectedProfile = it }
             )
-            tabs.forEach { (key, label, icon) ->
-                NavigationBarItem(selected = tab == key, onClick = { tab = key },
-                    icon = { Icon(icon, contentDescription = label) }, label = { Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold) },
-                    alwaysShowLabel = true, colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = KLime, selectedTextColor = KLime, indicatorColor = KLime.copy(alpha = .12f),
-                        unselectedIconColor = KMuted, unselectedTextColor = KMuted
-                    ))
+        } else {
+            KoraxFavoriteSelectionScreen(
+                isFirstRun = true,
+                onFinish = {
+                    setupComplete = true
+                    tab = "news"
+                },
+                onOpenProfile = { selectedProfile = it }
+            )
+        }
+        return
+    }
+
+    Scaffold(containerColor = KBg, bottomBar = {
+        if (selectedArticle == null && selectedProfile == null && tab != "settings" && tab != "notifications") {
+            NavigationBar(containerColor = KCard) {
+                val tabs = listOf(
+                    Triple("matches", "المباريات", Icons.Filled.CalendarMonth),
+                    Triple("news", "الأخبار", Icons.Filled.Search),
+                    Triple("explore", "استكشف", Icons.Filled.Explore),
+                    Triple("favorites", "المفضلة", Icons.Filled.Favorite),
+                    Triple("more", "المزيد", Icons.Filled.Settings)
+                )
+                tabs.forEach { (key, label, icon) ->
+                    NavigationBarItem(
+                        selected = tab == key,
+                        onClick = { tab = key },
+                        icon = { Icon(icon, contentDescription = label) },
+                        label = { Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold) },
+                        alwaysShowLabel = true,
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = KLime, selectedTextColor = KLime,
+                            indicatorColor = KLime.copy(alpha = .12f),
+                            unselectedIconColor = KMuted, unselectedTextColor = KMuted
+                        )
+                    )
+                }
             }
         }
     }) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (tab) {
-                "news" -> NewsScreen(
-                    onOpenLive = { matchLiveRequested = true; tab = "matches" },
-                    onChooseDate = { selected -> matchDate = selected; matchLiveRequested = false; tab = "matches" }
+        Box(Modifier.fillMaxSize().padding(if (selectedArticle == null && selectedProfile == null) padding else PaddingValues(0.dp))) {
+            when {
+                selectedArticle != null -> KoraxNewsDetailScreen(selectedArticle!!) { selectedArticle = null }
+                selectedProfile != null -> KoraxEntityProfileScreen(
+                    favorite = selectedProfile!!,
+                    onBack = { selectedProfile = null },
+                    onOpenPlayer = { selectedProfile = it }
                 )
-                "transfers" -> TransfersScreen()
-                "matches" -> MatchesScreen(initialLive = matchLiveRequested, selectedDate = matchDate)
-                "favorites" -> StateCard("المفضلة", "تابع أنديتك ولاعبيك لإضافتهم هنا. مزامنة المفضلة بين الأجهزة تحتاج حسابًا سحابيًا.", "♡")
-                "notifications" -> KoraxNotificationsScreen { tab = "more" }
-                else -> MoreScreen({ tab = "news" }, { tab = "favorites" }, { tab = "notifications" })
+                tab == "news" -> NewsScreen(
+                    onOpenLive = { matchLiveRequested = true; tab = "matches" },
+                    onChooseDate = { selected -> matchDate = selected; matchLiveRequested = false; tab = "matches" },
+                    onOpenArticle = { selectedArticle = it }
+                )
+                tab == "transfers" -> TransfersScreen()
+                tab == "matches" -> MatchesScreen(initialLive = matchLiveRequested, selectedDate = matchDate)
+                tab == "explore" -> KoraxFavoriteSelectionScreen(
+                    isFirstRun = false,
+                    onFinish = { tab = "favorites" },
+                    onOpenProfile = { selectedProfile = it }
+                )
+                tab == "favorites" -> KoraxFavoritesScreen(
+                    onOpenProfile = { selectedProfile = it },
+                    onAddMore = { tab = "explore" }
+                )
+                tab == "notifications" -> KoraxNotificationsScreen { tab = "more" }
+                tab == "settings" -> KoraxSettingsScreen(
+                    onBack = { tab = "more" },
+                    onOpenNotifications = { tab = "notifications" },
+                    onManageFavorites = { tab = "favorites" }
+                )
+                else -> MoreScreen(
+                    home = { tab = "news" },
+                    favorites = { tab = "favorites" },
+                    notifications = { tab = "notifications" },
+                    explore = { tab = "explore" },
+                    settings = { tab = "settings" },
+                    transfers = { tab = "transfers" }
+                )
             }
         }
     }
@@ -345,10 +454,49 @@ private fun BrandToolbar(onSearch: () -> Unit, onLive: () -> Unit, onDate: () ->
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun KoraxDatePickerDialog(
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    val state = rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val selected = state.selectedDateMillis ?: return@TextButton
+                    val date = Instant.ofEpochMilli(selected).atZone(ZoneOffset.UTC).toLocalDate()
+                    onSelect(String.format(Locale.US, "%04d-%02d-%02d", date.year, date.monthValue, date.dayOfMonth))
+                }
+            ) { Text("تأكيد التاريخ", color = KLime, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء", color = KMuted) } },
+        shape = RoundedCornerShape(22.dp),
+        colors = DatePickerDefaults.colors(containerColor = KCard)
+    ) {
+        DatePicker(
+            state = state,
+            title = { Text("اختر يوم المباريات", color = KText, modifier = Modifier.padding(16.dp)) },
+            headline = null,
+            showModeToggle = false,
+            colors = DatePickerDefaults.colors(
+                containerColor = KCard,
+                selectedDayContainerColor = KLime,
+                selectedDayContentColor = Color.Black,
+                todayDateBorderColor = KLime,
+                todayContentColor = KLime
+            )
+        )
+    }
+}
+
 @Composable
 private fun NewsScreen(
     onOpenLive: () -> Unit,
-    onChooseDate: (String) -> Unit
+    onChooseDate: (String) -> Unit,
+    onOpenArticle: (NewsItem) -> Unit
 ) {
     var articles by remember { mutableStateOf<List<NewsItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -357,6 +505,7 @@ private fun NewsScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var selected by remember { mutableStateOf<NewsItem?>(null) }
+    var showDatePicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -370,16 +519,7 @@ private fun NewsScreen(
     }
 
     fun chooseMatchDate() {
-        val calendar = Calendar.getInstance()
-        DatePickerDialog(
-            context,
-            { _, year, month, day ->
-                onChooseDate(String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, day))
-            },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH)
-        ).show()
+        showDatePicker = true
     }
 
     LaunchedEffect(Unit) { refresh() }
@@ -439,21 +579,31 @@ private fun NewsScreen(
                     }
                 }
                 items(filtered, key = { it.url }) { article ->
-                    NewsCard(article, onOpen = {
-                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(article.url))) }
-                    }, onComment = { selected = article })
+                    NewsCard(article, onOpen = { onOpenArticle(article) }, onComment = { selected = article })
                 }
             }
         }
     }
     selected?.let { CommentsDialog(it) { selected = null } }
+    if (showDatePicker) {
+        KoraxDatePickerDialog(
+            onDismiss = { showDatePicker = false },
+            onSelect = { date ->
+                showDatePicker = false
+                onChooseDate(date)
+            }
+        )
+    }
 }
 
 @Composable
 private fun NewsCard(article: NewsItem, onOpen: () -> Unit, onComment: () -> Unit) {
+    val context = LocalContext.current
+    val showImages = KoraxSettingsStore.getBoolean(context, "show_images", true) &&
+        !KoraxSettingsStore.getBoolean(context, "data_saver", false)
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = KCard), border = BorderStroke(1.dp, KBorder)) {
         Column {
-            if (!article.image.isNullOrBlank()) {
+            if (showImages && !article.image.isNullOrBlank()) {
                 coil.compose.AsyncImage(model = article.image, contentDescription = article.title,
                     modifier = Modifier.fillMaxWidth().height(172.dp).clickable(onClick = onOpen), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
             } else Box(Modifier.fillMaxWidth().height(102.dp).background(Brush.horizontalGradient(listOf(Color(0xFF1B2508), Color(0xFF151B24)))).clickable(onClick = onOpen), contentAlignment = Alignment.Center) {
@@ -474,7 +624,7 @@ private fun NewsCard(article: NewsItem, onOpen: () -> Unit, onComment: () -> Uni
                     Text(article.summary, color = KMuted, fontSize = 10.sp, lineHeight = 16.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 }
                 Spacer(Modifier.height(6.dp))
-                Text("اقرأ الخبر من المصدر ←", color = KLime, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onOpen))
+                Text("عرض تفاصيل الخبر ←", color = KLime, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable(onClick = onOpen))
             }
         }
     }
@@ -630,12 +780,12 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
                             Spacer(Modifier.height(9.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    if (match.homeLogo.isNotBlank()) coil.compose.AsyncImage(model = match.homeLogo, contentDescription = match.home, modifier = Modifier.size(30.dp))
+                                    if (match.homeLogo.isNotBlank() && KoraxSettingsStore.getBoolean(LocalContext.current, "show_images", true) && !KoraxSettingsStore.getBoolean(LocalContext.current, "data_saver", false)) coil.compose.AsyncImage(model = match.homeLogo, contentDescription = match.home, modifier = Modifier.size(30.dp))
                                     Text(match.home, color = KText, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
                                 Text(match.score, color = KLime, fontSize = 18.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp))
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    if (match.awayLogo.isNotBlank()) coil.compose.AsyncImage(model = match.awayLogo, contentDescription = match.away, modifier = Modifier.size(30.dp))
+                                    if (match.awayLogo.isNotBlank() && KoraxSettingsStore.getBoolean(LocalContext.current, "show_images", true) && !KoraxSettingsStore.getBoolean(LocalContext.current, "data_saver", false)) coil.compose.AsyncImage(model = match.awayLogo, contentDescription = match.away, modifier = Modifier.size(30.dp))
                                     Text(match.away, color = KText, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
                             }
@@ -658,14 +808,17 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
 
 
 @Composable
-private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit) {
+private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit, explore: () -> Unit, settings: () -> Unit, transfers: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         KoraxHeader("المزيد", "كل أخبار ومباريات كرة القدم في مكان واحد")
         Column(Modifier.padding(horizontal = 14.dp)) {
             MoreRow("الأخبار", "العودة إلى مركز الأخبار", "⌂", home)
             MoreRow("المفضلة", "الأندية واللاعبون الذين تتابعهم", "♡", favorites)
+            MoreRow("استكشف", "اكتشف البطولات والأندية والمنتخبات واللاعبين", "⌕", explore)
+            MoreRow("الانتقالات", "أخبار وانتقالات اللاعبين المتاحة من المصدر", "⇄", transfers)
             MoreRow("الإشعارات", "مركز تنبيهات المباريات والأخبار", "♧", notifications)
-            StateCard("KORAX", "تطبيق لمتابعة الأخبار والمباريات والبطولات والنتائج والإحصائيات. تسجيل الدخول غير مطلوب حاليًا.", "X")
+            MoreRow("الإعدادات", "المظهر والصور وتوفير البيانات والتحديثات", "⚙", settings)
+            StateCard("KORAX", "تابع كرة القدم، الأخبار، المباريات، الدوريات، البطولات، الأندية واللاعبين. المفضلة والتعليقات المحلية محفوظة على جهازك.", "X")
         }
     }
 }

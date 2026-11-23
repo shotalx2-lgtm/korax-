@@ -117,6 +117,7 @@ function normalizeEvent(event) {
     team_id: teamRaw?.id ?? event?.participant_id ?? event?.team_id ?? null,
     team: team ? { id: teamRaw?.id ?? null, name: team, imageUrl: teamImage } : null,
     team_image_url: teamImage,
+    assist_player_id: assistRaw?.id ?? event?.assist_player_id ?? null,
     assist_player_name: assistName,
     assist_player_image_url: httpsImage(assistRaw?.image_path, assistRaw?.image_url, assistRaw?.photo_url),
     detail: event?.addition || event?.info || event?.result || "",
@@ -856,10 +857,52 @@ async function route(request, env) {
     return item ? json({ data: normalizeFixture(item), source: "sportscore" }) : json({ error: "Match not found" }, 404);
   }
 
-  if (path === "/api/competitions") return json({
-    data: KORAX_COMPETITIONS.map((item) => ({ ...item, imageUrl: "", logoUrl: "" })),
-    source: "sportscore-competition-index",
-  });
+  if (path === "/api/competitions") {
+    const search = (url.searchParams.get("search") || "").trim();
+    if (search.length >= 2) {
+      const payload = await cachedProviderRequest("/api/v1/search/", {
+        q: search, sport: "football", limit: perPage,
+      }, env, 300);
+      const root = unwrap(payload);
+      const keys = ["competitions", "leagues", "tournaments", "cups"];
+      let rows = [];
+      for (const key of keys) {
+        if (Array.isArray(root?.[key])) rows.push(...root[key]);
+      }
+      if (!rows.length && Array.isArray(root?.results)) {
+        rows = root.results.filter((row) => {
+          const kind = String(row?.type || row?.entity_type || row?.category || "").toLowerCase();
+          return /competition|league|tournament|cup|championship/.test(kind);
+        });
+      }
+      const data = rows.map((item) => {
+        const rawUrl = String(item?.url || item?.href || item?.link || "");
+        const urlSlug = rawUrl.match(/\/([a-z0-9_-]{5,})\/?(?:\?.*)?$/i)?.[1] || "";
+        const slug = String(item?.slug || item?.competition_slug || item?.league_slug ||
+          item?.url_slug || urlSlug || item?.id || "");
+        const kind = String(item?.type || item?.entity_type || item?.category || "").toLowerCase();
+        const image = item?.image_path || item?.image_url || item?.logo || item?.logo_url || item?.image || "";
+        return {
+          id: String(item?.id || slug),
+          slug,
+          name: nestedName(item) || item?.title || item?.common_name || item?.name || "",
+          country: nestedName(item?.country) || item?.country_name || "",
+          imageUrl: typeof image === "string" && /^https:\/\//i.test(image) ? image : "",
+          kind: /tournament|cup|championship/.test(kind) ? "tournament" : "league",
+          season: item?.season?.name || item?.season || "",
+        };
+      }).filter((item) => item.slug && item.name);
+      return json({ data, source: "sportscore-search", meta: { count: data.length, query: search } });
+    }
+    return json({
+      data: KORAX_COMPETITIONS.map((item) => ({
+        ...item,
+        kind: item.slug === "z8yomo4h7wq0j6l" ? "tournament" : "league",
+        imageUrl: "", logoUrl: "",
+      })),
+      source: "sportscore-competition-index",
+    });
+  }
 
   const competition = path.match(/^\/api\/competitions\/([A-Za-z0-9_-]+)$/);
   if (competition) {
@@ -883,6 +926,18 @@ async function route(request, env) {
     let rows = [];
     for (const key of keys) if (Array.isArray(root?.[key])) { rows = root[key]; break; }
     if (!rows.length && Array.isArray(root?.results)) rows = root.results.filter((row) => String(row.type || "").toLowerCase().includes(kind));
+    if (kind === "team") {
+      rows = rows.map((row) => {
+        const descriptor = [
+          row?.type, row?.entity_type, row?.team_type, row?.category,
+          row?.gender, row?.name, row?.common_name,
+        ].map((value) => nestedName(value) || String(value || "")).join(" ").toLowerCase();
+        const explicitlyNational = row?.national === true || row?.is_national === true ||
+          row?.national_team === true || row?.type === "national_team" ||
+          row?.entity_type === "national_team" || /national team|men national|women national|منتخب/.test(descriptor);
+        return { ...row, koraxKind: explicitlyNational ? "national" : "club" };
+      });
+    }
     return json({ data: rows, source: "sportscore" });
   }
 
