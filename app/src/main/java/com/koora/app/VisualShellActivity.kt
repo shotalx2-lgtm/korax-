@@ -110,7 +110,7 @@ private fun KoraxSplash() {
     } else KoraxApp()
 }
 
-private data class NewsItem(val id: String, val title: String, val summary: String, val url: String, val source: String, val date: String, val image: String?)
+private data class NewsItem(val id: String, val title: String, val summary: String, val url: String, val source: String, val date: String, val image: String?, val category: String = "football")
 private data class TransferItem(val id: String, val player: String, val playerImage: String, val from: String, val fromLogo: String, val to: String, val toLogo: String, val type: String, val date: String, val amount: String, val completed: Boolean, val league: String)
 private data class MatchItem(val id: String, val home: String, val away: String, val homeLogo: String, val awayLogo: String, val score: String, val status: String, val kickoff: String, val league: String)
 
@@ -137,7 +137,8 @@ private suspend fun loadNews(): List<NewsItem> {
         val title = x.optString("title").trim()
         if (title.isBlank() || !url.startsWith("https://")) return@mapNotNull null
         NewsItem(x.optString("id", url), title, x.optString("summary"), url,
-            x.optString("source", "مصدر رياضي"), x.optString("publishedAt"), x.https("imageUrl").takeIf { it.isNotBlank() })
+            x.optString("source", "مصدر رياضي"), x.optString("publishedAt"),
+            x.https("imageUrl").takeIf { it.isNotBlank() }, x.optString("category", "football"))
     }.distinctBy { it.url }
 }
 
@@ -182,16 +183,25 @@ private fun matchesCategory(article: NewsItem, category: String): Boolean {
     fun has(vararg words: String) = words.any { text.contains(it.lowercase(Locale.ROOT)) }
     return when (category) {
         "الكل" -> true
-        "العربية" -> has("الدوري السعودي", "دوري روشن", "الدوري المصري", "الأهلي", "الزمالك", "الهلال", "النصر", "الاتحاد", "الترجي", "الوداد", "الكرة العربية")
-        "العالمية" -> !has("الدوري السعودي", "دوري روشن", "الدوري المصري", "الأهلي", "الزمالك", "الكرة العربية")
-        "الدوري الإنجليزي" -> has("الدوري الإنجليزي", "بريميرليغ", "premier league", "ليفربول", "مانشستر سيتي", "أرسنال", "تشيلسي", "توتنهام")
-        "الدوري الإسباني" -> has("الدوري الإسباني", "الليغا", "la liga", "ريال مدريد", "برشلونة", "أتلتيكو مدريد")
-        "الدوري الإيطالي" -> has("الدوري الإيطالي", "serie a", "إنتر ميلان", "يوفنتوس", "ميلان", "نابولي")
-        "الدوري الألماني" -> has("الدوري الألماني", "bundesliga", "بايرن ميونخ", "دورتموند")
-        "الدوري الفرنسي" -> has("الدوري الفرنسي", "ligue 1", "باريس سان جيرمان", "مارسيليا", "موناكو")
-        "الدوري السعودي" -> has("الدوري السعودي", "دوري روشن", "الهلال", "النصر", "الاتحاد", "الأهلي السعودي", "الشباب السعودي")
-        "الانتقالات" -> has("انتقال", "صفقة", "ميركاتو", "إعارة", "تجديد عقد", "مفاوضات", "ضم اللاعب")
-        "الإصابات" -> has("إصابة", "مصاب", "غياب", "إيقاف", "جاهزية", "عودة للتدريبات", "تأهيل")
+        "العربية" -> article.category in setOf("egypt", "saudi") ||
+            has("الدوري المغربي", "المغرب", "المغربي", "الترجي", "الوداد", "الرجاء", "الكرة العربية", "منتخب مصر", "منتخب المغرب", "منتخب الجزائر", "منتخب تونس", "منتخب العراق", "منتخب السعودية")
+        "العالمية" -> article.category !in setOf("egypt", "saudi") &&
+            !has("الدوري المغربي", "المغرب", "المغربي", "الترجي", "الوداد", "الرجاء", "الكرة العربية", "منتخب مصر", "منتخب المغرب", "منتخب الجزائر", "منتخب تونس", "منتخب العراق", "منتخب السعودية")
+        "الدوري الإنجليزي" -> article.category == "premier-league" ||
+            has("الدوري الإنجليزي", "بريميرليغ", "premier league", "ليفربول", "مانشستر سيتي", "أرسنال", "تشيلسي", "توتنهام")
+        "الدوري الإسباني" -> article.category == "la-liga" ||
+            has("الدوري الإسباني", "الليغا", "la liga", "ريال مدريد", "برشلونة", "أتلتيكو مدريد")
+        "الدوري الإيطالي" -> article.category == "serie-a" ||
+            has("الدوري الإيطالي", "serie a", "إنتر ميلان", "يوفنتوس", "ميلان", "نابولي")
+        "الدوري الألماني" -> article.category == "bundesliga" ||
+            has("الدوري الألماني", "bundesliga", "بايرن ميونخ", "دورتموند")
+        "الدوري الفرنسي" -> article.category == "ligue-1" ||
+            has("الدوري الفرنسي", "ligue 1", "باريس سان جيرمان", "مارسيليا", "موناكو")
+        "الدوري السعودي" -> article.category == "saudi" ||
+            has("الدوري السعودي", "دوري روشن", "الهلال السعودي", "النصر السعودي", "الاتحاد السعودي", "الأهلي السعودي", "الشباب السعودي", "saudi pro league", "al-hilal", "al-nassr", "al-ittihad", "al-ahli")
+        "الانتقالات" -> article.category == "transfers" ||
+            has("انتقال", "صفقة", "ميركاتو", "إعارة", "تجديد عقد", "مفاوضات", "ضم اللاعب")
+        "الإصابات" -> has("إصابة", "مصاب", "غياب", "إيقاف", "جاهزية", "عودة للتدريبات", "تأهيل", "injury", "injured", "suspended")
         "الفانتازي" -> has("فانتازي", "fantasy", "fantasy premier league", "الكابتن", "تشكيلة الجولة", "دبل جيم ويك", "وايلد كارد")
         else -> false
     }
