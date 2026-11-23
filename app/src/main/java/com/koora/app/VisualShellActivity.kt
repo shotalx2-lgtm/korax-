@@ -83,8 +83,8 @@ class VisualShellActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         KoraxSmartAlerts.ensureChannels(this)
         KoraxSmartAlerts.setBackgroundUpdates(this, KoraxSettingsStore.getBoolean(this, "background_updates", true))
-        window.statusBarColor = android.graphics.Color.rgb(11, 16, 32)
-        window.navigationBarColor = android.graphics.Color.rgb(11, 16, 32)
+        window.statusBarColor = android.graphics.Color.rgb(7, 9, 13)
+        window.navigationBarColor = android.graphics.Color.rgb(7, 9, 13)
         @Suppress("DEPRECATION") window.decorView.systemUiVisibility = 0
         setContent {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
@@ -130,11 +130,11 @@ private fun KoraxSplash() {
     var intro by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(1050); intro = false }
     if (intro) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF0B1020)), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(Color(0xFF07090D)), contentAlignment = Alignment.Center) {
             Image(
                 painter = painterResource(R.drawable.korax_brand),
                 contentDescription = "KORAX",
-                modifier = Modifier.size(310.dp),
+                modifier = Modifier.size(264.dp),
                 contentScale = androidx.compose.ui.layout.ContentScale.Fit
             )
         }
@@ -248,27 +248,32 @@ private fun displayKickoff(raw: String): String {
     return parsed ?: raw
 }
 
-private suspend fun loadMatches(live: Boolean, selectedDate: String): List<MatchItem> {
-    val data = apiJson(if (live) "/api/matches?live=1" else "/api/matches?date=$selectedDate").rows()
+private suspend fun loadMatches(mode: String, selectedDate: String): List<MatchItem> {
+    val data = apiJson("/api/matches?mode=$mode&scope=main&date=$selectedDate").rows()
     return (0 until data.length()).mapNotNull { i ->
         val x = data.optJSONObject(i) ?: return@mapNotNull null
-        val h = x.optJSONObject("homeTeam"); val a = x.optJSONObject("awayTeam")
+        val h = x.optJSONObject("homeTeam")
+        val a = x.optJSONObject("awayTeam")
         val home = h?.optString("name").orEmpty().ifBlank { x.optString("home") }
         val away = a?.optString("name").orEmpty().ifBlank { x.optString("away") }
         if (home.isBlank() || away.isBlank()) return@mapNotNull null
-        val hs = x.opt("homeScore"); val ascore = x.opt("awayScore")
+        val hs = x.opt("homeScore")
+        val ascore = x.opt("awayScore")
         val score = if (hs != null && ascore != null && hs != JSONObject.NULL && ascore != JSONObject.NULL) "$hs - $ascore" else "VS"
-        // Avoid duplicate empty keys when a provider fixture omits its stable ID.
         val stableMatchId = x.optString("id").takeIf { it.isNotBlank() }
         val fixtureId = stableMatchId ?: listOf(
             home, away, x.optString("startTime"), x.optString("competitionName")
         ).filter { it.isNotBlank() }.joinToString("|").ifBlank { "match-$i" }
-        MatchItem(fixtureId, home, away,
+        MatchItem(
+            fixtureId, home, away,
             h?.firstHttps("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
             a?.firstHttps("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
-            score, localizeMatchStatus(x.optString("status", "غير متاحة")), x.optString("startTime"),
+            score,
+            localizeMatchStatus(x.optString("status", "غير متاحة")),
+            x.optString("startTime"),
             x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") },
-            detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false))
+            detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false)
+        )
     }.distinctBy { it.id }
 }
 
@@ -402,7 +407,13 @@ private fun KoraxApp() {
                     initialLive = matchLiveRequested,
                     selectedDate = matchDate,
                     onOpenMatch = { selectedMatchId = it },
-                    onChooseDate = { matchDate = it; matchLiveRequested = false }
+                    onChooseDate = { matchDate = it; matchLiveRequested = false },
+                    onSearchEntities = { tab = "match_search" }
+                )
+                tab == "match_search" -> KoraxFavoriteSelectionScreen(
+                    isFirstRun = false,
+                    onFinish = { tab = "matches" },
+                    onOpenProfile = { selectedProfile = it }
                 )
                 tab == "competitions" -> KoraxCompetitionsHubPage(
                     onBack = { tab = "more" },
@@ -452,19 +463,30 @@ private fun KoraxApp() {
 private fun todayIso(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
 @Composable
-private fun KoraxHeader(title: String, subtitle: String = "", refresh: (() -> Unit)? = null) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 17.dp, vertical = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun KoraxHeader(
+    title: String,
+    subtitle: String = "",
+    refresh: (() -> Unit)? = null,
+    search: (() -> Unit)? = null
+) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("KORA", color = Color.White, fontSize = 21.sp, fontWeight = FontWeight.Black, letterSpacing = .8.sp)
-                Text("X", color = KLime, fontSize = 23.sp, fontWeight = FontWeight.Black)
-                Spacer(Modifier.width(9.dp))
-                Text(title, color = KText, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
-            }
+            Text(title, color = KText, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
             if (subtitle.isNotBlank()) Text(subtitle, color = KMuted, fontSize = 10.sp)
         }
-        if (refresh != null) Surface(shape = CircleShape, color = KCard2, border = BorderStroke(1.dp, KBorder)) {
-            IconButton(onClick = refresh) { Icon(Icons.Filled.Refresh, "تحديث", tint = KLime) }
+        if (search != null) {
+            Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
+                IconButton(onClick = search) { Icon(Icons.Filled.Search, contentDescription = "بحث", tint = KLime) }
+            }
+        }
+        if (refresh != null) {
+            Spacer(Modifier.width(7.dp))
+            Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
+                IconButton(onClick = refresh) { Icon(Icons.Filled.Refresh, contentDescription = "تحديث", tint = KLime) }
+            }
         }
     }
 }
@@ -472,36 +494,36 @@ private fun KoraxHeader(title: String, subtitle: String = "", refresh: (() -> Un
 @Composable
 private fun BrandToolbar(onSearch: () -> Unit, onLive: () -> Unit, onDate: () -> Unit, onRefresh: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+        Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("KORA", color = Color.White, fontSize = 25.sp, fontWeight = FontWeight.Black, letterSpacing = 1.1.sp)
-            Text("X", color = KLime, fontSize = 28.sp, fontWeight = FontWeight.Black)
-        }
-        Spacer(Modifier.weight(1f))
-        Surface(shape = RoundedCornerShape(13.dp), color = KCard2, border = BorderStroke(1.dp, KBorder)) {
-            IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, "تحديث الأخبار", tint = KLime) }
-        }
-        Spacer(Modifier.width(6.dp))
-        Surface(shape = RoundedCornerShape(13.dp), color = KCard2, border = BorderStroke(1.dp, KBorder)) {
-            IconButton(onClick = onSearch) { Icon(Icons.Filled.Search, "بحث", tint = KLime) }
-        }
-        Spacer(Modifier.width(6.dp))
-        Surface(
-            modifier = Modifier.clip(RoundedCornerShape(13.dp)).clickable(onClick = onLive),
-            shape = RoundedCornerShape(13.dp), color = Color(0xFF28151A),
-            border = BorderStroke(1.dp, Color(0xFF65303A))
-        ) {
-            Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(7.dp).clip(CircleShape).background(Color(0xFFFF5268)))
-                Spacer(Modifier.width(6.dp))
-                Text("LIVE", color = Color(0xFFFF7283), fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+        Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
+            IconButton(onClick = onDate) {
+                Icon(Icons.Filled.CalendarMonth, contentDescription = "اختيار التاريخ", tint = KText)
             }
         }
-        Spacer(Modifier.width(8.dp))
-        Surface(shape = RoundedCornerShape(13.dp), color = KCard2, border = BorderStroke(1.dp, KBorder)) {
-            IconButton(onClick = onDate) { Icon(Icons.Filled.CalendarMonth, "اختيار التاريخ", tint = KText) }
+        Surface(
+            modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onLive),
+            shape = RoundedCornerShape(12.dp), color = Color(0xFF24151A),
+            border = BorderStroke(1.dp, Color(0xFF65303A))
+        ) {
+            Row(Modifier.padding(horizontal = 13.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(7.dp).clip(CircleShape).background(Color(0xFFFF5268)))
+                Spacer(Modifier.width(6.dp))
+                Text("مباشر", color = Color(0xFFFF7283), fontSize = 11.sp, fontWeight = FontWeight.Black)
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
+            IconButton(onClick = onSearch) {
+                Icon(Icons.Filled.Search, contentDescription = "بحث في الأخبار", tint = KLime)
+            }
+        }
+        Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
+            IconButton(onClick = onRefresh) {
+                Icon(Icons.Filled.Refresh, contentDescription = "تحديث الأخبار", tint = KText)
+            }
         }
     }
 }
@@ -818,85 +840,195 @@ private fun TransfersScreen() {
 }
 
 @Composable
-private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatch: (String) -> Unit, onChooseDate: (String) -> Unit) {
-    var live by rememberSaveable(selectedDate, initialLive) { mutableStateOf(initialLive) }
+private fun MatchesScreen(
+    initialLive: Boolean,
+    selectedDate: String,
+    onOpenMatch: (String) -> Unit,
+    onChooseDate: (String) -> Unit,
+    onSearchEntities: () -> Unit
+) {
+    var statusTab by rememberSaveable(selectedDate, initialLive) {
+        mutableStateOf(if (initialLive) "live" else "upcoming")
+    }
     var matches by remember { mutableStateOf<List<MatchItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var selectedSummary by remember { mutableStateOf<MatchItem?>(null) }
     val scope = rememberCoroutineScope()
-    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val sectionTitle = when (statusTab) {
+        "live" -> "المباريات المباشرة"
+        "finished" -> "المباريات المنتهية"
+        else -> "المباريات القادمة"
+    }
+
     suspend fun refresh() {
         loading = true
-        val result = runCatching { loadMatches(live, selectedDate) }
-        matches = result.getOrDefault(emptyList()); error = result.exceptionOrNull()?.message.orEmpty(); loading = false
+        error = ""
+        val result = runCatching { loadMatches(statusTab, selectedDate) }
+        matches = result.getOrDefault(emptyList())
+        error = result.exceptionOrNull()?.message.orEmpty()
+        loading = false
     }
-    LaunchedEffect(live, selectedDate) { refresh() }
-    LaunchedEffect(live, selectedDate) {
-        if (live) {
+    LaunchedEffect(statusTab, selectedDate) { refresh() }
+    LaunchedEffect(statusTab, selectedDate) {
+        if (statusTab == "live") {
             while (true) {
                 delay(30_000L)
                 refresh()
             }
         }
     }
-    Column(Modifier.fillMaxSize()) {
-        KoraxHeader("المباريات", "جدول المباريات • $selectedDate", refresh = { scope.launch { refresh() } })
-        Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp), verticalAlignment = Alignment.CenterVertically) {
-            FilterChip(selected = !live, onClick = { live = false }, label = { Text("حسب التاريخ") })
-            Spacer(Modifier.width(6.dp))
-            FilterChip(selected = live, onClick = { live = true }, label = { Text("مباشر الآن") })
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = { onChooseDate(runCatching { LocalDate.parse(selectedDate).minusDays(1).toString() }.getOrDefault(todayIso())) }) {
-                Text("‹ السابق", color = KLime, fontSize = 10.sp)
-            }
-            TextButton(onClick = { onChooseDate(runCatching { LocalDate.parse(selectedDate).plusDays(1).toString() }.getOrDefault(todayIso())) }) {
-                Text("التالي ›", color = KLime, fontSize = 10.sp)
+
+    Column(Modifier.fillMaxSize().background(KBg)) {
+        KoraxHeader(
+            "المباريات",
+            "$sectionTitle • $selectedDate",
+            refresh = { scope.launch { refresh() } },
+            search = onSearchEntities
+        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf(
+                Triple("upcoming", "▦", "القادمة"),
+                Triple("live", "●", "لايف"),
+                Triple("finished", "✓", "المنتهية")
+            ).forEach { (key, icon, label) ->
+                FilterChip(
+                    selected = statusTab == key,
+                    onClick = { statusTab = key },
+                    modifier = Modifier.weight(1f),
+                    label = { Text("$icon  $label", fontSize = 10.sp, maxLines = 1, fontWeight = FontWeight.Bold) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = KLime, selectedLabelColor = Color.Black, labelColor = KMuted
+                    )
+                )
             }
         }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("تاريخ المباريات", color = KMuted, fontSize = 10.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = {
+                onChooseDate(runCatching { LocalDate.parse(selectedDate).minusDays(1).toString() }.getOrDefault(todayIso()))
+            }) { Text("‹ السابق", color = KLime, fontSize = 10.sp) }
+            TextButton(onClick = {
+                onChooseDate(runCatching { LocalDate.parse(selectedDate).plusDays(1).toString() }.getOrDefault(todayIso()))
+            }) { Text("التالي ›", color = KLime, fontSize = 10.sp) }
+        }
         when {
-            loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = KLime) }
+            loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = KLime)
+            }
             error.isNotBlank() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                StateCard("المباريات غير متاحة", "$error\nتحقق من إعداد مزود البيانات.", "⚽")
+                StateCard("تعذر تحميل المباريات", "$error\nحاول التحديث مرة أخرى.", "⚽")
             }
             matches.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                StateCard(if (live) "لا توجد مباريات مباشرة" else "لا توجد مباريات في هذا التاريخ", "لم تصل بيانات لهذا الاختيار من المصدر المتصل.", "📅")
+                val emptyTitle = when (statusTab) {
+                    "live" -> "لا توجد مباريات مباشرة الآن"
+                    "finished" -> "لا توجد مباريات منتهية في هذا التاريخ"
+                    else -> "لا توجد مباريات قادمة في هذا التاريخ"
+                }
+                StateCard(
+                    emptyTitle,
+                    "لا توجد مباراة ضمن البطولات الرئيسية لهذا الاختيار. استخدم البحث للعثور على نادٍ أو لاعب أو بطولة.",
+                    "📅"
+                )
             }
-            else -> LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            else -> LazyColumn(
+                Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 2.dp)) {
+                        Text(sectionTitle, color = KText, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                        Spacer(Modifier.weight(1f))
+                        Text(matches.size.toString() + " مباراة", color = KMuted, fontSize = 10.sp)
+                    }
+                }
                 items(matches, key = { it.id }) { match ->
-                    Card(Modifier.fillMaxWidth().clickable { if (match.detailsAvailable) onOpenMatch(match.id) else selectedSummary = match }, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = KCard), border = BorderStroke(1.dp, KBorder)) {
-                        Column(Modifier.padding(11.dp)) {
+                    val context = LocalContext.current
+                    val showImages = KoraxSettingsStore.getBoolean(context, "show_images", true) &&
+                        !KoraxSettingsStore.getBoolean(context, "data_saver", false)
+                    Card(
+                        Modifier.fillMaxWidth().clickable {
+                            if (match.id.matches(Regex("[A-Za-z0-9_-]{8,}"))) onOpenMatch(match.id)
+                            else selectedSummary = match
+                        },
+                        shape = RoundedCornerShape(15.dp),
+                        colors = CardDefaults.cardColors(containerColor = KCard),
+                        border = BorderStroke(1.dp, KBorder)
+                    ) {
+                        Column(Modifier.padding(horizontal = 11.dp, vertical = 10.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(match.league.ifBlank { "بطولة" }, color = KLime, fontSize = 10.sp, modifier = Modifier.weight(1f))
-                                Text(match.status, color = KMuted, fontSize = 9.sp)
+                                Text(
+                                    match.league.ifBlank { "بطولة غير محددة" },
+                                    color = KLime, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                                Text(displayKickoff(match.kickoff), color = KMuted, fontSize = 9.sp)
                             }
-                            Spacer(Modifier.height(9.dp))
+                            Spacer(Modifier.height(10.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    if (match.homeLogo.isNotBlank() && KoraxSettingsStore.getBoolean(LocalContext.current, "show_images", true) && !KoraxSettingsStore.getBoolean(LocalContext.current, "data_saver", false)) coil.compose.AsyncImage(model = match.homeLogo, contentDescription = match.home, modifier = Modifier.size(30.dp))
-                                    Text(match.home, color = KText, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    if (showImages && match.homeLogo.isNotBlank()) {
+                                        coil.compose.AsyncImage(
+                                            model = match.homeLogo, contentDescription = match.home,
+                                            modifier = Modifier.size(42.dp),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                                        )
+                                    } else Text("⚽", fontSize = 25.sp)
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        match.home, color = KText, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                        maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
-                                Text(match.score, color = KLime, fontSize = 18.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp))
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        match.score,
+                                        color = if (statusTab == "live") Color(0xFFFF596D) else KLime,
+                                        fontSize = 20.sp, fontWeight = FontWeight.Black,
+                                        modifier = Modifier.padding(horizontal = 8.dp)
+                                    )
+                                    Text(match.status, color = KMuted, fontSize = 9.sp)
+                                }
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    if (match.awayLogo.isNotBlank() && KoraxSettingsStore.getBoolean(LocalContext.current, "show_images", true) && !KoraxSettingsStore.getBoolean(LocalContext.current, "data_saver", false)) coil.compose.AsyncImage(model = match.awayLogo, contentDescription = match.away, modifier = Modifier.size(30.dp))
-                                    Text(match.away, color = KText, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    if (showImages && match.awayLogo.isNotBlank()) {
+                                        coil.compose.AsyncImage(
+                                            model = match.awayLogo, contentDescription = match.away,
+                                            modifier = Modifier.size(42.dp),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                                        )
+                                    } else Text("⚽", fontSize = 25.sp)
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        match.away, color = KText, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                                        maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
                             }
-                            Text(displayKickoff(match.kickoff), color = KMuted, fontSize = 9.sp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 7.dp))
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    if (match.detailsAvailable) "تفاصيل المباراة متاحة" else "البيانات الأساسية من المصدر",
+                                    color = KMuted, fontSize = 8.sp, modifier = Modifier.weight(1f)
+                                )
+                                Text("التفاصيل ←", color = KLime, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
             }
         }
-        Text(
-            "Powered by SportScore",
-            color = KMuted,
-            fontSize = 9.sp,
-            modifier = Modifier.align(Alignment.CenterHorizontally).clickable {
-                uriHandler.openUri("https://sportscore.com/")
-            }.padding(vertical = 7.dp)
-        )
+        Text("البيانات من SportScore", color = KMuted, fontSize = 8.sp,
+            modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = 5.dp))
     }
+
     selectedSummary?.let { match ->
         AlertDialog(
             onDismissRequest = { selectedSummary = null },
@@ -907,7 +1039,7 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatc
                     Text("الحالة: " + match.status, color = KMuted, fontSize = 11.sp)
                     Text("الموعد: " + displayKickoff(match.kickoff), color = KMuted, fontSize = 11.sp)
                     Text("البطولة: " + match.league.ifBlank { "غير متاحة" }, color = KMuted, fontSize = 11.sp)
-                    Text("لم يصل معرّف التفاصيل من الخادم لهذه المباراة بعد. لا نفتح رابطًا غير صحيح.", color = KMuted, fontSize = 10.sp)
+                    Text("لم يصل معرّف ثابت لهذه المباراة، لذلك لا يمكن فتح تفاصيلها بأمان بعد.", color = KMuted, fontSize = 10.sp)
                 }
             },
             confirmButton = { TextButton(onClick = { selectedSummary = null }) { Text("إغلاق", color = KLime) } },
@@ -915,7 +1047,6 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatc
         )
     }
 }
-
 
 @Composable
 private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit, explore: () -> Unit, competitions: () -> Unit, settings: () -> Unit, transfers: () -> Unit, tools: () -> Unit) {

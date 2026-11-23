@@ -176,7 +176,13 @@ private suspend fun searchFavoriteItems(kind: String, query: String): List<Korax
 }
 
 @Composable
-private fun DiscoveryHeader(title: String, subtitle: String, onBack: (() -> Unit)? = null, onRefresh: (() -> Unit)? = null) {
+private fun DiscoveryHeader(
+    title: String,
+    subtitle: String,
+    onBack: (() -> Unit)? = null,
+    onRefresh: (() -> Unit)? = null,
+    onSearch: (() -> Unit)? = null
+) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -190,6 +196,11 @@ private fun DiscoveryHeader(title: String, subtitle: String, onBack: (() -> Unit
         Column(Modifier.weight(1f)) {
             Text(title, color = DText, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
             Text(subtitle, color = DMuted, fontSize = 10.sp)
+        }
+        if (onSearch != null) {
+            IconButton(onClick = onSearch, modifier = Modifier.size(40.dp)) {
+                Icon(Icons.Filled.Search, contentDescription = "بحث في المفضلة", tint = DAccent)
+            }
         }
         if (onRefresh != null) {
             IconButton(onClick = onRefresh, modifier = Modifier.size(40.dp)) {
@@ -483,7 +494,12 @@ internal fun KoraxFavoritesScreen(
     var favorites by remember { mutableStateOf(KoraxFavoriteStore.all(context)) }
     LaunchedEffect(Unit) { favorites = KoraxFavoriteStore.all(context) }
     Column(Modifier.fillMaxSize().background(DBg)) {
-        DiscoveryHeader("المفضلة", "تابع كل ما يهمك من مكان واحد", onRefresh = { favorites = KoraxFavoriteStore.all(context) })
+        DiscoveryHeader(
+            "المفضلة",
+            "تابع كل ما يهمك من مكان واحد",
+            onRefresh = { favorites = KoraxFavoriteStore.all(context) },
+            onSearch = onAddMore
+        )
         if (favorites.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {

@@ -158,52 +158,76 @@ function normalizeEvent(event) {
   const playerRaw = event?.player && typeof event.player === "object" ? event.player : {};
   const player = nestedName(event?.player) || event?.player_name || "";
   const teamRaw = event?.participant || event?.team || {};
-  const team = nestedName(teamRaw);
+  const team = nestedName(teamRaw) || event?.team_name || "";
   const assistRaw = event?.assist || event?.assist_player || event?.assisted_by ||
     event?.assistPlayer || event?.assist_player_info || {};
   const assistName = nestedName(assistRaw) || event?.assist_player_name || event?.assist_name || "";
   const teamImage = httpsImage(teamRaw?.image_path, teamRaw?.image_url, teamRaw?.logo);
+  const substitution = event?.is_sub || /substitution/i.test(String(type))
+    ? [event?.player_in ? "دخول: " + event.player_in : "", event?.player_out ? "خروج: " + event.player_out : ""]
+        .filter(Boolean).join(" • ")
+    : "";
   return {
-    minute: event?.minute ?? event?.extra_minute ?? event?.sort_order ?? "",
+    minute: event?.minute ?? event?.time ?? event?.extra_minute ?? event?.sort_order ?? "",
     type_name: type,
     player_id: playerRaw?.id ?? event?.player_id ?? null,
     player_name: player,
     player_image_url: httpsImage(playerRaw?.image_path, playerRaw?.image_url, playerRaw?.photo_url),
     team_id: teamRaw?.id ?? event?.participant_id ?? event?.team_id ?? null,
     team: team ? { id: teamRaw?.id ?? null, name: team, imageUrl: teamImage } : null,
+    team_side: event?.side || "",
     team_image_url: teamImage,
     assist_player_id: assistRaw?.id ?? event?.assist_player_id ?? null,
     assist_player_name: assistName,
     assist_player_image_url: httpsImage(assistRaw?.image_path, assistRaw?.image_url, assistRaw?.photo_url),
-    detail: event?.addition || event?.info || event?.result || "",
+    detail: event?.addition || event?.info || event?.result || substitution || "",
+    is_goal: Boolean(event?.is_goal),
   };
 }
 
 function normalizeLineup(item) {
   const player = item?.player || {};
   const team = item?.team || item?.participant || {};
+  const teamName = nestedName(team) || item?.team_name || "";
   return {
     player_id: player?.id ?? item?.player_id ?? item?.id ?? null,
     player_name: nestedName(player) || item?.player_name || item?.name || "",
-    imageUrl: player?.image_path || item?.imageUrl || "",
+    imageUrl: httpsImage(player?.image_path, player?.image_url, item?.imageUrl, item?.image_url),
     position_name: nestedName(item?.position) || item?.position_name || "",
-    shirt_number: item?.jersey_number ?? item?.shirt_number ?? null,
+    shirt_number: item?.jersey_number ?? item?.shirt_number ?? item?.number ?? null,
     team_id: team?.id ?? item?.team_id ?? null,
-    team: team?.name ? { id: team.id ?? null, name: team.name } : null,
+    team: teamName ? { id: team?.id ?? null, name: teamName } : null,
+    team_name: teamName,
+    side: item?.side || "",
+    is_substitute: Boolean(item?.is_substitute),
+    captain: Boolean(item?.captain),
+    rating: item?.rating ?? null,
+    formation: item?.formation || "",
   };
 }
 
 function normalizeStatistic(item, teams = []) {
-  const type = nestedName(item?.type) || item?.type_name || item?.name || "";
+  const type = nestedName(item?.type) || item?.type_name || item?.name || item?.label || "";
+  const homeValue = item?.home?.value ?? item?.home?.total ?? item?.home;
+  const awayValue = item?.away?.value ?? item?.away?.total ?? item?.away;
+  if (homeValue !== undefined || awayValue !== undefined) {
+    const suffix = String(item?.suffix || "");
+    const toText = (value) => value === null || value === undefined ? "" : String(value) + suffix;
+    return [
+      { name: type, value: toText(homeValue), team: teams[0]?.name || "", team_side: "home" },
+      { name: type, value: toText(awayValue), team: teams[1]?.name || "", team_side: "away" },
+    ].filter((row) => row.value !== "");
+  }
   const value = item?.data?.value ?? item?.value ?? item?.statistic ?? "";
   const team = teams.find((candidate) =>
     String(candidate.id) === String(item?.participant_id ?? item?.team_id ?? "")
   );
-  return {
+  return [{
     name: type,
     value: value === null || value === undefined ? "" : String(value),
     team: team?.name || "",
-  };
+    team_side: "",
+  }];
 }
 
 function fixtureRoot(fixture) {
@@ -269,13 +293,38 @@ function normalizeFixture(fixture) {
   if (competitionObject) {
     competitionObject.imageUrl = httpsImage(
       competitionObject.image_path, competitionObject.image_url,
-      competitionObject.logo, competitionObject.logo_url, competitionObject.image
+      competitionObject.logo, competitionObject.logo_url, competitionObject.image,
+      root.competition_logo
     );
+    competitionObject.logoUrl = competitionObject.imageUrl;
   }
   const eventsRaw = Array.isArray(root.events) ? root.events
+    : Array.isArray(root.incidents) ? root.incidents
     : Array.isArray(root.timeline) ? root.timeline : [];
-  const lineupRaw = Array.isArray(root.lineups) ? root.lineups
+  const homeTeamName = home.name || "";
+  const awayTeamName = away.name || "";
+  const lineupObject = root.lineups && typeof root.lineups === "object" && !Array.isArray(root.lineups)
+    ? root.lineups : null;
+  let lineupRaw = Array.isArray(root.lineups) ? root.lineups
     : Array.isArray(root.lineup) ? root.lineup : [];
+  if (lineupRaw.length === 0 && lineupObject) {
+    const groups = [
+      ["home_xi", "home", homeTeamName, false],
+      ["away_xi", "away", awayTeamName, false],
+      ["home_subs", "home", homeTeamName, true],
+      ["away_subs", "away", awayTeamName, true],
+    ];
+    lineupRaw = groups.flatMap(([key, side, teamName, isSubstitute]) => {
+      const players = Array.isArray(lineupObject[key]) ? lineupObject[key] : [];
+      return players.map((player) => ({
+        ...player,
+        side,
+        team_name: teamName,
+        is_substitute: isSubstitute,
+        formation: lineupObject[side + "_formation"] || "",
+      }));
+    });
+  }
   const statisticRaw = Array.isArray(root.statistics) ? root.statistics
     : Array.isArray(root.stats) ? root.stats : [];
   const rawUrl = root.url || root.match_url || root.href ||
@@ -298,8 +347,12 @@ function normalizeFixture(fixture) {
     venue: root.venue || root.stadium || null,
     referee: root.referee || null,
     events: eventsRaw.map(normalizeEvent),
-    lineups: lineupRaw.map(normalizeLineup),
-    statistics: statisticRaw.map((item) => normalizeStatistic(item, [home, away])),
+    lineups: lineupRaw.map(normalizeLineup).filter((item) => item.player_name),
+    statistics: statisticRaw.flatMap((item) => normalizeStatistic(item, [home, away])),
+    homeFormation: lineupObject?.home_formation || "",
+    awayFormation: lineupObject?.away_formation || "",
+    homeCoach: lineupObject?.home_coach || null,
+    awayCoach: lineupObject?.away_coach || null,
     imageUrl: root.imageUrl || root.image_url || "",
   };
 }
@@ -433,6 +486,297 @@ function cacheWrite(key, payload, ttlSeconds) {
     }
     while (EDGE_CACHE.size > 500) EDGE_CACHE.delete(EDGE_CACHE.keys().next().value);
   }
+}
+
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLocaleLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/[ـ]/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function cachedEntitySlug(kind, name) {
+  let hash = 2166136261;
+  const normalized = normalizeSearchText(name);
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash ^= normalized.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return "cached-" + kind + "-" + (hash >>> 0).toString(36);
+}
+
+async function getCachedEntityMatchRows() {
+  const cacheKey = "entity-search:match-rows:v1";
+  const cached = cacheRead(cacheKey);
+  if (cached !== null) return cached;
+  const select = "select=match_slug,match_date,kickoff_at,home_team,away_team,home_image,away_image,home_score,away_score,status,status_text,competition_name,competition_slug,competition_image,updated_at";
+  const base = "/rest/v1/korax_sportscore_matches?" + select + "&order=updated_at.desc&limit=1000&offset=";
+  const [first, second] = await Promise.all([
+    dbRows(base + "0"),
+    dbRows(base + "1000"),
+  ]);
+  const rows = [...(Array.isArray(first) ? first : []), ...(Array.isArray(second) ? second : [])];
+  cacheWrite(cacheKey, rows, 180);
+  return rows;
+}
+
+async function getCachedEntityDetailRows() {
+  const cacheKey = "entity-search:detail-rows:v1";
+  const cached = cacheRead(cacheKey);
+  if (cached !== null) return cached;
+  const path = "/rest/v1/korax_sportscore_matches?select=match_slug,match_date,kickoff_at,home_team,away_team,home_image,away_image,competition_name,competition_image,detail&detail=not.is.null&order=detail_updated_at.desc&limit=300";
+  const rows = await dbRows(path);
+  const result = Array.isArray(rows) ? rows : [];
+  cacheWrite(cacheKey, result, 180);
+  return result;
+}
+
+function searchCachedTeamEntities(rows, query, limit) {
+  const needle = normalizeSearchText(query);
+  const found = new Map();
+  for (const row of rows) {
+    for (const side of ["home", "away"]) {
+      const name = String(row?.[side + "_team"] || "").trim();
+      if (!name || !normalizeSearchText(name).includes(needle)) continue;
+      const key = normalizeSearchText(name);
+      if (found.has(key)) continue;
+      const imageUrl = httpsImage(row?.[side + "_image"]);
+      const slug = cachedEntitySlug("team", name);
+      const national = /national team|منتخب/i.test(name);
+      found.set(key, {
+        id: slug,
+        slug,
+        name,
+        imageUrl,
+        image_path: imageUrl,
+        country: "",
+        type: "team",
+        koraxKind: national ? "national" : "club",
+        source: "sportscore-supabase-cache",
+      });
+    }
+  }
+  return Array.from(found.values()).slice(0, limit);
+}
+
+function extractCachedLineupPlayers(matchRoot, row) {
+  const lineup = matchRoot?.lineups;
+  if (Array.isArray(lineup)) {
+    return lineup.map((player) => ({
+      ...player,
+      side: player?.side || "",
+      team_name: nestedName(player?.team) || player?.team_name || "",
+      is_substitute: Boolean(player?.is_substitute),
+    }));
+  }
+  if (!lineup || typeof lineup !== "object") return [];
+  const groups = [
+    ["home_xi", "home", row.home_team, false],
+    ["away_xi", "away", row.away_team, false],
+    ["home_subs", "home", row.home_team, true],
+    ["away_subs", "away", row.away_team, true],
+  ];
+  return groups.flatMap(([key, side, teamName, substitute]) =>
+    (Array.isArray(lineup[key]) ? lineup[key] : []).map((player) => ({
+      ...player,
+      side,
+      team_name: teamName,
+      is_substitute: substitute,
+    }))
+  );
+}
+
+async function getCachedPlayerIndex() {
+  const cacheKey = "entity-search:players:v1";
+  const cached = cacheRead(cacheKey);
+  if (cached !== null) return cached;
+  const rows = await getCachedEntityDetailRows();
+  const found = new Map();
+  for (const row of rows) {
+    const root = row?.detail ? unwrap(row.detail) : null;
+    const match = root?.match && typeof root.match === "object" ? root.match : root || {};
+    const players = extractCachedLineupPlayers(match, row);
+    const incidents = Array.isArray(match?.incidents) ? match.incidents
+      : Array.isArray(match?.events) ? match.events : [];
+    const addPlayer = (nameValue, details = {}) => {
+      const name = nestedName(nameValue) || (typeof nameValue === "string" ? nameValue : "") ||
+        details?.player_name || details?.name || "";
+      if (!name.trim()) return;
+      const teamName = details?.team_name || nestedName(details?.team) ||
+        (details?.side === "home" ? row.home_team : details?.side === "away" ? row.away_team : "");
+      const key = normalizeSearchText(name) + "|" + normalizeSearchText(teamName);
+      const current = found.get(key) || {
+        id: cachedEntitySlug("player", name + "|" + teamName),
+        slug: cachedEntitySlug("player", name + "|" + teamName),
+        name,
+        position: nestedName(details?.position) || details?.position_name || "",
+        shirt_number: details?.number ?? details?.shirt_number ?? details?.jersey_number ?? null,
+        team_name: teamName || "",
+        imageUrl: httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl),
+        image_path: httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl),
+        matchesInCache: [],
+        source: "sportscore-supabase-cache",
+      };
+      if (row.match_slug && !current.matchesInCache.includes(row.match_slug)) {
+        current.matchesInCache.push(row.match_slug);
+      }
+      if (!current.position) current.position = nestedName(details?.position) || details?.position_name || "";
+      if (!current.imageUrl) {
+        current.imageUrl = httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl);
+        current.image_path = current.imageUrl;
+      }
+      found.set(key, current);
+    };
+    for (const player of players) addPlayer(player?.player || player?.name || player?.player_name, player);
+    for (const event of incidents) {
+      if (event?.player && typeof event.player === "object") {
+        addPlayer(event.player, {
+          ...event.player,
+          player_name: nestedName(event.player),
+          side: event?.side || "",
+        });
+      } else {
+        addPlayer(event?.player || event?.player_name, {
+          player_name: event?.player || event?.player_name,
+          side: event?.side || "",
+          image_path: event?.player_image_url || "",
+        });
+      }
+      addPlayer(event?.assist || event?.assist_player || event?.assist_player_name, {
+        player_name: nestedName(event?.assist || event?.assist_player) || event?.assist_player_name,
+        side: event?.side || "",
+      });
+    }
+  }
+  const result = Array.from(found.values()).sort((a, b) => a.name.localeCompare(b.name));
+  cacheWrite(cacheKey, result, 180);
+  return result;
+}
+
+async function searchCachedPlayers(query, limit) {
+  const needle = normalizeSearchText(query);
+  const players = await getCachedPlayerIndex();
+  return players.filter((player) =>
+    normalizeSearchText(player.name).includes(needle) ||
+    normalizeSearchText(player.team_name).includes(needle)
+  ).slice(0, limit);
+}
+
+async function searchCachedCompetitions(query, limit) {
+  const needle = normalizeSearchText(query);
+  const [rows, stored] = await Promise.all([
+    getCachedEntityMatchRows(),
+    dbRows("/rest/v1/korax_sportscore_competitions?select=slug,standings&limit=100"),
+  ]);
+  const badges = new Map((Array.isArray(stored) ? stored : []).map((row) => [
+    String(row.slug || ""),
+    httpsImage(row.standings?.competition_logo, row.standings?.competition_image,
+      row.standings?.imageUrl, row.standings?.logoUrl),
+  ]));
+  const found = new Map();
+  for (const row of rows) {
+    const providerName = String(row?.competition_name || "").trim();
+    if (!providerName) continue;
+    const key = normalizeSearchText(providerName);
+    if (found.has(key)) continue;
+    const known = KORAX_COMPETITIONS.find((item) =>
+      normalizeSearchText(item.providerName || item.name) === key
+    );
+    const slug = known?.slug || cachedEntitySlug("competition", providerName);
+    const imageUrl = httpsImage(badges.get(slug), row?.competition_image);
+    const typeText = providerName.toLowerCase();
+    const kind = /cup|champions|championship|world cup|confederation|trophy|tournament|كأس|ابطال|كأس العالم/i.test(providerName)
+      ? "tournament" : "league";
+    found.set(key, {
+      id: known?.id || slug,
+      slug,
+      name: known?.name || providerName,
+      providerName,
+      country: known?.country || "",
+      kind: known ? (known.slug === "uefa-champions-league" ? "tournament" : "league") : kind,
+      imageUrl,
+      logoUrl: imageUrl,
+      source: "sportscore-supabase-cache",
+    });
+  }
+  for (const known of KORAX_COMPETITIONS) {
+    const key = normalizeSearchText(known.providerName || known.name);
+    if (!found.has(key)) {
+      const imageUrl = httpsImage(badges.get(known.slug));
+      found.set(key, {
+        id: known.id, slug: known.slug, name: known.name, providerName: known.providerName,
+        country: known.country, kind: known.slug === "uefa-champions-league" ? "tournament" : "league",
+        imageUrl, logoUrl: imageUrl, source: "sportscore-supabase-cache",
+      });
+    }
+  }
+  return Array.from(found.values()).filter((item) =>
+    normalizeSearchText([item.name, item.providerName, item.country].join(" ")).includes(needle)
+  ).slice(0, limit);
+}
+
+async function getCachedTeamProfile(slug) {
+  const rows = await getCachedEntityMatchRows();
+  const entries = [];
+  for (const row of rows) {
+    for (const side of ["home", "away"]) {
+      const name = String(row?.[side + "_team"] || "").trim();
+      if (name && cachedEntitySlug("team", name) === slug) entries.push({
+        matchSlug: row.match_slug,
+        competition: row.competition_name || "",
+        kickoff_at: row.kickoff_at || "",
+        status: row.status_text || row.status || "",
+      });
+    }
+  }
+  const row = rows.find((item) =>
+    cachedEntitySlug("team", String(item.home_team || "")) === slug ||
+    cachedEntitySlug("team", String(item.away_team || "")) === slug
+  );
+  if (!row) return null;
+  const home = cachedEntitySlug("team", String(row.home_team || "")) === slug;
+  const name = home ? row.home_team : row.away_team;
+  const imageUrl = httpsImage(home ? row.home_image : row.away_image);
+  return {
+    team: {
+      id: slug, slug, name, imageUrl, logoUrl: imageUrl, image_path: imageUrl,
+      cached_matches: entries.length,
+      competitions: [...new Set(entries.map((item) => item.competition).filter(Boolean))],
+    },
+  };
+}
+
+async function getCachedPlayerProfile(slug) {
+  const players = await getCachedPlayerIndex();
+  const player = players.find((item) => item.slug === slug);
+  return player ? { player } : null;
+}
+
+async function getCachedCompetitionProfile(slug) {
+  const rows = await getCachedEntityMatchRows();
+  const entries = rows.filter((row) =>
+    row?.competition_name && cachedEntitySlug("competition", row.competition_name) === slug
+  );
+  if (!entries.length) return null;
+  const row = entries[0];
+  return {
+    competition: {
+      id: slug, slug, name: row.competition_name,
+      imageUrl: httpsImage(row.competition_image),
+      logoUrl: httpsImage(row.competition_image),
+      cached_matches: entries.length,
+    },
+  };
 }
 
 async function cachedProviderRequest(path, params, env, ttlSeconds) {
@@ -876,13 +1220,28 @@ async function getCachedFantasyPlayers(env) {
 }
 
 const KORAX_COMPETITIONS = [
-  { id: "english-premier-league", slug: "english-premier-league", name: "الدوري الإنجليزي", country: "إنجلترا" },
-  { id: "spanish-la-liga", slug: "spanish-la-liga", name: "الدوري الإسباني", country: "إسبانيا" },
-  { id: "french-ligue-1", slug: "french-ligue-1", name: "الدوري الفرنسي", country: "فرنسا" },
-  { id: "italian-serie-a", slug: "italian-serie-a", name: "الدوري الإيطالي", country: "إيطاليا" },
-  { id: "bundesliga", slug: "bundesliga", name: "الدوري الألماني", country: "ألمانيا" },
-  { id: "saudi-professional-league", slug: "saudi-professional-league", name: "الدوري السعودي", country: "السعودية" },
-  { id: "uefa-champions-league", slug: "uefa-champions-league", name: "دوري أبطال أوروبا", country: "أوروبا" },
+  { id: "english-premier-league", slug: "english-premier-league", name: "الدوري الإنجليزي", country: "إنجلترا", providerName: "English Premier League" },
+  { id: "spanish-la-liga", slug: "spanish-la-liga", name: "الدوري الإسباني", country: "إسبانيا", providerName: "Spanish La Liga" },
+  { id: "french-ligue-1", slug: "french-ligue-1", name: "الدوري الفرنسي", country: "فرنسا", providerName: "French Ligue 1" },
+  { id: "italian-serie-a", slug: "italian-serie-a", name: "الدوري الإيطالي", country: "إيطاليا", providerName: "Italian Serie A" },
+  { id: "bundesliga", slug: "bundesliga", name: "الدوري الألماني", country: "ألمانيا", providerName: "Bundesliga" },
+  { id: "saudi-professional-league", slug: "saudi-professional-league", name: "الدوري السعودي", country: "السعودية", providerName: "Saudi Professional League" },
+  { id: "uefa-champions-league", slug: "uefa-champions-league", name: "دوري أبطال أوروبا", country: "أوروبا", providerName: "UEFA Champions League" },
+];
+
+const MAIN_COMPETITION_NAMES = [
+  "English Premier League", "Premier League",
+  "Spanish La Liga", "La Liga",
+  "French Ligue 1", "Ligue 1",
+  "Italian Serie A", "Serie A",
+  "Bundesliga", "German Bundesliga",
+  "Saudi Professional League", "Saudi Pro League",
+  "UEFA Champions League",
+  "Egyptian Premier League",
+  "CAF Champions League", "CAF Confederation Cup",
+  "AFC Champions League Elite",
+  "UEFA Europa League", "UEFA Europa Conference League",
+  "FIFA World Cup", "Africa Cup of Nations",
 ];
 
 
@@ -910,18 +1269,40 @@ async function route(request, env) {
   if (path === "/api/fantasy/players") return json(await getCachedFantasyPlayers(env));
 
   if (path === "/api/matches") {
-    const live = url.searchParams.get("live") === "1";
+    const legacyLive = url.searchParams.get("live") === "1";
+    const mode = url.searchParams.get("mode") || (legacyLive ? "live" : "all");
     const date = url.searchParams.get("date") || new Date().toISOString().slice(0, 10);
+    const scope = url.searchParams.get("scope") || "all";
+    if (!["upcoming", "live", "finished", "all"].includes(mode)) {
+      return json({ error: "mode must be upcoming, live, finished, or all" }, 400);
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "date must use YYYY-MM-DD" }, 400);
-    const filter = live
-      ? "is_live=eq.true&order=kickoff_at.asc&limit=50"
-      : "match_date=eq." + encodeURIComponent(date) + "&order=kickoff_at.asc&limit=200";
-    const rows = await dbRows("/rest/v1/korax_sportscore_matches?select=*&" + filter);
+    const filters = ["select=*"];
+    if (mode === "live") {
+      filters.push("is_live=eq.true");
+    } else {
+      filters.push("match_date=eq." + encodeURIComponent(date));
+      if (mode === "upcoming") filters.push("is_live=eq.false", "is_finished=eq.false");
+      if (mode === "finished") filters.push("is_finished=eq.true");
+    }
+    if (scope === "main") {
+      const allowed = MAIN_COMPETITION_NAMES
+        .map((name) => "competition_name.eq." + encodeURIComponent(name))
+        .join(",");
+      filters.push("or=(" + allowed + ")");
+    }
+    filters.push("order=kickoff_at." + (mode === "finished" ? "desc" : "asc"));
+    filters.push("limit=" + (mode === "live" ? "100" : "300"));
+    const rows = await dbRows("/rest/v1/korax_sportscore_matches?" + filters.join("&"));
     const matches = (Array.isArray(rows) ? rows : []).map(cachedMatchPayload);
     return json({
       data: matches,
-      meta: { count: matches.length, date, live, cacheUpdatedAt: rows.reduce((latest, row) =>
-        String(row.updated_at || "") > latest ? String(row.updated_at) : latest, "") },
+      meta: {
+        count: matches.length, date, mode, scope,
+        live: mode === "live",
+        cacheUpdatedAt: rows.reduce((latest, row) =>
+          String(row.updated_at || "") > latest ? String(row.updated_at) : latest, ""),
+      },
       source: "sportscore-supabase-cache", updatedAt: new Date().toISOString(),
     });
   }
@@ -938,25 +1319,34 @@ async function route(request, env) {
 
   if (path === "/api/competitions") {
     const search = (url.searchParams.get("search") || "").trim();
-    if (search.length >= 2) {
-      const needle = search.toLocaleLowerCase();
-      const data = KORAX_COMPETITIONS.filter((item) =>
-        (item.name + " " + item.country).toLocaleLowerCase().includes(needle)
-      ).map((item) => ({
+    const stored = await dbRows("/rest/v1/korax_sportscore_competitions?select=slug,standings&limit=100");
+    const badges = new Map((Array.isArray(stored) ? stored : []).map((row) => [
+      String(row.slug || ""),
+      httpsImage(row.standings?.competition_logo, row.standings?.competition_image,
+        row.standings?.imageUrl, row.standings?.logoUrl),
+    ]));
+    const data = KORAX_COMPETITIONS.map((item) => {
+      const imageUrl = badges.get(item.slug) || "";
+      return {
         ...item,
-        kind: item.slug === "z8yomo4h7wq0j6l" ? "tournament" : "league",
-        imageUrl: "",
-      }));
-      return json({ data: data.slice(0, perPage), source: "sportscore-supabase-index", meta: { count: data.length, query: search } });
-    }
-    return json({
-      data: KORAX_COMPETITIONS.map((item) => ({
-        ...item,
-        kind: item.slug === "z8yomo4h7wq0j6l" ? "tournament" : "league",
-        imageUrl: "", logoUrl: "",
-      })),
-      source: "sportscore-competition-index",
+        kind: item.slug === "uefa-champions-league" ? "tournament" : "league",
+        imageUrl,
+        logoUrl: imageUrl,
+      };
     });
+    if (search.length >= 2) {
+      const matches = await searchCachedCompetitions(search, perPage);
+      return json({
+        data: matches,
+        source: "sportscore-search",
+        meta: {
+          count: matches.length,
+          query: search,
+          catalogueScope: "competitions recorded in the KORAX match cache",
+        },
+      });
+    }
+    return json({ data, source: "sportscore-competition-index" });
   }
 
   const competition = path.match(/^\/api\/competitions\/([A-Za-z0-9_-]+)$/);
@@ -964,44 +1354,71 @@ async function route(request, env) {
     const slug = encodeURIComponent(competition[1]);
     const rows = await dbRows("/rest/v1/korax_sportscore_competitions?select=slug,name,country,standings,updated_at&slug=eq." + slug + "&limit=1");
     const row = Array.isArray(rows) ? rows[0] : null;
-    return row
-      ? json({ data: row.standings, name: row.name, country: row.country, updatedAt: row.updated_at, source: "sportscore-supabase-cache" })
-      : json({ error: "Standings are not in the current SportScore cache yet", retryable: true }, 503);
+    if (row) {
+      return json({
+        data: row.standings,
+        name: row.name,
+        country: row.country,
+        updatedAt: row.updated_at,
+        source: "sportscore-supabase-cache",
+      });
+    }
+    if (competition[1].startsWith("cached-competition-")) {
+      const data = await getCachedCompetitionProfile(competition[1]);
+      return data
+        ? json({ data, source: "sportscore-supabase-cache", meta: { partial: true, catalogueScope: "cached fixtures only" } })
+        : json({ error: "Competition is not in the current KORAX cache", retryable: true }, 404);
+    }
+    return json({ error: "Standings are not in the current SportScore cache yet", retryable: true }, 503);
   }
 
   if (path === "/api/teams" || path === "/api/players") {
     const search = (url.searchParams.get("search") || "").trim();
-    if (search.length < 2) return json({ data: [], meta: { requiresSearch: true }, source: "sportscore-search" });
-    const payload = await cachedProviderRequest("/api/v1/search/", { q: search, sport: "football", limit: perPage }, env, 300);
-    const root = unwrap(payload);
     const kind = path === "/api/teams" ? "team" : "player";
-    const keys = kind === "team" ? ["teams", "team"] : ["players", "player"];
-    let rows = [];
-    for (const key of keys) if (Array.isArray(root?.[key])) { rows = root[key]; break; }
-    if (!rows.length && Array.isArray(root?.results)) rows = root.results.filter((row) => String(row.type || "").toLowerCase().includes(kind));
-    if (kind === "team") {
-      rows = rows.map((row) => {
-        const descriptor = [
-          row?.type, row?.entity_type, row?.team_type, row?.category,
-          row?.gender, row?.name, row?.common_name,
-        ].map((value) => nestedName(value) || String(value || "")).join(" ").toLowerCase();
-        const explicitlyNational = row?.national === true || row?.is_national === true ||
-          row?.national_team === true || row?.type === "national_team" ||
-          row?.entity_type === "national_team" || /national team|men national|women national|منتخب/.test(descriptor);
-        return { ...row, koraxKind: explicitlyNational ? "national" : "club" };
+    if (search.length < 2) {
+      return json({
+        data: [],
+        meta: { requiresSearch: true, catalogueScope: kind === "team" ? "cached match participants" : "players in cached match lineups and incidents" },
+        source: "sportscore-search",
       });
     }
-    return json({ data: rows, source: "sportscore" });
+    const data = kind === "team"
+      ? searchCachedTeamEntities(await getCachedEntityMatchRows(), search, perPage)
+      : await searchCachedPlayers(search, perPage);
+    return json({
+      data,
+      source: "sportscore-search",
+      meta: {
+        count: data.length,
+        query: search,
+        catalogueScope: kind === "team"
+          ? "teams appearing in the cached SportScore fixtures"
+          : "players present in cached SportScore lineups, substitutes and incidents; not a complete world-player catalogue",
+        providerSearchUnavailable: true,
+      },
+    });
   }
 
   const team = path.match(/^\/api\/teams\/([A-Za-z0-9_-]+)$/);
   if (team) {
+    if (team[1].startsWith("cached-team-")) {
+      const data = await getCachedTeamProfile(team[1]);
+      return data
+        ? json({ data, source: "sportscore-supabase-cache", meta: { partial: true, catalogueScope: "cached fixtures only" } })
+        : json({ error: "Team is not in the current KORAX cache", retryable: true }, 404);
+    }
     const payload = await cachedProviderRequest("/api/widget/team/", { sport: "football", slug: team[1], limit: 30 }, env, 300);
     return json({ data: unwrap(payload), source: "sportscore" });
   }
 
   const player = path.match(/^\/api\/players\/([A-Za-z0-9_-]+)$/);
   if (player) {
+    if (player[1].startsWith("cached-player-")) {
+      const data = await getCachedPlayerProfile(player[1]);
+      return data
+        ? json({ data, source: "sportscore-supabase-cache", meta: { partial: true, catalogueScope: "players in cached match lineups and incidents" } })
+        : json({ error: "Player is not in the current KORAX detail cache", retryable: true }, 404);
+    }
     const payload = await cachedProviderRequest("/api/widget/player/", { sport: "football", slug: player[1] }, env, 300);
     return json({ data: unwrap(payload), source: "sportscore" });
   }
