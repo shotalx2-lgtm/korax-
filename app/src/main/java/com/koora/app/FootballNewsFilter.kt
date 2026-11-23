@@ -55,7 +55,7 @@ internal object FootballNewsFilter {
         "كاس الملك", "كاس السوبر الاسباني", "كاس السوبر الاوروبي",
         "premier league", "la liga", "serie a", "bundesliga", "ligue 1",
         "saudi pro league", "saudi professional league", "egyptian premier league",
-        "champions league", "europa league", "conference league", "world cup",
+        "uefa champions league", "afc champions league", "caf champions league", "europa league", "conference league",
         "club world cup", "fa cup", "carabao cup"
     )
 
