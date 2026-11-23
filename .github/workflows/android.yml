@@ -92,6 +92,24 @@ jobs:
 
           match_date="$(date -u +%F)"
           schedule="$(curl --silent --show-error --fail --max-time 35 "$base/api/matches?date=$match_date")"
+
+          raw_fixtures="$(curl --silent --show-error --fail --max-time 35 "https://sportscore.com/api/v1/fixtures/?sport=football&date=$match_date&limit=3")"
+          printf '%s' "$raw_fixtures" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              const root = value?.data ?? value;
+              const rows = Array.isArray(root) ? root : (root?.fixtures || root?.matches || root?.results || []);
+              const sample = rows[0] || {};
+              console.log("SportScore raw fixture diagnostic:", JSON.stringify({
+                topKeys: Object.keys(value || {}),
+                rowCount: rows.length,
+                sampleKeys: Object.keys(sample),
+                sample: sample
+              }).slice(0, 5000));
+            });
+          '
           printf '%s' "$schedule" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
