@@ -341,11 +341,19 @@ async function providerRequest(path, params = {}) {
     if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
   }
   const response = await fetch(url, {
-    headers: { accept: "application/json", "user-agent": "KORAX/1.0 (football app)" },
+    headers: {
+      accept: "application/json, text/plain, */*",
+      "accept-language": "en-US,en;q=0.9,ar;q=0.7",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      referer: "https://sportscore.com/",
+      origin: "https://sportscore.com",
+    },
     redirect: "follow",
     signal: AbortSignal.timeout(12000),
   });
   if (!response.ok) {
+    const body = (await response.text().catch(() => "")).slice(0, 500);
+    console.error("[korax-api] SportScore upstream HTTP", response.status, body);
     const error = new Error("SportScore returned HTTP " + response.status);
     error.status = response.status === 429 ? 503 : response.status;
     throw error;
