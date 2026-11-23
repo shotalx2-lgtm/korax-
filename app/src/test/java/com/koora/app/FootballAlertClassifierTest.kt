@@ -10,6 +10,13 @@ class FootballAlertClassifierTest {
     @Test fun cancellationTakesPriorityOverVar() {
         assertEquals("cancel", FootballAlertClassifier.classify("Goal cancelled by VAR"))
     }
+    @Test fun classifiesMatchLifecycleEvents() {
+        assertEquals("kickoff", FootballAlertClassifier.classify("Match started"))
+        assertEquals("halftime", FootballAlertClassifier.classify("Half time"))
+        assertEquals("fulltime", FootballAlertClassifier.classify("Full time"))
+        assertEquals("substitution", FootballAlertClassifier.classify("Substitution"))
+        assertEquals("injury", FootballAlertClassifier.classify("Player injured"))
+    }
     @Test fun classifiesCardsAndPenalty() {
         assertEquals("red_card", FootballAlertClassifier.classify("Red Card"))
         assertEquals("yellow_card", FootballAlertClassifier.classify("Yellow Card"))
