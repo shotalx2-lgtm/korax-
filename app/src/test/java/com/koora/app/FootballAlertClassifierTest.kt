@@ -7,6 +7,12 @@ class FootballAlertClassifierTest {
     @Test fun classifiesGoal() { assertEquals("goal", FootballAlertClassifier.classify("Goal")) }
     @Test fun classifiesAssist() { assertEquals("assist", FootballAlertClassifier.classify("Assist")) }
     @Test fun classifiesVarReview() { assertEquals("var", FootballAlertClassifier.classify("VAR review")) }
+    @Test fun playerNameVaraneDoesNotTriggerVarAlert() {
+        assertEquals("substitution", FootballAlertClassifier.classify("Substitution", "Raphael Varane"))
+    }
+    @Test fun goalkeeperDoesNotTriggerGoalAlert() {
+        assertEquals(null, FootballAlertClassifier.classify("Goalkeeper save"))
+    }
     @Test fun cancellationTakesPriorityOverVar() {
         assertEquals("cancel", FootballAlertClassifier.classify("Goal cancelled by VAR"))
     }
