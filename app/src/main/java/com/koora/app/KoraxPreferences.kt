@@ -123,13 +123,13 @@ internal object KoraxThemePalette {
         light = value
     }
 
-    val background: Color get() = if (light) Color(0xFFF3F6F9) else Color(0xFF0B1020)
-    val card: Color get() = if (light) Color.White else Color(0xFF151B2D)
-    val card2: Color get() = if (light) Color(0xFFE7EEF3) else Color(0xFF1D263B)
-    val text: Color get() = if (light) Color(0xFF111827) else Color(0xFFF4F7FB)
-    val muted: Color get() = if (light) Color(0xFF66758B) else Color(0xFF9AA8C0)
-    val border: Color get() = if (light) Color(0xFFD8E0E9) else Color(0xFF2A3650)
-    val accent: Color get() = if (light) Color(0xFF007F78) else Color(0xFF25D8BD)
+    val background: Color get() = if (light) Color(0xFFF3F6F9) else Color(0xFF07090D)
+    val card: Color get() = if (light) Color.White else Color(0xFF11161E)
+    val card2: Color get() = if (light) Color(0xFFE7EEF3) else Color(0xFF1A202A)
+    val text: Color get() = if (light) Color(0xFF151A21) else Color(0xFFF4F7FB)
+    val muted: Color get() = if (light) Color(0xFF66758B) else Color(0xFF929AA6)
+    val border: Color get() = if (light) Color(0xFFD8E0E9) else Color(0xFF27303B)
+    val accent: Color get() = if (light) Color(0xFF6B7F00) else Color(0xFFD5FF00)
 }
 
 internal class LocalNewsInteractions(context: Context) {
