@@ -77,7 +77,7 @@ class VisualShellActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         KoraxSmartAlerts.ensureChannels(this)
-        KoraxSmartAlerts.scheduleBackground(this)
+        KoraxSmartAlerts.setBackgroundUpdates(this, KoraxSettingsStore.getBoolean(this, "background_updates", true))
         window.statusBarColor = android.graphics.Color.rgb(7, 9, 13)
         window.navigationBarColor = android.graphics.Color.rgb(7, 9, 13)
         @Suppress("DEPRECATION") window.decorView.systemUiVisibility = 0
