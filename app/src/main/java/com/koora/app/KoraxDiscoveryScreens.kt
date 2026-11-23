@@ -854,7 +854,7 @@ internal fun KoraxSettingsScreen(
                     Row(Modifier.fillMaxWidth().clickable {
                         theme = value
                         KoraxSettingsStore.setTheme(context, value)
-                        if (value == "system") KoraxThemePalette.setLight(false)
+                        if (value == "system") KoraxThemePalette.applyLightMode(false)
                     }.padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(label, color = DText, fontSize = 11.sp, modifier = Modifier.weight(1f))
                         if (theme == value) Text("✓", color = DAccent, fontWeight = FontWeight.Black)
