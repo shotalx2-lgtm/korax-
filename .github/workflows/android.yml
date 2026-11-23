@@ -115,91 +115,6 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: platform-tools platforms;android-35 build-tools;35.0.0
-      - name: Configure and validate Firebase Android app
-        env:
-          FIREBASE_CONFIG_JSON_B64: ${{ secrets.FIREBASE_CONFIG_JSON_B64 }}
-        run: |
-          set -euo pipefail
-          rm -f app/google-services.json
-          if [ -z "$FIREBASE_CONFIG_JSON_B64" ]; then
-            echo "FIREBASE_CONFIG_VALID=false" >> "$GITHUB_ENV"
-            echo "Firebase config not supplied; Firebase sign-in and cloud sync will be disabled in this build."
-            exit 0
-          fi
-
-          if ! python3 - <<'PY'
-          import base64
-          import json
-          import os
-          import sys
-          from pathlib import Path
-
-          value = os.environ["FIREBASE_CONFIG_JSON_B64"]
-          candidates = []
-          compact = "".join(value.split())
-          try:
-              candidates.append(base64.b64decode(compact, validate=True).decode("utf-8"))
-          except Exception:
-              pass
-          candidates.append(value)
-
-          for candidate in candidates:
-              decoded_candidates = [candidate]
-              # Some Android text editors save Base64 text files as UTF-16.
-              try:
-                  raw = base64.b64decode("".join(candidate.split()), validate=True)
-                  for encoding in ("utf-16", "utf-16-le", "utf-16-be"):
-                      try:
-                          decoded = raw.decode(encoding)
-                          if decoded not in decoded_candidates:
-                              decoded_candidates.append(decoded)
-                      except Exception:
-                          pass
-              except Exception:
-                  pass
-
-              for decoded_candidate in decoded_candidates:
-                  try:
-                      data = json.loads(decoded_candidate)
-                  except Exception:
-                      continue
-              if not isinstance(data, dict) or not isinstance(data.get("project_info"), dict):
-                  continue
-              info = data["project_info"]
-              if str(info.get("project_id", "")) != "kora-x-c5e62":
-                  continue
-              if str(info.get("project_number", "")) != "25280637301":
-                  continue
-              clients = data.get("client")
-              if not isinstance(clients, list) or not clients:
-                  continue
-              packages = [
-                  item.get("client_info", {}).get("android_client_info", {}).get("package_name")
-                  for item in clients if isinstance(item, dict)
-              ]
-              if "com.koora.app" not in packages:
-                  continue
-              web_clients = [
-                  oauth for item in clients if isinstance(item, dict)
-                  for oauth in item.get("oauth_client", []) if isinstance(oauth, dict)
-                  if str(oauth.get("client_type")) == "3"
-              ]
-              if not web_clients:
-                  continue
-              Path("app/google-services.json").write_text(decoded_candidate, encoding="utf-8")
-              sys.exit(0)
-
-          raise SystemExit("Secret must be valid base64 or raw google-services JSON for project kora-x-c5e62, package com.koora.app, with a Web OAuth client.")
-          PY
-          then
-            rm -f app/google-services.json
-            echo "FIREBASE_CONFIG_VALID=false" >> "$GITHUB_ENV"
-            echo "::warning::Firebase configuration is malformed or incomplete. Firebase features are disabled for this build."
-            exit 0
-          fi
-
-          echo "FIREBASE_CONFIG_VALID=true" >> "$GITHUB_ENV"
-          echo "Validated Firebase config for KORAX Android and Google OAuth."
       - name: Configure Android release signing key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -221,7 +136,6 @@ jobs:
         id: release_config
         env:
           KOORA_API_BASE_URL: ${{ secrets.KOORA_API_BASE_URL || 'https://korax.shotalx2.workers.dev' }}
-          FIREBASE_CONFIG_JSON_B64: ${{ secrets.FIREBASE_CONFIG_JSON_B64 }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -230,10 +144,6 @@ jobs:
           ready=true
           if [ -z "$KOORA_API_BASE_URL" ] || [[ "$KOORA_API_BASE_URL" != https://* ]]; then
             echo "Release APK blocked: configure KOORA_API_BASE_URL with the deployed Cloudflare Worker HTTPS URL."
-            ready=false
-          fi
-          if [ "$FIREBASE_CONFIG_VALID" != "true" ]; then
-            echo "Release APK blocked: a valid Firebase JSON for com.koora.app with Web OAuth is required for Google sign-in and cloud fantasy sync."
             ready=false
           fi
           if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
@@ -245,8 +155,6 @@ jobs:
         run: gradle :app:testDebugUnitTest --stacktrace
       - name: Build optimized release APK
         run: gradle :app:assembleRelease --stacktrace -PKOORA_API_BASE_URL="${{ secrets.KOORA_API_BASE_URL || 'https://korax.shotalx2.workers.dev' }}"
-      - name: Print Android signing fingerprints for Firebase setup
-        run: gradle :app:signingReport --console=plain
       - name: Prepare test APK asset
         run: |
           cp app/build/outputs/apk/release/app-release.apk KORAX-Android.apk
@@ -261,8 +169,7 @@ jobs:
             Optimized KORAX Android APK.
             R8 code shrinking and Android resource shrinking are enabled.
             App features and dependencies are retained; only unused code/resources are removed.
-            This CI build is signed with the Android debug certificate for installable testing.
-            It is not a production signing key.
+            Installable integration build. Production release requires a stable upload key and Play App Signing.
           prerelease: true
           draft: false
           make_latest: false
