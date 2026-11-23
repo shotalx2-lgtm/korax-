@@ -66,6 +66,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.Instant
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -223,7 +224,10 @@ internal object KoraxSmartAlerts {
         }
         if (mergedMatches.isNotEmpty()) {
             val combinedRows = JSONArray()
-            mergedMatches.values.forEach(combinedRows::put)
+            mergedMatches.values.forEach { match ->
+                combinedRows.put(match)
+                notifyUpcomingWatchedMatch(context, match)
+            }
             processMatchUpdates(context, JSONObject().put("data", combinedRows))
         }
 
@@ -252,6 +256,35 @@ internal object KoraxSmartAlerts {
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun notifyUpcomingWatchedMatch(context: Context, match: JSONObject) {
+        val matchId = match.optString("id")
+        if (!KoraxMatchWatchStore.isWatching(context, matchId) || !isEnabled(context, "kickoff")) return
+        val startRaw = match.optString("startTime")
+        val startMillis = runCatching { Instant.parse(startRaw).toEpochMilli() }.getOrNull() ?: return
+        val remaining = startMillis - System.currentTimeMillis()
+        if (remaining < 0L || remaining > 30L * 60L * 1000L) return
+
+        val key = "upcoming_match_" + matchId + "_" + startRaw.hashCode()
+        val preferences = prefs(context)
+        if (preferences.getBoolean(key, false)) return
+
+        val home = match.optJSONObject("homeTeam")
+        val away = match.optJSONObject("awayTeam")
+        val competition = match.optJSONObject("competition")
+        val message = listOf(
+            home?.optString("name").orEmpty(),
+            away?.optString("name").orEmpty(),
+            competition?.optString("name").orEmpty()
+        ).filter { it.isNotBlank() }.joinToString(" • ")
+        val logo = home?.optString("crest").orEmpty().ifBlank { away?.optString("crest").orEmpty() }
+        send(
+            context, "kickoff", "⏰ مباراة تتابعها تبدأ خلال 30 دقيقة",
+            message.ifBlank { "موعد المباراة اقترب" }, logo, "",
+            key
+        )
+        preferences.edit().putBoolean(key, true).apply()
     }
 
     private fun processMatchUpdates(context: Context, payload: JSONObject) {
@@ -500,6 +533,7 @@ internal object KoraxSmartAlerts {
     }
 
     private fun matchesFavorite(context: Context, match: JSONObject, event: JSONObject?): Boolean {
+        if (KoraxMatchWatchStore.isWatching(context, match.optString("id"))) return true
         if (!KoraxFavoriteStore.setupComplete(context)) return false
         val all = KoraxFavoriteStore.all(context)
         if (all.isEmpty()) return true

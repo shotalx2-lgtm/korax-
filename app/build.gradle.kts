@@ -25,8 +25,8 @@ android {
         applicationId = "com.koora.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.5.0"
+        versionCode = 7
+        versionName = "0.6.0"
 
         val apiBase = providers.gradleProperty("KOORA_API_BASE_URL").orElse("").get()
         buildConfigField("String", "KOORA_API_BASE_URL", "\"$apiBase\"")

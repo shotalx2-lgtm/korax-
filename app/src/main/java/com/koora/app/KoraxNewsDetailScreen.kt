@@ -172,7 +172,10 @@ internal fun KoraxNewsDetailScreen(article: NewsItem, onBack: () -> Unit) {
                         icon = if (saved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
                         label = if (saved) "تم الحفظ" else "حفظ",
                         tint = if (saved) accent else muted,
-                        onClick = { saved = interactions.toggleSaved(article.url) }
+                        onClick = {
+                            saved = interactions.toggleSaved(article.url)
+                            KoraxOfflineStore.setSaved(context, article, saved)
+                        }
                     )
                     ActionButton(
                         icon = Icons.Filled.Share,
