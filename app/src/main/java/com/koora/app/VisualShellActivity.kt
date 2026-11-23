@@ -229,7 +229,7 @@ private suspend fun loadMatches(live: Boolean, selectedDate: String): List<Match
     }.distinctBy { it.id }
 }
 
-private val newsCategories = listOf("الكل", "العالمية", "العربية", "الدوري الإنجليزي", "الدوري الإسباني", "الدوري الإيطالي", "الدوري الألماني", "الدوري الفرنسي", "الدوري السعودي", "الانتقالات", "الإصابات")
+private val newsCategories = listOf("لك", "الكل", "العالمية", "العربية", "الدوري الإنجليزي", "الدوري الإسباني", "الدوري الإيطالي", "الدوري الألماني", "الدوري الفرنسي", "الدوري السعودي", "الانتقالات", "الإصابات")
 private fun matchesCategory(article: NewsItem, category: String): Boolean {
     val text = (article.title + " " + article.summary).lowercase(Locale.ROOT)
     fun has(vararg words: String) = words.any { text.contains(it.lowercase(Locale.ROOT)) }
@@ -531,8 +531,14 @@ private fun NewsScreen(
     }
 
     LaunchedEffect(Unit) { refresh() }
+    val followedNames = KoraxFavoriteStore.followed(context).map { it.name }.filter { it.isNotBlank() }
     val filtered = articles.filter {
-        matchesCategory(it, category) && (query.isBlank() || (it.title + " " + it.summary).contains(query, true))
+        val categoryMatch = if (category == "لك") {
+            followedNames.isNotEmpty() && followedNames.any { name ->
+                (it.title + " " + it.summary).contains(name, ignoreCase = true)
+            }
+        } else matchesCategory(it, category)
+        categoryMatch && (query.isBlank() || (it.title + " " + it.summary).contains(query, true))
     }
 
     Column(Modifier.fillMaxSize()) {
