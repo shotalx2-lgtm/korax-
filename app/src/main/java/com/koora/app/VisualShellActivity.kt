@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -41,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,8 +83,8 @@ class VisualShellActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         KoraxSmartAlerts.ensureChannels(this)
         KoraxSmartAlerts.setBackgroundUpdates(this, KoraxSettingsStore.getBoolean(this, "background_updates", true))
-        window.statusBarColor = android.graphics.Color.rgb(7, 9, 13)
-        window.navigationBarColor = android.graphics.Color.rgb(7, 9, 13)
+        window.statusBarColor = android.graphics.Color.rgb(11, 16, 32)
+        window.navigationBarColor = android.graphics.Color.rgb(11, 16, 32)
         @Suppress("DEPRECATION") window.decorView.systemUiVisibility = 0
         setContent {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
@@ -128,19 +130,13 @@ private fun KoraxSplash() {
     var intro by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(1050); intro = false }
     if (intro) {
-        Box(Modifier.fillMaxSize().background(Brush.radialGradient(listOf(Color(0xFF1B2508), Color(0xFF0D1118), Color(0xFF050609)))), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("KORA", color = Color.White, fontSize = 49.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-                    Text("X", color = KLime, fontSize = 55.sp, fontWeight = FontWeight.Black)
-                }
-                Spacer(Modifier.height(8.dp))
-                Text("BEYOND FOOTBALL", color = KMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
-                Spacer(Modifier.height(25.dp))
-                Box(Modifier.width(54.dp).height(3.dp).clip(CircleShape).background(KLime))
-                Spacer(Modifier.height(18.dp))
-                Text("NEWS  •  MATCHES  •  LEAGUES", color = Color(0xFFBEC5CE), fontSize = 9.sp, letterSpacing = 1.sp)
-            }
+        Box(Modifier.fillMaxSize().background(Color(0xFF0B1020)), contentAlignment = Alignment.Center) {
+            Image(
+                painter = painterResource(R.drawable.korax_brand),
+                contentDescription = "KORAX",
+                modifier = Modifier.size(310.dp),
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit
+            )
         }
     } else KoraxApp()
 }
@@ -172,6 +168,8 @@ internal suspend fun apiJson(path: String): JSONObject = withContext(Dispatchers
 }
 internal fun JSONObject.rows() = optJSONArray("data") ?: JSONArray()
 internal fun JSONObject.https(name: String) = optString(name).takeIf { it.startsWith("https://") }.orEmpty()
+internal fun JSONObject.firstHttps(vararg names: String): String =
+    names.firstNotNullOfOrNull { name -> https(name).takeIf { it.isNotBlank() } }.orEmpty()
 
 private suspend fun loadNews(): List<NewsItem> {
     // The endpoint already filters Arabic. Keep older Worker responses that omit
@@ -193,10 +191,14 @@ private suspend fun loadNews(): List<NewsItem> {
         if (language.isNotBlank() && !language.equals("ar", ignoreCase = true)) return@mapNotNull null
         val url = x.optString("url")
         val title = x.optString("title").trim()
+        val summary = x.optString("summary")
+        val source = x.optString("source", "مصدر رياضي")
         if (title.isBlank() || !url.startsWith("https://")) return@mapNotNull null
-        NewsItem(x.optString("id", url), title, x.optString("summary"), url,
-            x.optString("source", "مصدر رياضي"), x.optString("publishedAt"),
-            x.https("imageUrl").takeIf { it.isNotBlank() }, x.optString("category", "football"))
+        if (!FootballNewsFilter.isFootballNews(title, summary, source)) return@mapNotNull null
+        NewsItem(x.optString("id", url), title, summary, url,
+            source, x.optString("publishedAt"),
+            x.firstHttps("imageUrl", "image_path", "image_url", "photo_url", "thumbnail").takeIf { it.isNotBlank() },
+            x.optString("category", "football"))
     }
     val seen = HashSet<String>()
     return parsed.filter { item ->
@@ -213,9 +215,9 @@ private suspend fun loadTransfers(): List<TransferItem> {
         val name = p?.optString("name").orEmpty().ifBlank { x.optString("playerName") }
         if (name.isBlank()) return@mapNotNull null
         val amount = x.opt("amount")
-        TransferItem(x.optString("id", i.toString()), name, p?.https("image_path").orEmpty(),
-            f?.optString("name").orEmpty().ifBlank { "غير محدد" }, f?.https("image_path").orEmpty(),
-            t?.optString("name").orEmpty().ifBlank { "غير محدد" }, t?.https("image_path").orEmpty(),
+        TransferItem(x.optString("id", i.toString()), name, p?.firstHttps("image_path", "imageUrl", "image_url", "photo_url", "photo", "thumbnail").orEmpty(),
+            f?.optString("name").orEmpty().ifBlank { "غير محدد" }, f?.firstHttps("image_path", "imageUrl", "image_url", "logoUrl", "logo_url", "crest", "badge").orEmpty(),
+            t?.optString("name").orEmpty().ifBlank { "غير محدد" }, t?.firstHttps("image_path", "imageUrl", "image_url", "logoUrl", "logo_url", "crest", "badge").orEmpty(),
             x.optString("typeName").ifBlank { "انتقال" }, x.optString("date"),
             if (amount == null || amount == JSONObject.NULL || amount.toString() == "0") "القيمة غير معلنة" else amount.toString(),
             x.optBoolean("completed"), x.optJSONObject("league")?.optString("name").orEmpty().ifBlank { x.optString("leagueName") })
@@ -262,8 +264,8 @@ private suspend fun loadMatches(live: Boolean, selectedDate: String): List<Match
             home, away, x.optString("startTime"), x.optString("competitionName")
         ).filter { it.isNotBlank() }.joinToString("|").ifBlank { "match-$i" }
         MatchItem(fixtureId, home, away,
-            h?.https("crest").orEmpty().ifBlank { h?.https("logoUrl").orEmpty() },
-            a?.https("crest").orEmpty().ifBlank { a?.https("logoUrl").orEmpty() },
+            h?.firstHttps("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
+            a?.firstHttps("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
             score, localizeMatchStatus(x.optString("status", "غير متاحة")), x.optString("startTime"),
             x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") },
             detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false))
@@ -917,18 +919,73 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatc
 
 @Composable
 private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit, explore: () -> Unit, competitions: () -> Unit, settings: () -> Unit, transfers: () -> Unit, tools: () -> Unit) {
+    val context = LocalContext.current
+    val followedCount = KoraxFavoriteStore.all(context).size
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        KoraxHeader("المزيد", "كل أخبار ومباريات كرة القدم في مكان واحد")
+        KoraxHeader("المزيد", "حساب المشجع وإعدادات KORAX")
         Column(Modifier.padding(horizontal = 14.dp)) {
-            MoreRow("الأخبار", "العودة إلى مركز الأخبار", "⌂", home)
-            MoreRow("المفضلة", "الأندية واللاعبون الذين تتابعهم", "♡", favorites)
-            MoreRow("البطولات والدوريات", "عرض المسابقات والجداول والترتيب", "🏆", competitions)
-            MoreRow("استكشف", "اكتشف الأندية والمنتخبات واللاعبين", "⌕", explore)
-            MoreRow("الانتقالات", "أخبار وانتقالات اللاعبين المتاحة من المصدر", "⇄", transfers)
-            MoreRow("مختبر المميزات الجديدة", "المقارنة والأرشيف والمساعد والنسخ الاحتياطي وفحص المصادر", "✦", tools)
-            MoreRow("الإشعارات", "مركز تنبيهات المباريات والأخبار", "♧", notifications)
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = KCard),
+                border = BorderStroke(1.dp, KBorder)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(58.dp).clip(CircleShape).background(KCard2),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("⚽", fontSize = 27.sp)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("ملف المشجع", color = KText, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("المفضلة وإعدادات المتابعة محفوظة على جهازك", color = KMuted, fontSize = 10.sp, lineHeight = 15.sp)
+                        Text("$followedCount عنصر في المفضلة", color = KLime, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                    TextButton(onClick = favorites) {
+                        Text("عرض", color = KLime, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MoreQuickAction("☆", "المفضلة", favorites, Modifier.weight(1f), Color(0xFF8D72D7))
+                MoreQuickAction("⇄", "الانتقالات", transfers, Modifier.weight(1f), KLime)
+            }
+            MoreSectionLabel("كرة القدم")
+            MoreRow("الأخبار", "آخر أخبار كرة القدم من المصادر المتاحة", "⌂", home)
+            MoreRow("البطولات والدوريات", "المباريات والجداول وترتيب الفرق", "🏆", competitions)
+            MoreRow("استكشف", "الأندية والمنتخبات واللاعبون", "⌕", explore)
+            MoreRow("مركز الإشعارات", "تنبيهات المباريات والأخبار على جهازك", "♧", notifications)
+            MoreSectionLabel("التطبيق")
             MoreRow("الإعدادات", "المظهر والصور وتوفير البيانات والتحديثات", "⚙", settings)
-            StateCard("KORAX", "تابع كرة القدم، الأخبار، المباريات، الدوريات، البطولات، الأندية واللاعبين. المفضلة والتعليقات المحلية محفوظة على جهازك.", "X")
+            MoreRow("أدوات KORAX", "المقارنة والأرشيف والمساعد وفحص المصادر", "✦", tools)
+            Text(
+                "لا يوجد تسجيل حساب أو مزامنة سحابية للمفضلة في هذه النسخة. بيانات المتابعة الحالية محفوظة محليًا على جهازك.",
+                color = KMuted, fontSize = 9.sp, lineHeight = 15.sp,
+                modifier = Modifier.padding(horizontal = 5.dp, vertical = 14.dp)
+            )
+        }
+    }
+}
+@Composable
+private fun MoreSectionLabel(title: String) {
+    Text(title, color = KMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 5.dp, top = 18.dp, bottom = 8.dp))
+}
+@Composable
+private fun MoreQuickAction(label: String, title: String, click: () -> Unit, modifier: Modifier, tint: Color) {
+    Surface(
+        modifier = modifier.height(46.dp).clickable(onClick = click),
+        shape = RoundedCornerShape(14.dp),
+        color = KCard2,
+        border = BorderStroke(1.dp, KBorder)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            Text(label, color = tint, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(7.dp))
+            Text(title, color = KText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

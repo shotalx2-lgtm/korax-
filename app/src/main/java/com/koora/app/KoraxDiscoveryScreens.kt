@@ -56,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,6 +67,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.Locale
 
 private val DBg get() = KoraxThemePalette.background
 private val DCard get() = KoraxThemePalette.card
@@ -101,7 +103,7 @@ private fun JSONObject.firstString(vararg keys: String): String {
 }
 
 private fun JSONObject.firstImage(): String {
-    val keys = listOf("imageUrl", "image_path", "image_url", "logoUrl", "logo", "logo_url", "crest", "photo", "photo_url")
+    val keys = listOf("imageUrl", "image_path", "imagePath", "image_url", "logoUrl", "logo", "logo_url", "logo_path", "crest", "crestUrl", "crest_url", "badge", "emblem", "photo", "photo_url", "thumbnail")
     return keys.firstNotNullOfOrNull { key ->
         optString(key).takeIf { it.startsWith("https://") }
     }.orEmpty()
@@ -708,56 +710,75 @@ internal fun KoraxEntityProfileScreen(
             Column(
                 Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 14.dp)
             ) {
+                val profileName = root.firstString("name", "title").ifBlank { favorite.name }
+                val profileType = favoriteTypes.firstOrNull { it.first == favorite.kind }?.second ?: "فريق"
+                val profileCountry = root.firstString("country", "country_name", "nationality").ifBlank { favorite.country }
+                val profilePosition = root.firstString("position", "position_name", "role")
+                val profileClub = root.firstString("team_name", "club_name", "team")
+                val profileSubtitle = listOf(profileType, profileCountry, profilePosition, profileClub)
+                    .filter { it.isNotBlank() }.distinct().joinToString(" • ")
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(22.dp),
                     colors = CardDefaults.cardColors(containerColor = DCard),
                     border = BorderStroke(1.dp, DBorder)
                 ) {
-                    Column(Modifier.fillMaxWidth().padding(17.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.size(118.dp).clip(RoundedCornerShape(22.dp)).background(DCard2), contentAlignment = Alignment.Center) {
-                            if (image.isNotBlank() && KoraxSettingsStore.getBoolean(context, "show_images", true)) {
-                                coil.compose.AsyncImage(model = image, contentDescription = favorite.name, modifier = Modifier.fillMaxSize().padding(7.dp), contentScale = ContentScale.Fit)
-                            } else {
-                                Text(favorite.name.take(1), color = DAccent, fontSize = 46.sp, fontWeight = FontWeight.Black)
-                            }
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        Text(root.firstString("name", "title").ifBlank { favorite.name }, color = DText, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(
-                            listOf(
-                                favoriteTypes.firstOrNull { it.first == favorite.kind }?.second ?: "فريق",
-                                root.firstString("country", "country_name", "nationality").ifBlank { favorite.country }
-                            ).filter { it.isNotBlank() }.joinToString(" • "),
-                            color = DMuted, fontSize = 10.sp
-                        )
-                        Spacer(Modifier.height(13.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
-                                onClick = {
-                                    if (following) {
-                                        KoraxFavoriteStore.toggle(context, favorite)
-                                        following = false
-                                    } else {
-                                        KoraxFavoriteStore.toggle(context, favorite.copy(notify = notify))
-                                        following = true
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (following) DCard2 else DAccent,
-                                    contentColor = if (following) DText else Color.Black
-                                ),
-                                shape = RoundedCornerShape(12.dp)
+                    Box(
+                        Modifier.fillMaxWidth()
+                            .background(Brush.horizontalGradient(listOf(Color(0xFF1D2B49), DCard)))
+                            .padding(14.dp)
+                    ) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier.size(104.dp).clip(RoundedCornerShape(18.dp)).background(DCard2),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(if (following) "✓ في المفضلة" else "♡ أضف للمفضلة", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                if (image.isNotBlank() && KoraxSettingsStore.getBoolean(context, "show_images", true)) {
+                                    coil.compose.AsyncImage(
+                                        model = image, contentDescription = profileName,
+                                        modifier = Modifier.fillMaxSize().padding(5.dp), contentScale = ContentScale.Fit
+                                    )
+                                } else {
+                                    Text(profileName.take(1), color = DAccent, fontSize = 42.sp, fontWeight = FontWeight.Black)
+                                }
                             }
-                            if (following) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("تنبيهات", color = DMuted, fontSize = 10.sp)
-                                    Switch(checked = notify, onCheckedChange = {
-                                        notify = it
-                                        KoraxFavoriteStore.updateNotification(context, favorite, it)
-                                    })
+                            Spacer(Modifier.width(13.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(profileType.uppercase(Locale.ROOT), color = DAccent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(5.dp))
+                                Text(profileName, color = DText, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (profileSubtitle.isNotBlank()) {
+                                    Spacer(Modifier.height(5.dp))
+                                    Text(profileSubtitle, color = DMuted, fontSize = 9.sp, lineHeight = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                Button(
+                                    onClick = {
+                                        if (following) {
+                                            KoraxFavoriteStore.toggle(context, favorite)
+                                            following = false
+                                        } else {
+                                            KoraxFavoriteStore.toggle(context, favorite.copy(notify = notify))
+                                            following = true
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (following) DCard2 else DAccent,
+                                        contentColor = if (following) DText else Color.Black
+                                    ),
+                                    shape = RoundedCornerShape(11.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 5.dp)
+                                ) {
+                                    Text(if (following) "✓ في المفضلة" else "♡ أضف للمفضلة", fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                }
+                                if (following) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("تنبيهات هذا العنصر", color = DMuted, fontSize = 9.sp)
+                                        Switch(checked = notify, onCheckedChange = {
+                                            notify = it
+                                            KoraxFavoriteStore.updateNotification(context, favorite, it)
+                                        })
+                                    }
                                 }
                             }
                         }

@@ -510,20 +510,27 @@ internal object KoraxSmartAlerts {
         val fresh = mutableListOf<JSONObject>()
         for (index in 0 until rows.length()) {
             val item = rows.optJSONObject(index) ?: continue
+            val title = item.optString("title")
+            val summary = item.optString("summary")
+            val source = item.optString("source")
+            if (!FootballNewsFilter.isFootballNews(title, summary, source)) continue
             val key = item.optString("url").ifBlank { item.optString("id") }
             if (key.isBlank()) continue
             if (!seeded) seen.add(key) else if (seen.add(key)) fresh.add(item)
         }
         if (seeded && isEnabled(context, "news")) {
             fresh.take(3).forEach { item ->
-                val title = item.optString("title").ifBlank { "خبر كروي جديد" }
+                val articleTitle = item.optString("title").ifBlank { "خبر كروي جديد" }
                 val source = item.optString("source")
                 val summary = item.optString("summary")
-                val body = listOf(source, summary).filter { it.isNotBlank() }.joinToString(" • ")
+                val age = relativeNewsAge(item.optString("publishedAt"))
+                val isBreaking = Regex("عاجل|رسميا|بشكل رسمي", RegexOption.IGNORE_CASE).containsMatchIn(articleTitle)
+                val notificationTitle = if (isBreaking) "عاجل 🚨 • $age" else "كرة القدم ⚽ • $age"
+                val expandedBody = listOf(articleTitle, summary).filter { it.isNotBlank() }.joinToString("\n")
                     .ifBlank { "اضغط لقراءة تفاصيل الخبر" }
                 val image = item.optString("imageUrl").takeIf { it.startsWith("https://") }.orEmpty()
                 val key = item.optString("url").ifBlank { item.optString("id") }
-                send(context, "news", "📰 $title", body, image, image, key)
+                send(context, "news", notificationTitle, articleTitle, "", image, key, expandedBody)
             }
         }
         preferences.edit()
@@ -620,14 +627,16 @@ internal object KoraxSmartAlerts {
         message: String,
         iconUrl: String,
         pictureUrl: String,
-        uniqueKey: String
+        uniqueKey: String,
+        expandedMessage: String = message
     ) {
         if (!hasPermission(context)) return
         ensureChannels(context)
         val withSound = soundEnabled(context)
         val channel = channelId(kind, withSound)
-        val iconBitmap = downloadImage(iconUrl)
+        val contextIconBitmap = downloadImage(iconUrl)
         val pictureBitmap = downloadImage(pictureUrl)
+        val brandBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.korax_brand)
         val intent = Intent(context, VisualShellActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         val requestCode = uniqueKey.hashCode() and 0x7fffffff
@@ -639,20 +648,41 @@ internal object KoraxSmartAlerts {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(expandedMessage))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
-            .setColor(android.graphics.Color.rgb(213, 255, 0))
+            .setShowWhen(true)
+            .setSubText(if (kind == "news") "KORAX • أخبار كرة القدم" else "KORAX • كرة القدم")
+            .setTicker(title)
+            .setColor(android.graphics.Color.rgb(37, 216, 189))
             .setCategory(if (kind == "news") NotificationCompat.CATEGORY_RECOMMENDATION else NotificationCompat.CATEGORY_EVENT)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-        if (iconBitmap != null) builder.setLargeIcon(iconBitmap)
+        builder.setLargeIcon(brandBitmap ?: contextIconBitmap)
         if (pictureBitmap != null) {
-            builder.setStyle(NotificationCompat.BigPictureStyle().bigPicture(pictureBitmap).setSummaryText(message))
+            builder.setStyle(
+                NotificationCompat.BigPictureStyle()
+                    .bigPicture(pictureBitmap)
+                    .bigLargeIcon(brandBitmap)
+                    .setSummaryText(message)
+            )
         }
         runCatching {
             NotificationManagerCompat.from(context).notify(requestCode, builder.build())
             saveHistory(context, AlertHistoryItem(kind, title, message, System.currentTimeMillis()))
+        }
+    }
+
+    private fun relativeNewsAge(raw: String): String {
+        val publishedAt = runCatching { Instant.parse(raw).toEpochMilli() }.getOrNull()
+            ?: return "الآن"
+        val minutes = ((System.currentTimeMillis() - publishedAt).coerceAtLeast(0L) / 60_000L)
+        val formatter = java.text.NumberFormat.getIntegerInstance(Locale("ar"))
+        return when {
+            minutes < 1 -> "الآن"
+            minutes < 60 -> "${formatter.format(minutes)} دقيقة"
+            minutes < 24 * 60 -> "${formatter.format(minutes / 60)} ساعة"
+            else -> "${formatter.format(minutes / (24 * 60))} يوم"
         }
     }
 

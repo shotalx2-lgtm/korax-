@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -64,8 +65,16 @@ private fun JSONObject.readText(vararg keys: String): String {
     return ""
 }
 
-private fun JSONObject.readImage(vararg keys: String): String =
-    keys.firstNotNullOfOrNull { key -> optString(key).takeIf { it.startsWith("https://") } }.orEmpty()
+private fun JSONObject.readImage(vararg keys: String): String {
+    val aliases = listOf(
+        "imageUrl", "image_path", "imagePath", "image_url", "photo_url", "photo",
+        "thumbnail", "logoUrl", "logo", "logo_url", "logo_path",
+        "crest", "crestUrl", "crest_url", "badge", "emblem"
+    )
+    return (keys.toList() + aliases).distinct()
+        .firstNotNullOfOrNull { key -> optString(key).takeIf { it.startsWith("https://") } }
+        .orEmpty()
+}
 
 private fun String.urlEncoded(): String = URLEncoder.encode(this, "UTF-8")
 
@@ -100,10 +109,13 @@ internal object KoraxOfflineStore {
             val row = array.optJSONObject(index) ?: return@mapNotNull null
             val url = row.optString("url")
             val title = row.optString("title")
+            val summary = row.optString("summary")
+            val source = row.optString("source")
             if (url.isBlank() || title.isBlank()) return@mapNotNull null
+            if (!FootballNewsFilter.isFootballNews(title, summary, source)) return@mapNotNull null
             NewsItem(
-                row.optString("id", url), title, row.optString("summary"), url,
-                row.optString("source"), row.optString("date"),
+                row.optString("id", url), title, summary, url,
+                source, row.optString("date"),
                 row.optString("image").takeIf { it.startsWith("https://") },
                 row.optString("category", "football")
             )
@@ -518,8 +530,8 @@ private fun JSONObject.toToolMatch(): ToolMatch? {
     val id = optString("id").ifBlank { home + "-" + away + "-" + optString("startTime") }
     return ToolMatch(
         id, home, away,
-        homeObj?.readImage("crest", "logoUrl").orEmpty(),
-        awayObj?.readImage("crest", "logoUrl").orEmpty(),
+        homeObj?.readImage("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
+        awayObj?.readImage("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
         score, readText("status").ifBlank { "الحالة غير متاحة" },
         readText("startTime"), optJSONObject("competition")?.optString("name").orEmpty().ifBlank { optString("competitionName") }
     )
@@ -604,6 +616,13 @@ private fun MatchDetailContent(match: JSONObject) {
     val away = match.optJSONObject("awayTeam")
     val homeName = home?.optString("name").orEmpty().ifBlank { match.optString("home") }
     val awayName = away?.optString("name").orEmpty().ifBlank { match.optString("away") }
+    val homeId = home?.optString("id").orEmpty()
+    val awayId = away?.optString("id").orEmpty()
+    val homeLogo = home?.readImage("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty()
+    val awayLogo = away?.readImage("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty()
+    val competition = match.optJSONObject("competition")
+    val competitionName = competition?.optString("name").orEmpty().ifBlank { match.optString("competitionName") }
+    val competitionLogo = competition?.readImage("imageUrl", "image_path", "image_url", "logo", "logo_url").orEmpty()
     val score = if (match.opt("homeScore") != null && match.opt("homeScore") != JSONObject.NULL &&
         match.opt("awayScore") != null && match.opt("awayScore") != JSONObject.NULL)
         match.optString("homeScore") + " - " + match.optString("awayScore") else "VS"
@@ -613,28 +632,74 @@ private fun MatchDetailContent(match: JSONObject) {
     val context = LocalContext.current
     val matchId = match.optString("id")
     var watching by remember(matchId) { mutableStateOf(KoraxMatchWatchStore.isWatching(context, matchId)) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(13.dp)) {
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = XCard), border = BorderStroke(1.dp, XBorder), shape = RoundedCornerShape(18.dp)) {
-            Column(Modifier.padding(15.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(match.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { match.optString("competitionName") }, color = XAccent, fontSize = 10.sp)
-                Spacer(Modifier.height(12.dp))
+
+    fun belongsTo(row: JSONObject, teamId: String, teamName: String): Boolean {
+        val rowTeam = row.optJSONObject("team")
+        val rowId = row.readText("team_id").ifBlank { rowTeam?.optString("id").orEmpty() }
+        val rowName = rowTeam?.optString("name").orEmpty().ifBlank { row.readText("team_name") }
+        return (teamId.isNotBlank() && rowId.isNotBlank() && rowId == teamId) ||
+            (teamName.isNotBlank() && rowName.equals(teamName, ignoreCase = true))
+    }
+
+    val lineupRows = (0 until lineups.length()).mapNotNull { lineups.optJSONObject(it) }
+        .filter { it.readText("player_name", "name").isNotBlank() }
+    val homeLineup = lineupRows.filter { belongsTo(it, homeId, homeName) }
+    val awayLineup = lineupRows.filter { belongsTo(it, awayId, awayName) }
+    val splitLineups = homeLineup.isNotEmpty() || awayLineup.isNotEmpty()
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 13.dp, vertical = 10.dp)) {
+        Card(
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = XCard),
+            border = BorderStroke(1.dp, XBorder),
+            shape = RoundedCornerShape(22.dp)
+        ) {
+            Column(
+                Modifier.fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(Color(0xFF1D2947), XCard)))
+                    .padding(15.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                    if (competitionLogo.isNotBlank()) {
+                        coil.compose.AsyncImage(competitionLogo, competitionName, Modifier.size(23.dp), contentScale = ContentScale.Fit)
+                        Spacer(Modifier.width(7.dp))
+                    }
+                    Text(competitionName.ifBlank { "البطولة غير متاحة" }, color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(16.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (home?.readImage("crest", "logoUrl").orEmpty().isNotBlank()) coil.compose.AsyncImage(home!!.readImage("crest", "logoUrl"), homeName, Modifier.size(52.dp), contentScale = ContentScale.Fit)
-                        Text(homeName, color = XText, fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        if (homeLogo.isNotBlank()) {
+                            coil.compose.AsyncImage(homeLogo, homeName, Modifier.size(64.dp), contentScale = ContentScale.Fit)
+                        } else {
+                            TeamLogoFallback(homeName)
+                        }
+                        Spacer(Modifier.height(7.dp))
+                        Text(homeName, color = XText, fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2)
                     }
-                    Text(score, color = XAccent, fontSize = 23.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 9.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(score, color = XText, fontSize = 29.sp, fontWeight = FontWeight.Black)
+                        Text(match.optString("status").ifBlank { "الحالة غير متاحة" }, color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (away?.readImage("crest", "logoUrl").orEmpty().isNotBlank()) coil.compose.AsyncImage(away!!.readImage("crest", "logoUrl"), awayName, Modifier.size(52.dp), contentScale = ContentScale.Fit)
-                        Text(awayName, color = XText, fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        if (awayLogo.isNotBlank()) {
+                            coil.compose.AsyncImage(awayLogo, awayName, Modifier.size(64.dp), contentScale = ContentScale.Fit)
+                        } else {
+                            TeamLogoFallback(awayName)
+                        }
+                        Spacer(Modifier.height(7.dp))
+                        Text(awayName, color = XText, fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2)
                     }
                 }
-                Spacer(Modifier.height(9.dp))
-                Text(match.optString("status"), color = XMuted, fontSize = 10.sp)
-                Text(match.optJSONObject("venue")?.optString("name").orEmpty().ifBlank { match.optString("venue") }, color = XMuted, fontSize = 9.sp)
-                Text("الحكم: " + match.optJSONObject("referee")?.optString("name").orEmpty().ifBlank { "غير متاح" }, color = XMuted, fontSize = 9.sp)
+                Spacer(Modifier.height(12.dp))
+                val venue = match.optJSONObject("venue")?.optString("name").orEmpty().ifBlank { match.optString("venue") }
+                val referee = match.optJSONObject("referee")?.optString("name").orEmpty()
+                val meta = listOf(venue, referee.takeIf { it.isNotBlank() }?.let { "الحكم $it" }).filter { !it.isNullOrBlank() }
+                if (meta.isNotEmpty()) Text(meta.joinToString(" • "), color = XMuted, fontSize = 9.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
+
         Button(
             onClick = { watching = KoraxMatchWatchStore.toggle(context, matchId) },
             enabled = matchId.isNotBlank(),
@@ -642,57 +707,199 @@ private fun MatchDetailContent(match: JSONObject) {
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (watching) XCard2 else XAccent,
                 contentColor = if (watching) XText else Color.Black
-            )
+            ),
+            shape = RoundedCornerShape(13.dp)
         ) {
             Text(if (watching) "✓ تتابع هذه المباراة — إيقاف التنبيه" else "🔔 تابع المباراة ونبّهني بأحداثها", fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
-        if (stats.length() > 0) {
-            Text("إحصائيات المباراة", color = XText, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp, bottom = 7.dp))
-            repeat(stats.length()) { index ->
-                val row = stats.optJSONObject(index) ?: return@repeat
-                val name = row.readText("name", "type_name", "type")
-                val value = row.readText("value", "data")
-                if (name.isNotBlank() || value.isNotBlank()) {
-                    Row(Modifier.fillMaxWidth().background(XCard, RoundedCornerShape(9.dp)).padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(row.readText("team").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.weight(1f))
-                        Text(name.ifBlank { "إحصائية" }, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                        Text(value, color = XAccent, fontSize = 10.sp, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+
+        Text("إحصائيات المباراة", color = XText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+        if (stats.length() == 0) {
+            Text("الإحصائيات غير متاحة من المصدر لهذا اللقاء.", color = XMuted, fontSize = 10.sp)
+        } else {
+            val statRows = (0 until stats.length()).mapNotNull { stats.optJSONObject(it) }
+                .filter { it.readText("name", "type_name", "type").isNotBlank() }
+                .groupBy { it.readText("name", "type_name", "type") }
+            statRows.forEach { (name, rows) ->
+                val homeValue = rows.firstOrNull { it.readText("team").equals(homeName, true) }?.readText("value", "data").orEmpty()
+                val awayValue = rows.firstOrNull { it.readText("team").equals(awayName, true) }?.readText("value", "data").orEmpty()
+                if (homeValue.isNotBlank() || awayValue.isNotBlank()) {
+                    Column(
+                        Modifier.fillMaxWidth().background(XCard, RoundedCornerShape(12.dp)).padding(horizontal = 11.dp, vertical = 9.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(homeValue.ifBlank { "—" }, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                            Text(name, color = XMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1.5f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                            Text(awayValue.ifBlank { "—" }, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                        }
+                        val homeNumber = statNumber(homeValue)
+                        val awayNumber = statNumber(awayValue)
+                        if (homeNumber != null && awayNumber != null && homeNumber >= 0f && awayNumber >= 0f) {
+                            val total = (homeNumber + awayNumber).coerceAtLeast(0.001f)
+                            val firstWeight = (homeNumber / total).coerceAtLeast(0.02f)
+                            val secondWeight = (awayNumber / total).coerceAtLeast(0.02f)
+                            Row(Modifier.fillMaxWidth().height(5.dp).clip(CircleShape).background(XCard2)) {
+                                Box(Modifier.weight(firstWeight).fillMaxHeight().background(XAccent))
+                                Box(Modifier.weight(secondWeight).fillMaxHeight().background(Color(0xFF7082A5)))
+                            }
+                        }
                     }
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(5.dp))
                 }
             }
         }
-        Text("أحداث المباراة", color = XText, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp, bottom = 7.dp))
-        if (events.length() == 0) Text("لم يوفر المصدر أحداثًا تفصيلية لهذا اللقاء.", color = XMuted, fontSize = 10.sp)
-        repeat(events.length()) { index ->
-            val row = events.optJSONObject(index) ?: return@repeat
-            val minute = row.readText("minute").ifBlank { "—" }
-            val type = row.readText("type_name", "type")
-            val player = row.readText("player_name", "player")
-            val detail = row.readText("detail")
-            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(minute + "'", color = XAccent, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.width(34.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(type.ifBlank { "حدث" }, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    Text(listOf(player, detail).filter { it.isNotBlank() }.joinToString(" • ").ifBlank { "تفاصيل غير متاحة" }, color = XMuted, fontSize = 9.sp)
+
+        Text("أحداث المباراة", color = XText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+        if (events.length() == 0) {
+            Text("لم يوفر المصدر أحداثًا تفصيلية لهذا اللقاء.", color = XMuted, fontSize = 10.sp)
+        } else {
+            repeat(events.length()) { index ->
+                val row = events.optJSONObject(index) ?: return@repeat
+                val minute = row.readText("minute").ifBlank { "—" }
+                val type = row.readText("type_name", "type").ifBlank { "حدث" }
+                val player = row.readText("player_name", "player")
+                val detail = row.readText("detail")
+                val kind = type.lowercase(Locale.ROOT)
+                val eventSymbol = when {
+                    kind.contains("goal") || kind.contains("هدف") -> "⚽"
+                    kind.contains("yellow") || kind.contains("أصفر") || kind.contains("اصفر") -> "🟨"
+                    kind.contains("red") || kind.contains("أحمر") || kind.contains("احمر") -> "🟥"
+                    kind.contains("sub") || kind.contains("تبديل") -> "🔁"
+                    else -> "•"
+                }
+                Card(
+                    Modifier.fillMaxWidth().padding(bottom = 5.dp),
+                    colors = CardDefaults.cardColors(containerColor = XCard),
+                    border = BorderStroke(1.dp, XBorder),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(minute + "'", color = XAccent, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.width(34.dp))
+                        Text(eventSymbol, fontSize = 15.sp)
+                        Spacer(Modifier.width(9.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(type, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text(listOf(player, detail).filter { it.isNotBlank() }.joinToString(" • ").ifBlank { "تفاصيل اللاعب غير متاحة" }, color = XMuted, fontSize = 9.sp)
+                        }
+                    }
                 }
             }
-            Divider(color = XBorder)
         }
-        Text("التشكيلات", color = XText, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp, bottom = 7.dp))
-        if (lineups.length() == 0) Text("التشكيلات غير متاحة من المصدر لهذا اللقاء.", color = XMuted, fontSize = 10.sp)
-        repeat(lineups.length()) { index ->
-            val row = lineups.optJSONObject(index) ?: return@repeat
-            val name = row.readText("player_name", "name")
-            if (name.isNotBlank()) {
-                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(row.readText("shirt_number").ifBlank { "—" }, color = XAccent, fontSize = 10.sp, modifier = Modifier.width(28.dp))
-                    Text(name, color = XText, fontSize = 10.sp, modifier = Modifier.weight(1f))
-                    Text(row.readText("position_name"), color = XMuted, fontSize = 9.sp)
+
+        Text("التشكيلات", color = XText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+        when {
+            lineups.length() == 0 -> Text("التشكيلات غير متاحة من المصدر لهذا اللقاء.", color = XMuted, fontSize = 10.sp)
+            splitLineups -> {
+                if (homeLineup.isNotEmpty()) MatchLineupSide(homeName, homeLineup)
+                if (awayLineup.isNotEmpty()) {
+                    if (homeLineup.isNotEmpty()) Spacer(Modifier.height(9.dp))
+                    MatchLineupSide(awayName, awayLineup)
+                }
+            }
+            else -> {
+                Text("أرسل المصدر أسماء لاعبين دون تحديد الفريق أو المركز؛ نعرضها كما وصلت دون تخمين.", color = XMuted, fontSize = 9.sp)
+                lineupRows.forEach { row ->
+                    val number = row.readText("shirt_number")
+                    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(number.ifBlank { "—" }, color = XAccent, fontSize = 10.sp, modifier = Modifier.width(28.dp))
+                        Text(row.readText("player_name", "name"), color = XText, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                        Text(row.readText("position_name").ifBlank { "المركز غير متاح" }, color = XMuted, fontSize = 9.sp)
+                    }
                 }
             }
         }
-        Text("لا تظهر أي قيمة أو حدث غير موجود في رد مزوّد البيانات.", color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(vertical = 14.dp))
+        Text("تُعرض فقط البيانات التي أعادها مزوّد البيانات لهذا اللقاء.", color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(vertical = 14.dp))
+    }
+}
+
+private fun statNumber(raw: String): Float? =
+    Regex("-?\\d+(?:[.,]\\d+)?").find(raw)?.value?.replace(',', '.')?.toFloatOrNull()
+
+@Composable
+private fun TeamLogoFallback(name: String) {
+    Box(Modifier.size(56.dp).clip(CircleShape).background(XCard2), contentAlignment = Alignment.Center) {
+        Text(name.trim().take(1).ifBlank { "?" }, color = XAccent, fontSize = 23.sp, fontWeight = FontWeight.Black)
+    }
+}
+
+@Composable
+private fun MatchLineupSide(teamName: String, players: List<JSONObject>) {
+    val positionGroups = listOf(
+        "G" to "حراسة المرمى",
+        "D" to "الدفاع",
+        "M" to "الوسط",
+        "F" to "الهجوم"
+    )
+    val mapped = players.groupBy { row ->
+        when (row.readText("position_name").uppercase(Locale.ROOT)) {
+            "G", "GK", "GOALKEEPER" -> "G"
+            "D", "DF", "DEFENDER" -> "D"
+            "M", "MF", "MIDFIELDER" -> "M"
+            "F", "FW", "FORWARD", "ATTACKER" -> "F"
+            else -> "?"
+        }
+    }
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = XCard),
+        border = BorderStroke(1.dp, XBorder),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(10.dp)) {
+            Text(teamName, color = XText, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.height(7.dp))
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(13.dp))
+                    .background(Brush.verticalGradient(listOf(Color(0xFF0B6346), Color(0xFF0D7952), Color(0xFF0B6346))))
+                    .padding(8.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    positionGroups.forEach { (key, label) ->
+                        val group = mapped[key].orEmpty()
+                        if (group.isNotEmpty()) {
+                            Column {
+                                Text(label, color = Color.White.copy(alpha = .78f), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(4.dp))
+                                group.chunked(3).forEach { rowPlayers ->
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                        rowPlayers.forEach { row ->
+                                            val name = row.readText("player_name", "name")
+                                            val number = row.readText("shirt_number")
+                                            val image = row.readText("imageUrl", "image_url")
+                                            Column(
+                                                Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
+                                                    .background(Color(0xFF0A4C39).copy(alpha = .92f)).padding(5.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                if (image.startsWith("https://")) {
+                                                    coil.compose.AsyncImage(image, name, Modifier.size(26.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+                                                } else {
+                                                    Box(Modifier.size(26.dp).clip(CircleShape).background(Color.White.copy(alpha = .16f)), contentAlignment = Alignment.Center) {
+                                                        Text(number.ifBlank { name.take(1) }, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
+                                                Spacer(Modifier.height(3.dp))
+                                                Text(name, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center, overflow = TextOverflow.Ellipsis)
+                                            }
+                                        }
+                                        repeat(3 - rowPlayers.size) {
+                                            Spacer(Modifier.weight(1f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    val unknown = mapped["?"].orEmpty()
+                    if (unknown.isNotEmpty()) {
+                        Text("مراكز غير محددة من المصدر", color = Color.White.copy(alpha = .75f), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        unknown.forEach { row ->
+                            Text(row.readText("player_name", "name"), color = Color.White, fontSize = 9.sp)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
