@@ -230,7 +230,7 @@ function normalizeStatistic(item, teams = []) {
   }];
 }
 
-function fixtureRoot(fixture) {function fixtureRoot(fixture) {
+function fixtureRoot(fixture) {
   if (fixture?.match && typeof fixture.match === "object") return fixture.match;
   if (fixture?.fixture && typeof fixture.fixture === "object") return fixture.fixture;
   return fixture || {};
