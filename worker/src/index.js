@@ -91,17 +91,34 @@ function normalizeScores(scores, homeId, awayId, stateName) {
   };
 }
 
+function httpsImage(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && /^https:\/\//i.test(value)) return value;
+  }
+  return "";
+}
+
 function normalizeEvent(event) {
   const type = nestedName(event?.type) || event?.type_name || event?.name || "حدث";
+  const playerRaw = event?.player && typeof event.player === "object" ? event.player : {};
   const player = nestedName(event?.player) || event?.player_name || "";
-  const team = nestedName(event?.participant) || nestedName(event?.team);
+  const teamRaw = event?.participant || event?.team || {};
+  const team = nestedName(teamRaw);
+  const assistRaw = event?.assist || event?.assist_player || event?.assisted_by ||
+    event?.assistPlayer || event?.assist_player_info || {};
+  const assistName = nestedName(assistRaw) || event?.assist_player_name || event?.assist_name || "";
+  const teamImage = httpsImage(teamRaw?.image_path, teamRaw?.image_url, teamRaw?.logo);
   return {
     minute: event?.minute ?? event?.extra_minute ?? event?.sort_order ?? "",
     type_name: type,
-    player_id: event?.player?.id ?? event?.player_id ?? null,
+    player_id: playerRaw?.id ?? event?.player_id ?? null,
     player_name: player,
-    team_id: event?.participant?.id ?? event?.team?.id ?? event?.participant_id ?? event?.team_id ?? null,
-    team: team ? { name: team } : null,
+    player_image_url: httpsImage(playerRaw?.image_path, playerRaw?.image_url, playerRaw?.photo_url),
+    team_id: teamRaw?.id ?? event?.participant_id ?? event?.team_id ?? null,
+    team: team ? { id: teamRaw?.id ?? null, name: team, imageUrl: teamImage } : null,
+    team_image_url: teamImage,
+    assist_player_name: assistName,
+    assist_player_image_url: httpsImage(assistRaw?.image_path, assistRaw?.image_url, assistRaw?.photo_url),
     detail: event?.addition || event?.info || event?.result || "",
   };
 }
@@ -191,6 +208,14 @@ function normalizeFixture(fixture) {
     score.away_score, nestedScores.awayScore);
   const competition = root.competition || root.league || root.tournament ||
     root.competition_name || root.league_name || null;
+  const competitionObject = typeof competition === "string" ? { name: competition }
+    : competition && typeof competition === "object" ? { ...competition } : null;
+  if (competitionObject) {
+    competitionObject.imageUrl = httpsImage(
+      competitionObject.image_path, competitionObject.image_url,
+      competitionObject.logo, competitionObject.logo_url, competitionObject.image
+    );
+  }
   const eventsRaw = Array.isArray(root.events) ? root.events
     : Array.isArray(root.timeline) ? root.timeline : [];
   const lineupRaw = Array.isArray(root.lineups) ? root.lineups
@@ -208,7 +233,7 @@ function normalizeFixture(fixture) {
     homeTeam: home, awayTeam: away, home: home.name, away: away.name,
     homeScore, awayScore, scoreType: nestedScores.scoreType || null, status: statusName,
     startTime: String(rawTime),
-    competition: typeof competition === "string" ? { name: competition } : competition,
+    competition: competitionObject,
     competitionName: nestedName(competition) || (typeof competition === "string" ? competition : ""),
     venue: root.venue || root.stadium || null,
     referee: root.referee || null,
@@ -903,4 +928,4 @@ export default {
   },
 };
 
-export { fantasyPosition, numericStat, calculateSeasonFantasyPoints, htmlText, classifyNewsCategory, parseRssFeed, normalizeFixture, isLiveFixture };
+export { fantasyPosition, numericStat, calculateSeasonFantasyPoints, htmlText, classifyNewsCategory, parseRssFeed, normalizeEvent, normalizeFixture, isLiveFixture };
