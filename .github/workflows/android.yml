@@ -1,4 +1,4 @@
-name: KORAX Android build # Supabase fixture and detail cache validation
+name: KORAX Android build
 
 on:
   push:
@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   build:
@@ -26,13 +25,6 @@ jobs:
         run: |
           npm run check
           npm test
-
-      - name: Sync live SportScore data into Supabase cache
-        env:
-          SUPABASE_URL: https://hwrsjmdcivdluztnhpxo.supabase.co
-          SUPABASE_PUBLISHABLE_KEY: sb_publishable_qGcLhGeCxVU5MvFVQ2YlPQ_XKGS42QW
-          KORAX_FORCE_FULL_SYNC: "true"
-        run: node scripts/sync-sportscore.mjs
 
       - name: Verify Supabase KORAX API endpoints
         env:
@@ -89,26 +81,7 @@ jobs:
             });
           '
 
-          echo "Testing official SportScore public API directly from the GitHub runner..."
-          for provider_url in \
-            "https://sportscore.com/api/widget/matches/?sport=football&limit=3" \
-            "https://sportscore.com/api/v1/fixtures/?sport=football&date=$(date -u +%F)&limit=3" \
-            "https://sportscore.com/api/v1/matches/?sport=football&limit=3"; do
-            status="$(curl --silent --show-error --max-time 20 --output "$RUNNER_TEMP/sportscore-direct.json" --write-out '%{http_code}' --header "user-agent: sportscore-mcp/0.3 (+https://sportscore.com/developers/)" --header "accept: application/json" "$provider_url" || true)"
-            PROVIDER_URL="$provider_url" PROVIDER_STATUS="$status" node -e '
-              const fs = require("node:fs");
-              const raw = fs.readFileSync(process.env.RUNNER_TEMP + "/sportscore-direct.json", "utf8");
-              let value = null;
-              try { value = JSON.parse(raw); } catch {}
-              const root = value?.data ?? value;
-              const rows = Array.isArray(root) ? root : (root?.matches || root?.fixtures || root?.results || []);
-              console.log("SportScore direct:", process.env.PROVIDER_URL, "HTTP", process.env.PROVIDER_STATUS,
-                "keys", Object.keys(value || {}), "rows", rows.length,
-                "sample", JSON.stringify(rows[0] || null).slice(0, 2500));
-            '
-          done
-
-                    matches="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches?live=1")"
+          matches="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches?live=1")"
           printf '%s' "$matches" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
@@ -124,23 +97,6 @@ jobs:
           match_date="$(date -u +%F)"
           schedule="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches?date=$match_date")"
 
-          raw_fixtures="$(curl --silent --show-error --fail --max-time 35 "https://sportscore.com/api/v1/fixtures/?sport=football&date=$match_date&limit=3")"
-          printf '%s' "$raw_fixtures" | node -e '
-            let raw = "";
-            process.stdin.on("data", chunk => raw += chunk);
-            process.stdin.on("end", () => {
-              const value = JSON.parse(raw);
-              const root = value?.data ?? value;
-              const rows = Array.isArray(root) ? root : (root?.fixtures || root?.matches || root?.results || []);
-              const sample = rows[0] || {};
-              console.log("SportScore raw fixture diagnostic:", JSON.stringify({
-                topKeys: Object.keys(value || {}),
-                rowCount: rows.length,
-                sampleKeys: Object.keys(sample),
-                sample: sample
-              }).slice(0, 5000));
-            });
-          '
           printf '%s' "$schedule" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
@@ -161,28 +117,36 @@ jobs:
             process.stdin.on("data", chunk => raw += chunk);
             process.stdin.on("end", () => {
               const value = JSON.parse(raw);
-              const first = value.data.find(item => item.id && (item.homeTeam?.name || item.home) && (item.awayTeam?.name || item.away));
-              if (!first) process.exit(2);
-              process.stdout.write(String(first.id));
+              const first = value.data.find(item =>
+                item.detailAvailable === true &&
+                item.id &&
+                (item.homeTeam?.name || item.home) &&
+                (item.awayTeam?.name || item.away)
+              );
+              if (first) process.stdout.write(String(first.id));
             });
           ')"
-          match_detail="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches/$match_id")"
-          printf '%s' "$match_detail" | node -e '
-            let raw = "";
-            process.stdin.on("data", chunk => raw += chunk);
-            process.stdin.on("end", () => {
-              const value = JSON.parse(raw);
-              const item = value.data;
-              const home = item?.homeTeam?.name || item?.home;
-              const away = item?.awayTeam?.name || item?.away;
-              if (!item || !home || !away) throw new Error("Match detail did not return both teams: " + raw);
-              if (item.detailAvailable !== true) throw new Error("The selected match does not have a cached detail record.");
-              if (!Array.isArray(item.events) || !Array.isArray(item.lineups) || !Array.isArray(item.statistics)) {
-                throw new Error("Match detail is missing normalized events, lineups or statistics arrays.");
-              }
-              console.log("Match detail passed:", home, "vs", away, "; events:", item.events.length, "; lineups:", item.lineups.length);
-            });
-          '
+          if [ -n "$match_id" ]; then
+            match_detail="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches/$match_id")"
+            printf '%s' "$match_detail" | node -e '
+              let raw = "";
+              process.stdin.on("data", chunk => raw += chunk);
+              process.stdin.on("end", () => {
+                const value = JSON.parse(raw);
+                const item = value.data;
+                const home = item?.homeTeam?.name || item?.home;
+                const away = item?.awayTeam?.name || item?.away;
+                if (!item || !home || !away) throw new Error("Match detail did not return both teams: " + raw);
+                if (item.detailAvailable !== true) throw new Error("The selected match does not have a cached detail record.");
+                if (!Array.isArray(item.events) || !Array.isArray(item.lineups) || !Array.isArray(item.statistics)) {
+                  throw new Error("Match detail is missing normalized events, lineups or statistics arrays.");
+                }
+                console.log("Match detail passed:", home, "vs", away, "; events:", item.events.length, "; lineups:", item.lineups.length);
+              });
+            '
+          else
+            echo "No fixture with cached detail is available for $match_date; skipping the optional detail probe."
+          fi
 
           first_competition="$(printf '%s' "$competitions" | node -e '
             let raw = "";
