@@ -777,7 +777,7 @@ private fun KoraxAssistantPage(onBack: () -> Unit, onOpenArticle: (NewsItem) -> 
 }
 
 @Composable
-private fun KoraxTopicPage(onBack: () -> Unit, onOpenArticle: (NewsItem) -> Unit) {
+internal fun KoraxTopicPage(onBack: () -> Unit, onOpenArticle: (NewsItem) -> Unit) {
     var topic by rememberSaveable { mutableStateOf("transfers") }
     var articles by remember { mutableStateOf<List<NewsItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
