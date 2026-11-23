@@ -90,6 +90,11 @@ private val alertSettings = listOf(
     AlertSetting("red_card", "البطاقات الحمراء", "الطرد والإنذار الثاني"),
     AlertSetting("yellow_card", "البطاقات الصفراء", "تنبيه بالبطاقات الصفراء"),
     AlertSetting("penalty", "ركلات الجزاء", "ركلات الجزاء والتصديات والترجيح"),
+    AlertSetting("kickoff", "بداية المباراة", "إشعار انطلاق اللقاء"),
+    AlertSetting("halftime", "نهاية الشوط الأول", "تنبيه الاستراحة بين الشوطين"),
+    AlertSetting("fulltime", "نهاية المباراة", "النتيجة النهائية فور توفرها"),
+    AlertSetting("substitution", "التبديلات", "دخول وخروج اللاعبين"),
+    AlertSetting("injury", "الإصابات", "توقف اللعب وعلاج اللاعبين"),
     AlertSetting("news", "الأخبار العاجلة", "أخبار كرة القدم العربية مع صورة الخبر عند توفرها")
 )
 
@@ -149,9 +154,14 @@ internal object KoraxSmartAlerts {
             Triple("assist", "تمريرة حاسمة", R.raw.korax_assist),
             Triple("var", "مراجعة VAR", R.raw.korax_var),
             Triple("cancel", "إلغاء هدف", R.raw.korax_cancel),
-            Triple("red_card", "البطاقات الحمراء", R.raw.korax_card),
-            Triple("yellow_card", "البطاقات الصفراء", R.raw.korax_card),
-            Triple("penalty", "ركلات الجزاء", R.raw.korax_var),
+            Triple("red_card", "البطاقات الحمراء", R.raw.korax_red_card),
+            Triple("yellow_card", "البطاقات الصفراء", R.raw.korax_yellow_card),
+            Triple("penalty", "ركلات الجزاء", R.raw.korax_penalty),
+            Triple("kickoff", "بداية المباراة", R.raw.korax_kickoff),
+            Triple("halftime", "نهاية الشوط الأول", R.raw.korax_halftime),
+            Triple("fulltime", "نهاية المباراة", R.raw.korax_fulltime),
+            Triple("substitution", "التبديلات", R.raw.korax_substitution),
+            Triple("injury", "الإصابات", R.raw.korax_injury),
             Triple("news", "الأخبار العاجلة", R.raw.korax_news)
         )
 
@@ -328,6 +338,11 @@ internal object KoraxSmartAlerts {
             "red_card" -> "🟥 بطاقة حمراء"
             "yellow_card" -> "🟨 بطاقة صفراء"
             "penalty" -> "⚽ ركلة جزاء"
+            "kickoff" -> "🚩 انطلاق المباراة"
+            "halftime" -> "⏸️ نهاية الشوط الأول"
+            "fulltime" -> "🏁 نهاية المباراة"
+            "substitution" -> "🔄 تبديل في المباراة"
+            "injury" -> "🩺 توقف بسبب إصابة"
             else -> "تحديث في المباراة"
         }
         val person = if (kind == "assist" && assist.isNotBlank()) assist else player
