@@ -116,7 +116,7 @@ async function main() {
           !/cancel|postpon|abandon/i.test(String(match.status || ""));
       })
       .sort((a, b) => Date.parse(a.time || a.start_time) - Date.parse(b.time || b.start_time))
-      .slice(0, 20);
+      .slice(0, 100);
     console.log("SportScore details candidates:", candidates.length, candidates.slice(0, 5).map(m => slugOf(m)));
     const detailResults = await mapLimit(candidates, 4, async match => {
       const slug = slugOf(match);
