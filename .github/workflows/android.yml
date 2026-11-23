@@ -89,42 +89,7 @@ jobs:
             });
           '
 
-          supabase_root="https://hwrsjmdcivdluztnhpxo.supabase.co"
-          data_health="$(curl --silent --show-error --fail --max-time 20 --header "apikey: $SUPABASE_PUBLISHABLE_KEY" "$supabase_root/functions/v1/korax-data")"
-          printf '%s' "$data_health" | node -e '
-            let raw = "";
-            process.stdin.on("data", chunk => raw += chunk);
-            process.stdin.on("end", () => {
-              const value = JSON.parse(raw);
-              console.log("Existing Supabase football-data function:", JSON.stringify({
-                status: value.status, provider: value.provider,
-                sportsApiKeyConfigured: value.sportsApiKeyConfigured
-              }));
-            });
-          '
-
-          match_date="$(date -u +%F)"
-          if printf '%s' "$data_health" | node -e 'let raw="";process.stdin.on("data",c=>raw+=c);process.stdin.on("end",()=>process.exit(JSON.parse(raw).sportsApiKeyConfigured ? 0 : 1))'; then
-            sports_status="$(curl --silent --show-error --max-time 35 --output "$RUNNER_TEMP/sportsapi-response.json" --write-out '%{http_code}' --request POST --header "apikey: $SUPABASE_PUBLISHABLE_KEY" --header "content-type: application/json" --data "{\"path\":\"/fixtures?date=$match_date&sport=football\"}" "$supabase_root/functions/v1/korax-data")"
-            echo "Existing SportsAPI fixture request HTTP: $sports_status"
-            node -e '
-              const fs = require("node:fs");
-              const raw = fs.readFileSync(process.env.RUNNER_TEMP + "/sportsapi-response.json", "utf8");
-              const value = JSON.parse(raw);
-              const root = value?.data ?? value;
-              const rows = Array.isArray(root) ? root : (root?.fixtures || root?.results || root?.data || []);
-              console.log("Existing SportsAPI fixture diagnostic:", JSON.stringify({
-                topKeys: Object.keys(value || {}),
-                error: value.error || null,
-                providerStatus: value.providerStatus || null,
-                rowCount: rows.length,
-                sampleKeys: Object.keys(rows[0] || {}),
-                sample: rows[0] || null
-              }).slice(0, 3000));
-            '
-          fi
-
-                    echo "Testing official SportScore public API directly from the GitHub runner..."
+          echo "Testing official SportScore public API directly from the GitHub runner..."
           for provider_url in \
             "https://sportscore.com/api/widget/matches/?sport=football&limit=3" \
             "https://sportscore.com/api/v1/fixtures/?sport=football&date=$(date -u +%F)&limit=3" \
@@ -211,10 +176,11 @@ jobs:
               const home = item?.homeTeam?.name || item?.home;
               const away = item?.awayTeam?.name || item?.away;
               if (!item || !home || !away) throw new Error("Match detail did not return both teams: " + raw);
+              if (item.detailAvailable !== true) throw new Error("The selected match does not have a cached detail record.");
               if (!Array.isArray(item.events) || !Array.isArray(item.lineups) || !Array.isArray(item.statistics)) {
                 throw new Error("Match detail is missing normalized events, lineups or statistics arrays.");
               }
-              console.log("Match detail passed:", home, "vs", away, "; events:", item.events.length);
+              console.log("Match detail passed:", home, "vs", away, "; events:", item.events.length, "; lineups:", item.lineups.length);
             });
           '
 
@@ -234,8 +200,11 @@ jobs:
             process.stdin.on("data", chunk => raw += chunk);
             process.stdin.on("end", () => {
               const value = JSON.parse(raw);
-              if (!Object.prototype.hasOwnProperty.call(value, "data")) throw new Error("Competition detail/standings response is missing data.");
-              console.log("Competition detail endpoint passed.");
+              const data = value.data;
+              const tables = Array.isArray(data?.tables) ? data.tables : [];
+              const rows = tables.flatMap(table => Array.isArray(table?.rows) ? table.rows : []);
+              if (rows.length === 0) throw new Error("Competition standings returned no team rows.");
+              console.log("Competition standings passed:", rows.length, "teams");
             });
           '
 
