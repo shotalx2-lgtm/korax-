@@ -198,11 +198,28 @@ internal object KoraxSmartAlerts {
         if (!base.startsWith("https://")) return@withContext
         ensureChannels(context)
 
-        val matchPayload = fetchJson("$base/api/matches?live=1")
-        processMatchUpdates(context, matchPayload)
+        val mergedMatches = LinkedHashMap<String, JSONObject>()
+        runCatching {
+            val liveRows = fetchJson("$base/api/matches?live=1").optJSONArray("data") ?: JSONArray()
+            for (index in 0 until liveRows.length()) {
+                val match = liveRows.optJSONObject(index) ?: continue
+                val id = match.optString("id")
+                if (id.isNotBlank()) mergedMatches[id] = match
+            }
+        }
         val localDate = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
         runCatching {
-            processMatchUpdates(context, fetchJson("$base/api/matches?date=$localDate"))
+            val datedRows = fetchJson("$base/api/matches?date=$localDate").optJSONArray("data") ?: JSONArray()
+            for (index in 0 until datedRows.length()) {
+                val match = datedRows.optJSONObject(index) ?: continue
+                val id = match.optString("id")
+                if (id.isNotBlank() && !mergedMatches.containsKey(id)) mergedMatches[id] = match
+            }
+        }
+        if (mergedMatches.isNotEmpty()) {
+            val combinedRows = JSONArray()
+            mergedMatches.values.forEach(combinedRows::put)
+            processMatchUpdates(context, JSONObject().put("data", combinedRows))
         }
 
         val preferences = prefs(context)
