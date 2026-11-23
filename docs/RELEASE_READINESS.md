@@ -1,31 +1,32 @@
-# Release readiness checklist
+# KORAX release readiness checklist
 
-The current repository is an integration build, not yet a production release.
+KORAX is currently focused on a public football experience: Arabic and international news, live and scheduled matches, competitions, standings, results, teams, players, statistics and transfers where reliable data is available.
+
+## Current product scope
+- [x] Remove sign-in and account screens from the current app experience; accounts may be considered in a future release.
+- [x] Remove the fantasy game from the current app experience.
+- [ ] Expand the home/news experience with clear categories, search, refresh and article images.
+- [ ] Complete live, upcoming and finished match coverage with match details and event timelines where supplied.
+- [ ] Add competition pages with tables, fixtures, results and top scorers.
+- [ ] Add team and player profiles using verified provider data.
+- [ ] Add reliable favorites and local notification preferences without requiring an account.
 
 ## Data source integration
 - [x] Connect public SportScore REST endpoints without an API key.
-- [x] Aggregate multiple Arabic and international publisher RSS feeds without a news API key.
-- [x] Add clickable SportScore attribution to the matches screen.
+- [x] Aggregate Arabic and international publisher RSS feeds without a news API key.
 - [x] Cache upstream responses at the edge.
-- [ ] Deploy the Cloudflare Worker and set `KOORA_API_BASE_URL` in the Android release build.
-- [ ] Verify all required league slugs and real response fields against live SportScore data.
-- [ ] Confirm commercial use and attribution terms with SportScore.
-- [ ] Verify each RSS feed's uptime, freshness, article image availability and publisher reuse terms.
-
-## Product completeness
-- [ ] SportScore does not expose a complete squad endpoint; a complete 15-player fantasy market still needs a full player-data source.
-- [ ] Implement matchweek deadlines, event-based round scoring, captain multipliers, auto-substitutions, transfer limits and round locking.
-- [ ] Add confirmed transfers from a provider that supplies transfer records.
-- [ ] Implement cloud league rankings, friend requests, multiplayer leagues and chat if they remain in scope.
-- [ ] Finish push notifications and notification backend setup.
-- [ ] Configure Firebase project, Email/Password and Google providers, Google OAuth client and Firestore rules for the actual Android app.
+- [ ] Deploy the latest Cloudflare Worker changes and verify the production endpoints.
+- [ ] Verify league identifiers, response fields, coverage and freshness against live provider data.
+- [ ] Confirm commercial use and attribution terms with each provider and publisher.
+- [ ] Verify RSS uptime, article image availability and content reuse terms.
+- [ ] Add provider fallbacks and clear stale-data/error states; never fabricate scores, tables or transfers.
 
 ## Release and quality
-- [ ] Configure a production upload key and Play App Signing; never commit keystores or secrets.
-- [ ] Run Android unit tests and release APK build after the latest integration commit.
-- [ ] Test news/match endpoints from the deployed Worker, including RSS image availability and provider rate limits.
+- [ ] Configure a production upload key and Play App Signing.
+- [ ] Run Android unit tests and optimized release build after each integration change.
+- [ ] Test news, matches, competitions and images against the deployed Worker.
 - [ ] Install and test on physical Android devices and different screen sizes.
 - [ ] Run accessibility, security, privacy and backend load tests.
-- [ ] Add privacy policy, terms, data deletion/contact channel and Play Data Safety declarations.
+- [ ] Add privacy policy, terms and Play Data Safety declarations.
 
-A successful CI APK build is only a build artifact. It does not prove production readiness, live data coverage, million-user capacity or Play Store signing.
+A successful CI APK build is only a build artifact. It does not prove production readiness, complete data coverage, million-user capacity or Play Store signing.
