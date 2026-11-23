@@ -178,7 +178,7 @@ jobs:
                 if (unexpected.length) throw new Error("Primary match list includes unrelated competitions in " + mode + ": " + unexpected.map(item => item.competitionName).join(", "));
                 const badStatus = value.data.filter(item => {
                   const status = String(item.status || "").toLowerCase();
-                  if (mode === "live") return !/(live|in.?play|مباشر|الشوط|استراحة|وقت إضافي)/i.test(status);
+                  if (mode === "live") return !/(live|in.?play|1st.?half|2nd.?half|half.?time|\\bht\\b|\\b1h\\b|\\b2h\\b|extra.?time|penalt|مباشر|الشوط|استراحة|وقت إضافي|ركلات ترجيح)/i.test(status);
                   if (mode === "finished") return !/(finished|full.?time|ended|انتهت|نهاية|نهائي|ft)/i.test(status);
                   return /(live|in.?play|finished|full.?time|ended|مباشر|انتهت)/i.test(status);
                 });
