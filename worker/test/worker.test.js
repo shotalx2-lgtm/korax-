@@ -74,7 +74,7 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
   globalThis.fetch = async (input) => {
     const url = String(input);
     calls.push(url);
-    const arabic = /btolat|youm7|hesport|aljazeera|skynewsarabia/.test(url);
+    const arabic = /btolat|youm7|hesport|aljazeera|skynewsarabia|footballco\\.com\\/kooora/.test(url);
     const sourceTitle = arabic ? "خبر جديد عن كرة القدم والدوري" : "Latest football transfer and league news";
     const xml = "<?xml version=\"1.0\"?><rss><channel><item>" +
       "<title>" + sourceTitle + "</title>" +
@@ -91,14 +91,15 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
     const body = await response.json();
     assert.equal(body.source, "publisher-rss");
     assert.equal(body.language, "ar+en");
-    assert.equal(body.feedsTotal, 26);
+    assert.equal(body.feedsTotal, 27);
     assert.ok(calls.includes("https://www.youm7.com/rss/SectionRss?SectionID=298"));
-    assert.equal(body.feedsAvailable, 26, JSON.stringify(body.feedErrors));
-    assert.equal(body.data.length, 26);
+    assert.ok(calls.includes("https://feeds.footballco.com/kooora/feed/6p5bsxot7te8yick"));
+    assert.equal(body.feedsAvailable, 27, JSON.stringify(body.feedErrors));
+    assert.equal(body.data.length, 27);
     assert.ok(body.data.some(item => item.language === "ar"));
     assert.ok(body.data.some(item => item.language === "en"));
     assert.ok(body.data.every(item => item.imageUrl?.startsWith("https://images.example/")));
-    assert.equal(calls.length, 26);
+    assert.equal(calls.length, 27);
     assert.ok(calls.every(url => !url.includes("news.google.com")));
   } finally {
     globalThis.fetch = originalFetch;
@@ -131,9 +132,10 @@ test("Youm7 redirect failures fall back to a publisher-attributed RSS mirror", a
     const response = await worker.fetch(new Request("https://korax.test/api/news?per_page=100"), {});
     assert.equal(response.status, 200);
     const body = await response.json();
-    assert.equal(body.feedsAvailable, 26);
+    assert.equal(body.feedsAvailable, 27);
     assert.equal(body.feedErrors.some(item => item.feed === "youm7"), false);
     assert.ok(calls.includes("https://www.youm7.com/rss/SectionRss?SectionID=298"));
+    assert.ok(calls.includes("https://feeds.footballco.com/kooora/feed/6p5bsxot7te8yick"));
     assert.ok(calls.includes("https://alikhbariya.net/feeds/sources/f903fc12-4e08-4331-b249-81551c16f840.xml"));
     assert.ok(body.data.some(item => item.source === "الإخبارية – تغطية اليوم السابع"));
   } finally {
