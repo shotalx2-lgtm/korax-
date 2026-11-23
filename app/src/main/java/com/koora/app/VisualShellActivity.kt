@@ -249,14 +249,16 @@ private fun displayKickoff(raw: String): String {
 }
 
 private suspend fun loadMatches(mode: String, selectedDate: String): List<MatchItem> {
-    val data = apiJson("/api/matches?mode=" + mode.urlEncoded() + "&scope=main&date=" + selectedDate).rows()
+    val data = apiJson("/api/matches?mode=$mode&scope=main&date=$selectedDate").rows()
     return (0 until data.length()).mapNotNull { i ->
         val x = data.optJSONObject(i) ?: return@mapNotNull null
-        val h = x.optJSONObject("homeTeam"); val a = x.optJSONObject("awayTeam")
+        val h = x.optJSONObject("homeTeam")
+        val a = x.optJSONObject("awayTeam")
         val home = h?.optString("name").orEmpty().ifBlank { x.optString("home") }
         val away = a?.optString("name").orEmpty().ifBlank { x.optString("away") }
         if (home.isBlank() || away.isBlank()) return@mapNotNull null
-        val hs = x.opt("homeScore"); val ascore = x.opt("awayScore")
+        val hs = x.opt("homeScore")
+        val ascore = x.opt("awayScore")
         val score = if (hs != null && ascore != null && hs != JSONObject.NULL && ascore != JSONObject.NULL) "$hs - $ascore" else "VS"
         val stableMatchId = x.optString("id").takeIf { it.isNotBlank() }
         val fixtureId = stableMatchId ?: listOf(
@@ -266,32 +268,12 @@ private suspend fun loadMatches(mode: String, selectedDate: String): List<MatchI
             fixtureId, home, away,
             h?.firstHttps("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
             a?.firstHttps("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
-            score, localizeMatchStatus(x.optString("status", "غير متاحة")), x.optString("startTime"),
+            score,
+            localizeMatchStatus(x.optString("status", "غير متاحة")),
+            x.optString("startTime"),
             x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") },
             detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false)
         )
-    }.distinctBy { it.id }
-}
-    val data = apiJson(if (live) "/api/matches?live=1" else "/api/matches?date=$selectedDate").rows()
-    return (0 until data.length()).mapNotNull { i ->
-        val x = data.optJSONObject(i) ?: return@mapNotNull null
-        val h = x.optJSONObject("homeTeam"); val a = x.optJSONObject("awayTeam")
-        val home = h?.optString("name").orEmpty().ifBlank { x.optString("home") }
-        val away = a?.optString("name").orEmpty().ifBlank { x.optString("away") }
-        if (home.isBlank() || away.isBlank()) return@mapNotNull null
-        val hs = x.opt("homeScore"); val ascore = x.opt("awayScore")
-        val score = if (hs != null && ascore != null && hs != JSONObject.NULL && ascore != JSONObject.NULL) "$hs - $ascore" else "VS"
-        // Avoid duplicate empty keys when a provider fixture omits its stable ID.
-        val stableMatchId = x.optString("id").takeIf { it.isNotBlank() }
-        val fixtureId = stableMatchId ?: listOf(
-            home, away, x.optString("startTime"), x.optString("competitionName")
-        ).filter { it.isNotBlank() }.joinToString("|").ifBlank { "match-$i" }
-        MatchItem(fixtureId, home, away,
-            h?.firstHttps("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
-            a?.firstHttps("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
-            score, localizeMatchStatus(x.optString("status", "غير متاحة")), x.optString("startTime"),
-            x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") },
-            detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false))
     }.distinctBy { it.id }
 }
 
