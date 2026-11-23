@@ -6,7 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent\nimport androidx.lifecycle.lifecycleScope
+import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -39,7 +40,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.Job\nimport kotlinx.coroutines.delay\nimport kotlinx.coroutines.isActive
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -63,6 +67,8 @@ class VisualShellActivity : ComponentActivity() {
     private var smartAlertsJob: Job? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        KoraxSmartAlerts.ensureChannels(this)
+        KoraxSmartAlerts.scheduleBackground(this)
         window.statusBarColor = android.graphics.Color.rgb(7, 9, 13)
         window.navigationBarColor = android.graphics.Color.rgb(7, 9, 13)
         @Suppress("DEPRECATION") window.decorView.systemUiVisibility = 0
