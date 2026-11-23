@@ -5,7 +5,7 @@ The Android client talks only to the KORAX HTTPS backend. The current public-sou
 ## News
 
 - `GET /api/news?per_page=40`
-- Optional filters: `language=ar|en`, `category=transfers|premier-league|la-liga|saudi|egypt|football`
+- Optional filters: `language=ar|en`, `category=transfers|premier-league|la-liga|serie-a|bundesliga|ligue-1|saudi|egypt|football`
 
 Returns a mixed Arabic/English football-news feed with `id`, `title`, `summary`, `url`, `source`, `publishedAt`, `language`, `category`, and optional `imageUrl`. It aggregates publisher RSS feeds and caches at the edge for five minutes. Feed markup/entities are sanitized into plain text, image URLs are read from supported RSS media tags, and category classification avoids broad ambiguous keywords. Images may legitimately be absent when a publisher feed provides none. The Youm7 public RSS endpoint is used because its sports-section RSS may redirect repeatedly. Images are only included when supplied by the publisher feed; image availability and reuse rights are not guaranteed.
 
