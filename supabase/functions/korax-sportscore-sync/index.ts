@@ -63,7 +63,12 @@ function matchSlug(match: any): string {
   const url = String(match?.url || match?.match_url || match?.href || "");
   const fromUrl = url.match(/\/match\/[^/]+\/([A-Za-z0-9_-]+)\/?(?:[?#].*)?$/i)?.[1] ||
     url.match(/\/([A-Za-z0-9_-]{8,})\/?(?:[?#].*)?$/)?.[1] || "";
-  return String(match?.slug || match?.match_slug || match?.fixture_slug || fromUrl).trim();
+  return String(match?.match_slug || match?.fixture_slug || match?.slug || fromUrl).trim();
+}
+
+function detailSlug(match: any): string {
+  const url = String(match?.url || match?.match_url || match?.href || "");
+  return String(match?.detail_slug || url.match(/\/match\/([^/]+)\/[A-Za-z0-9_-]+\/?(?:[?#].*)?$/i)?.[1] || matchSlug(match));
 }
 
 function mapMatch(match: any) {
@@ -91,6 +96,7 @@ function mapMatch(match: any) {
 
   return {
     match_slug: slug,
+    detail_slug: detailSlug(match),
     provider_id: String(match?.id || match?.fixture_id || match?.match_id || ""),
     provider_url: /^https:\/\//i.test(match?.url || "") ? match.url : (match?.url ? "https://sportscore.com" + match.url : ""),
     match_date: new Date(timestamp).toISOString().slice(0, 10),
