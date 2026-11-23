@@ -133,43 +133,89 @@ function normalizeStatistic(item, teams = []) {
   };
 }
 
+function fixtureRoot(fixture) {
+  if (fixture?.match && typeof fixture.match === "object") return fixture.match;
+  if (fixture?.fixture && typeof fixture.fixture === "object") return fixture.fixture;
+  return fixture || {};
+}
+
+function fixtureStatusText(fixture) {
+  const root = fixtureRoot(fixture);
+  const status = root.status || root.state || fixture?.status || fixture?.state || "";
+  return String(root.status_text || nestedName(status) ||
+    (typeof status === "string" ? status : status?.description || status?.short_name) || "");
+}
+
+function isLiveFixture(fixture) {
+  return /live|in.?play|in_progress|1st.?half|2nd.?half|half.?time|\bht\b|\b1h\b|\b2h\b|extra.?time|penalt|الشوط|مباشر|استراحة|وقت إضافي|ركلات ترجيح/i
+    .test(fixtureStatusText(fixture));
+}
+
 function normalizeFixture(fixture) {
-  const homeRaw = fixture?.home_team || fixture?.homeTeam || fixture?.home || fixture?.teams?.home || {};
-  const awayRaw = fixture?.away_team || fixture?.awayTeam || fixture?.away || fixture?.teams?.away || {};
+  const root = fixtureRoot(fixture);
+  const teams = root.teams || fixture?.teams || {};
+  const participants = Array.isArray(root.participants) ? root.participants
+    : Array.isArray(fixture?.participants) ? fixture.participants : [];
+  const homeRaw = root.home_team || root.homeTeam ||
+    (root.home && typeof root.home === "object" ? root.home : null) ||
+    teams.home || participants.find((item) => participantLocation(item).includes("home")) || {};
+  const awayRaw = root.away_team || root.awayTeam ||
+    (root.away && typeof root.away === "object" ? root.away : null) ||
+    teams.away || participants.find((item) => participantLocation(item).includes("away")) || {};
   const toTeam = (raw, fallbackName, logo) => {
     const obj = raw && typeof raw === "object" ? raw : {};
-    const name = nestedName(raw) || fallbackName || "اسم غير متاح";
-    const image = obj.logo || obj.logo_url || obj.image || obj.image_url || logo || "";
+    const name = nestedName(raw) || (typeof raw === "string" ? raw : "") ||
+      fallbackName || "اسم غير متاح";
+    const image = obj.image_path || obj.logo || obj.logo_url || obj.image || obj.image_url || logo || "";
+    const imageUrl = typeof image === "string" && /^https:\/\//i.test(image) ? image : "";
     return {
-      id: String(obj.id || obj.slug || ""),
+      id: String(obj.id ?? obj.slug ?? ""),
       name,
-      crest: typeof image === "string" && image.startsWith("https://") ? image : "",
-      logoUrl: typeof image === "string" && image.startsWith("https://") ? image : "",
+      crest: imageUrl,
+      logoUrl: imageUrl,
       country: nestedName(obj.country),
     };
   };
-  const home = toTeam(homeRaw, typeof fixture?.home === "string" ? fixture.home : "", fixture?.home_logo);
-  const away = toTeam(awayRaw, typeof fixture?.away === "string" ? fixture.away : "", fixture?.away_logo);
-  const score = fixture?.score && typeof fixture.score === "object" ? fixture.score : {};
-  const homeScore = firstScore(fixture?.home_score, fixture?.homeScore, score.home, score.home_score);
-  const awayScore = firstScore(fixture?.away_score, fixture?.awayScore, score.away, score.away_score);
-  const competition = fixture?.competition || fixture?.league || fixture?.tournament || fixture?.competition_name || null;
-  const stateName = String(fixture?.status_text || fixture?.status || fixture?.state || "الحالة غير متاحة");
-  const eventsRaw = Array.isArray(fixture?.events) ? fixture.events : Array.isArray(fixture?.timeline) ? fixture.timeline : [];
+  const home = toTeam(homeRaw,
+    typeof root.home === "string" ? root.home : (root.home_name || root.home_team_name || ""),
+    root.home_logo || root.home_image);
+  const away = toTeam(awayRaw,
+    typeof root.away === "string" ? root.away : (root.away_name || root.away_team_name || ""),
+    root.away_logo || root.away_image);
+  const score = root.score && typeof root.score === "object" ? root.score : {};
+  const statusName = fixtureStatusText(fixture) || "الحالة غير متاحة";
+  const nestedScores = normalizeScores(root.scores, home.id, away.id, statusName);
+  const homeScore = firstScore(root.home_score, root.homeScore, score.home,
+    score.home_score, nestedScores.homeScore);
+  const awayScore = firstScore(root.away_score, root.awayScore, score.away,
+    score.away_score, nestedScores.awayScore);
+  const competition = root.competition || root.league || root.tournament ||
+    root.competition_name || root.league_name || null;
+  const eventsRaw = Array.isArray(root.events) ? root.events
+    : Array.isArray(root.timeline) ? root.timeline : [];
+  const lineupRaw = Array.isArray(root.lineups) ? root.lineups
+    : Array.isArray(root.lineup) ? root.lineup : [];
+  const statisticRaw = Array.isArray(root.statistics) ? root.statistics
+    : Array.isArray(root.stats) ? root.stats : [];
+  const rawId = root.slug || root.match_slug || root.id || root.fixture_id ||
+    root.match_id || root.fixture_slug || fixture?.slug || fixture?.match_slug ||
+    fixture?.id || fixture?.fixture_id || fixture?.match_id || "";
+  const rawTime = root.time || root.start_time || root.startTime || root.kickoff ||
+    root.date || root.starting_at || root.start_at || "";
   return {
-    id: String(fixture?.slug || fixture?.match_slug || fixture?.id || fixture?.fixture_id || ""),
+    id: String(rawId),
     name: [home.name, away.name].filter(Boolean).join(" × "),
     homeTeam: home, awayTeam: away, home: home.name, away: away.name,
-    homeScore, awayScore, scoreType: null, status: stateName,
-    startTime: String(fixture?.time || fixture?.start_time || fixture?.startTime || fixture?.kickoff || fixture?.date || ""),
+    homeScore, awayScore, scoreType: nestedScores.scoreType || null, status: statusName,
+    startTime: String(rawTime),
     competition: typeof competition === "string" ? { name: competition } : competition,
-    competitionName: nestedName(competition) || String(competition || ""),
-    venue: fixture?.venue || null,
-    referee: fixture?.referee || null,
-    events: eventsRaw,
-    lineups: Array.isArray(fixture?.lineups) ? fixture.lineups : [],
-    statistics: Array.isArray(fixture?.statistics) ? fixture.statistics : [],
-    imageUrl: "",
+    competitionName: nestedName(competition) || (typeof competition === "string" ? competition : ""),
+    venue: root.venue || root.stadium || null,
+    referee: root.referee || null,
+    events: eventsRaw.map(normalizeEvent),
+    lineups: lineupRaw.map(normalizeLineup),
+    statistics: statisticRaw.map((item) => normalizeStatistic(item, [home, away])),
+    imageUrl: root.imageUrl || root.image_url || "",
   };
 }
 
@@ -319,7 +365,7 @@ const NEWS_FEEDS = [
   { id: "btolat-juventus", source: "بطولات - يوفنتوس", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=11922" },
   { id: "btolat-psg", source: "بطولات - باريس سان جيرمان", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=10061" },
   { id: "btolat-pyramids", source: "بطولات - بيراميدز", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=23165" },
-  { id: "youm7", source: "اليوم السابع", language: "ar", url: "https://www.youm7.com/rss/SectionRss?SectionID=298" },
+  { id: "youm7", source: "اليوم السابع", language: "ar", url: "https://www.youm7.com/rss/rss" },
   { id: "hesport", source: "هسبورت", language: "ar", url: "https://www.hesport.com/feed" },
   { id: "aljazeera", source: "الجزيرة", language: "ar", url: "https://www.aljazeera.net/rss" },
   { id: "sky-arabia", source: "سكاي نيوز عربية", language: "ar", url: "https://www.skynewsarabia.com/rss" },
@@ -337,8 +383,16 @@ const FOOTBALL_WORDS = /football|soccer|premier league|champions league|la liga|
 function decodeXml(value) {
   return String(value || "")
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)))
-    .replace(/&#([0-9]+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => {
+      const point = parseInt(code, 16);
+      return Number.isFinite(point) && point >= 0 && point <= 0x10ffff
+        ? String.fromCodePoint(point) : "";
+    })
+    .replace(/&#([0-9]+);/g, (_, code) => {
+      const point = Number(code);
+      return Number.isFinite(point) && point >= 0 && point <= 0x10ffff
+        ? String.fromCodePoint(point) : "";
+    })
     .replace(/&nbsp;/gi, " ").replace(/&quot;/gi, '"').replace(/&apos;/gi, "'")
     .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&amp;/gi, "&");
 }
@@ -349,12 +403,21 @@ function decodeHtml(value) {
 }
 
 function htmlText(value) {
-  return decodeHtml(String(value || "")
+  let text = String(value || "").replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1");
+  // Publishers sometimes encode HTML twice (for example &amp;lt;p&amp;gt;).
+  // Decode before stripping tags, and repeat once for double-encoded markup.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const decoded = decodeXml(text);
+    if (decoded === text) break;
+    text = decoded;
+  }
+  return text
     .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
     .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
     .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<[^>]+>/g, " "))
-    .replace(/\s+/g, " ").trim();
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\]\]>/g, " ")
+    .replace(/\s+/gu, " ").trim();
 }
 
 function xmlField(block, name) {
@@ -377,43 +440,87 @@ function safeNewsUrl(raw, base) {
   } catch { return ""; }
 }
 
+function extractFeedImage(block, baseUrl) {
+  const structuredTags = String(block || "").match(/<(?:[\w.-]+:)?(?:content|thumbnail|enclosure)\b[^>]*\/?\s*>/gi) || [];
+  for (const tag of structuredTags) {
+    const attributes = tag.slice(tag.indexOf(" ") + 1);
+    const candidate = xmlAttribute(attributes, "url") || xmlAttribute(attributes, "href");
+    if (!candidate) continue;
+    const mime = xmlAttribute(attributes, "type").toLowerCase();
+    const isImage = mime.startsWith("image/") ||
+      /\.(?:png|jpe?g|webp|gif|avif)(?:[?#]|$)/i.test(candidate);
+    if (!isImage) continue;
+    const safe = safeNewsUrl(candidate, baseUrl);
+    if (safe) return safe;
+  }
+
+  const imageTags = String(block || "").match(/<img\b[^>]*>/gi) || [];
+  for (const tag of imageTags) {
+    const attributes = tag.replace(/^<img\b/i, "").replace(/>$/, "");
+    const candidate = xmlAttribute(attributes, "data-src") ||
+      xmlAttribute(attributes, "data-original") ||
+      xmlAttribute(attributes, "src") ||
+      xmlAttribute(attributes, "srcset").split(",")[0].trim().split(/\s+/)[0];
+    const safe = safeNewsUrl(candidate, baseUrl);
+    if (safe) return safe;
+  }
+
+  const imageUrl = xmlField(block, "image").value;
+  const nestedUrl = xmlField(imageUrl, "url").value;
+  return safeNewsUrl(htmlText(nestedUrl), baseUrl);
+}
+
+function classifyNewsCategory(title, summary, feed = {}) {
+  const text = (String(title || "") + " " + String(summary || "")).toLowerCase();
+
+  if (/transfer|transfers|انتقال|ميركاتو|سوق الانتقالات|صفقة جديدة/i.test(text)) return "transfers";
+  if (feed.id === "btolat-egypt") return "egypt";
+  if (feed.id === "btolat-spain") return "la-liga";
+  if (feed.id === "btolat-england" || feed.id === "bbc-premier" || feed.id === "sky-premier") return "premier-league";
+
+  if (/la liga|الدوري الإسباني|ريال مدريد|برشلونة|فياريال|أتلتيكو مدريد|اتلتيكو مدريد|real madrid|barcelona|villarreal|atletico madrid/i.test(text)) {
+    return "la-liga";
+  }
+  if (/premier league|الدوري الإنجليزي|ليفربول|مانشستر سيتي|مانشستر يونايتد|آرسنال|ارسنال|تشيلسي|tottenham|liverpool|manchester city|manchester united|arsenal|chelsea/i.test(text)) {
+    return "premier-league";
+  }
+  if (/الدوري السعودي|السعودية|دوري روشن|saudi pro league|الهلال السعودي|النصر السعودي|الاتحاد السعودي|الأهلي السعودي|الاهلي السعودي|al.?hilal|al.?nassr|al.?ittihad|al.?ahli/i.test(text)) {
+    return "saudi";
+  }
+  if (/الدوري المصري|كأس مصر|الأهلي المصري|الاهلي المصري|الزمالك|بيراميدز|منتخب مصر|egyptian premier league/i.test(text)) {
+    return "egypt";
+  }
+  return "football";
+}
+
 function parseRssFeed(xml, feed) {
   const blocks = String(xml || "").match(/<(?:item|entry)\b[\s\S]*?<\/(?:item|entry)>/gi) || [];
   return blocks.slice(0, 60).map((block) => {
     const title = htmlText(xmlField(block, "title").value);
-    const description = xmlField(block, "description").value || xmlField(block, "summary").value || xmlField(block, "content").value || "";
+    const description = xmlField(block, "description").value ||
+      xmlField(block, "summary").value || xmlField(block, "content").value ||
+      xmlField(block, "encoded").value || "";
     const summary = htmlText(description).slice(0, 360);
     const link = xmlField(block, "link");
-    const atomLink = block.match(/<link\b([^>]*)\/?>/i);
-    const rawLink = xmlAttribute(link.attrs || atomLink?.[1], "href") || htmlText(link.value) || htmlText(xmlField(block, "guid").value);
+    const atomLink = block.match(/<link\b([^>]*)\/?\s*>/i);
+    const rawLink = xmlAttribute(link.attrs || atomLink?.[1], "href") ||
+      htmlText(link.value) || htmlText(xmlField(block, "guid").value);
     const url = safeNewsUrl(rawLink, feed.url);
-    const rawDate = htmlText(xmlField(block, "pubDate").value) || htmlText(xmlField(block, "published").value) ||
-      htmlText(xmlField(block, "updated").value) || htmlText(xmlField(block, "date").value);
+    const rawDate = htmlText(xmlField(block, "pubDate").value) ||
+      htmlText(xmlField(block, "published").value) ||
+      htmlText(xmlField(block, "updated").value) ||
+      htmlText(xmlField(block, "date").value);
     const timestamp = Date.parse(rawDate);
-    let imageUrl = "";
-    const imageTag = block.match(/<(?:[\w.-]+:)?(?:content|thumbnail|enclosure)\b([^>]*)\/?>/i);
-    if (imageTag) {
-      const candidate = xmlAttribute(imageTag[1], "url") || xmlAttribute(imageTag[1], "href");
-      const mime = xmlAttribute(imageTag[1], "type");
-      if (candidate && (!mime || mime.startsWith("image/"))) imageUrl = safeNewsUrl(candidate, feed.url);
-    }
-    if (!imageUrl) {
-      const image = block.match(/<img\b[^>]*(?:src|data-src)=["']([^"']+)["']/i);
-      imageUrl = safeNewsUrl(image?.[1] || "", feed.url);
-    }
+    const imageUrl = extractFeedImage(block, feed.url);
     if (!title || !url) return null;
     if (feed.id === "aljazeera" || feed.id === "sky-arabia" || feed.id === "hesport") {
       if (!FOOTBALL_WORDS.test(title + " " + summary)) return null;
     }
-    const category = /transfer|انتقال|ميركاتو/i.test(title + " " + summary) ? "transfers"
-      : /premier league|الدوري الإنجليزي/i.test(title + " " + summary) ? "premier-league"
-      : /la liga|الدوري الإسباني/i.test(title + " " + summary) ? "la-liga"
-      : /saudi|السعودي|الهلال|النصر|الاتحاد/i.test(title + " " + summary) ? "saudi"
-      : /الأهلي|الزمالك|الدوري المصري/i.test(title + " " + summary) ? "egypt" : "football";
     return {
       id: url, title, summary, url, source: feed.source,
       publishedAt: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : rawDate,
-      imageUrl: imageUrl || null, language: feed.language, category,
+      imageUrl: imageUrl || null, language: feed.language,
+      category: classifyNewsCategory(title, summary, feed),
     };
   }).filter(Boolean);
 }
@@ -456,7 +563,7 @@ async function loadPublisherNews() {
 
 async function getCachedArabicNews() {
   const cache = caches.default;
-  const cacheKey = new Request("https://korax-cache.invalid/api/news?version=multi-publisher-rss-2");
+  const cacheKey = new Request("https://korax-cache.invalid/api/news?version=multi-publisher-rss-3");
   const cached = await cache.match(cacheKey);
   if (cached) return cached.json();
   const payload = await loadPublisherNews();
@@ -654,7 +761,7 @@ async function route(request, env) {
 
   if (path === "/health") return json({
     ok: true, service: "KORAX API", provider: "SportScore", providerConfigured: true,
-    apiKeyRequired: false, newsProvider: "publisher-rss",
+    providerStatus: "not_checked", apiKeyRequired: false, newsProvider: "publisher-rss",
   });
 
   if (path === "/api/news") {
@@ -674,14 +781,17 @@ async function route(request, env) {
     const live = url.searchParams.get("live") === "1";
     const date = url.searchParams.get("date") || new Date().toISOString().slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return json({ error: "date must use YYYY-MM-DD" }, 400);
-    const params = { sport: "football", date, limit: 100 };
-    if (live) params.status = "live";
-    const payload = await cachedProviderRequest("/api/v1/fixtures/", params, env, live ? 20 : 120);
+    // SportScore's widget match summaries include the stable match slug used by
+    // its detail endpoint. The dated fixtures endpoint remains the schedule source.
+    const providerPath = live ? "/api/widget/matches/" : "/api/v1/fixtures/";
+    const params = live ? { sport: "football", limit: 50 } : { sport: "football", date, limit: 100 };
+    const payload = await cachedProviderRequest(providerPath, params, env, live ? 20 : 120);
     const raw = unwrap(payload);
     const rows = Array.isArray(raw) ? raw : (raw?.fixtures || raw?.matches || raw?.results || raw?.data || []);
+    const matches = live ? rows.filter(isLiveFixture) : rows;
     return json({
-      data: rows.map(normalizeFixture),
-      meta: { count: rows.length, date, live },
+      data: matches.map(normalizeFixture),
+      meta: { count: matches.length, date, live },
       source: "sportscore", updatedAt: new Date().toISOString(),
     });
   }
@@ -766,4 +876,4 @@ export default {
   },
 };
 
-export { fantasyPosition, numericStat, calculateSeasonFantasyPoints };
+export { fantasyPosition, numericStat, calculateSeasonFantasyPoints, htmlText, classifyNewsCategory, parseRssFeed, normalizeFixture, isLiveFixture };
