@@ -7,8 +7,8 @@ internal object FootballAlertClassifier {
             listOf("goal cancelled", "goal canceled", "goal disallowed", "goal overturned",
                 "cancelled goal", "canceled goal", "annulled", "disallowed", "overturned",
                 "إلغاء الهدف", "الغاء الهدف", "هدف ملغي", "هدف ملغى", "إلغاء").any(value::contains) -> "cancel"
-            listOf("var", "video assistant", "video review", "تقنية الفيديو", "حكم الفيديو", "مراجعة الفيديو").any(value::contains) -> "var"
-            listOf("assist", "assisted by", "تمريره حاسمة", "تمريرة حاسمة", "صناعة الهدف", "صانع الهدف").any(value::contains) -> "assist"
+            Regex("\\bvar\\b").containsMatchIn(value) || listOf("video assistant", "video review", "تقنية الفيديو", "حكم الفيديو", "مراجعة الفيديو").any(value::contains) -> "var"
+            Regex("\\bassist(?:ed)?\\b").containsMatchIn(value) || listOf("assisted by", "تمريره حاسمة", "تمريرة حاسمة", "صناعة الهدف", "صانع الهدف").any(value::contains) -> "assist"
             listOf("red card", "second yellow", "طرد", "بطاقة حمراء", "إنذار ثان").any(value::contains) -> "red_card"
             listOf("yellow card", "بطاقة صفراء", "إنذار").any(value::contains) -> "yellow_card"
             listOf("penalty", "missed penalty", "penalty missed", "penalty saved", "penalty awarded", "penalty shootout",
@@ -18,7 +18,7 @@ internal object FootballAlertClassifier {
             listOf("half time", "halftime", "half-time", "end of first half", "استراحة", "نهاية الشوط الأول").any(value::contains) -> "halftime"
             listOf("full time", "fulltime", "full-time", "match ended", "finished", "نهاية المباراة", "انتهت المباراة").any(value::contains) -> "fulltime"
             listOf("kick off", "kickoff", "match started", "انطلاق المباراة", "بداية المباراة").any(value::contains) -> "kickoff"
-            listOf("goal", "own goal", "هدف", "أحرز", "سجل").any(value::contains) -> "goal"
+            Regex("\\bgoal\\b").containsMatchIn(value) || listOf("هدف", "أحرز", "سجل").any(value::contains) -> "goal"
             else -> null
         }
     }
