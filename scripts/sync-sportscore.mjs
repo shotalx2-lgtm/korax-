@@ -2,6 +2,7 @@ const SPORTScore_BASE = "https://sportscore.com";
 const SPORTScore_UA = "sportscore-mcp/0.3 (+https://sportscore.com/developers/)";
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
+import { selectDetailBatch } from "./sync-sportscore-batching.mjs";
 
 function assert(value, message) { if (!value) throw new Error(message); }
 
@@ -11,7 +12,11 @@ async function sportJson(url) {
     signal: AbortSignal.timeout(20_000),
   });
   const body = await response.text();
-  if (!response.ok) throw new Error("SportScore HTTP " + response.status + " for " + url + ": " + body.slice(0, 200));
+  if (!response.ok) {
+    const error = new Error("SportScore HTTP " + response.status + " for " + url + ": " + body.slice(0, 200));
+    error.status = response.status;
+    throw error;
+  }
   try { return JSON.parse(body); }
   catch { throw new Error("SportScore returned invalid JSON for " + url); }
 }
@@ -116,18 +121,39 @@ async function main() {
           !/cancel|postpon|abandon/i.test(String(match.status || ""));
       })
       .sort((a, b) => Date.parse(a.time || a.start_time) - Date.parse(b.time || b.start_time))
-      .slice(0, 100);
-    console.log("SportScore details candidates:", candidates.length, candidates.slice(0, 5).map(m => slugOf(m)));
-    const detailResults = await mapLimit(candidates, 4, async match => {
+      .slice(0, 80);
+    const batch = selectDetailBatch(candidates, minute, 20);
+    console.log(
+      "SportScore detail batch:",
+      batch.batchIndex + 1,
+      "of",
+      batch.batchCount,
+      "; candidates:",
+      candidates.length,
+      "; selected:",
+      batch.items.length,
+    );
+
+    const detailResults = [];
+    for (const match of batch.items) {
       const slug = slugOf(match);
-      return {
-        slug,
-        detail: await sportJson(SPORTScore_BASE + "/api/widget/match/?sport=football&slug=" + encodeURIComponent(detailSlugOf(match))),
-      };
-    });
-    details = detailResults.filter(result => result && !result.error && result.slug && result.detail);
-    console.log("SportScore detail fetch results:", details.length, "of", candidates.length);
-    for (const result of detailResults) if (result?.error) console.error("Detail fetch warning:", result.error);
+      try {
+        const detail = await sportJson(
+          SPORTScore_BASE + "/api/widget/match/?sport=football&slug=" + encodeURIComponent(detailSlugOf(match)),
+        );
+        detailResults.push({ slug, detail });
+      } catch (error) {
+        console.error("Detail fetch warning:", String(error));
+        if (error?.status === 429) {
+          console.error("SportScore rate limit reached; stopping this detail batch early to avoid further requests.");
+          break;
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 750));
+    }
+
+    details = detailResults.filter(result => result && result.slug && result.detail);
+    console.log("SportScore detail fetch results:", details.length, "of", batch.items.length, "selected from", candidates.length);
   }
 
   if (standingsSync) {

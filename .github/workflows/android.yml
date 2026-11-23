@@ -20,6 +20,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Test SportScore detail batching
+        run: node --test scripts/sync-sportscore-batching.test.mjs
       - name: Test football data worker
         working-directory: worker
         run: |
