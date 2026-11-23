@@ -919,18 +919,73 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatc
 
 @Composable
 private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit, explore: () -> Unit, competitions: () -> Unit, settings: () -> Unit, transfers: () -> Unit, tools: () -> Unit) {
+    val context = LocalContext.current
+    val followedCount = KoraxFavoriteStore.all(context).size
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        KoraxHeader("المزيد", "كل أخبار ومباريات كرة القدم في مكان واحد")
+        KoraxHeader("المزيد", "حساب المشجع وإعدادات KORAX")
         Column(Modifier.padding(horizontal = 14.dp)) {
-            MoreRow("الأخبار", "العودة إلى مركز الأخبار", "⌂", home)
-            MoreRow("المفضلة", "الأندية واللاعبون الذين تتابعهم", "♡", favorites)
-            MoreRow("البطولات والدوريات", "عرض المسابقات والجداول والترتيب", "🏆", competitions)
-            MoreRow("استكشف", "اكتشف الأندية والمنتخبات واللاعبين", "⌕", explore)
-            MoreRow("الانتقالات", "أخبار وانتقالات اللاعبين المتاحة من المصدر", "⇄", transfers)
-            MoreRow("مختبر المميزات الجديدة", "المقارنة والأرشيف والمساعد والنسخ الاحتياطي وفحص المصادر", "✦", tools)
-            MoreRow("الإشعارات", "مركز تنبيهات المباريات والأخبار", "♧", notifications)
+            Card(
+                Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = KCard),
+                border = BorderStroke(1.dp, KBorder)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(58.dp).clip(CircleShape).background(KCard2),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("⚽", fontSize = 27.sp)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("ملف المشجع", color = KText, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("المفضلة وإعدادات المتابعة محفوظة على جهازك", color = KMuted, fontSize = 10.sp, lineHeight = 15.sp)
+                        Text("$followedCount عنصر في المفضلة", color = KLime, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                    TextButton(onClick = favorites) {
+                        Text("عرض", color = KLime, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MoreQuickAction("☆", "المفضلة", favorites, Modifier.weight(1f), Color(0xFF8D72D7))
+                MoreQuickAction("⇄", "الانتقالات", transfers, Modifier.weight(1f), KLime)
+            }
+            MoreSectionLabel("كرة القدم")
+            MoreRow("الأخبار", "آخر أخبار كرة القدم من المصادر المتاحة", "⌂", home)
+            MoreRow("البطولات والدوريات", "المباريات والجداول وترتيب الفرق", "🏆", competitions)
+            MoreRow("استكشف", "الأندية والمنتخبات واللاعبون", "⌕", explore)
+            MoreRow("مركز الإشعارات", "تنبيهات المباريات والأخبار على جهازك", "♧", notifications)
+            MoreSectionLabel("التطبيق")
             MoreRow("الإعدادات", "المظهر والصور وتوفير البيانات والتحديثات", "⚙", settings)
-            StateCard("KORAX", "تابع كرة القدم، الأخبار، المباريات، الدوريات، البطولات، الأندية واللاعبين. المفضلة والتعليقات المحلية محفوظة على جهازك.", "X")
+            MoreRow("أدوات KORAX", "المقارنة والأرشيف والمساعد وفحص المصادر", "✦", tools)
+            Text(
+                "لا يوجد تسجيل حساب أو مزامنة سحابية للمفضلة في هذه النسخة. بيانات المتابعة الحالية محفوظة محليًا على جهازك.",
+                color = KMuted, fontSize = 9.sp, lineHeight = 15.sp,
+                modifier = Modifier.padding(horizontal = 5.dp, vertical = 14.dp)
+            )
+        }
+    }
+}
+@Composable
+private fun MoreSectionLabel(title: String) {
+    Text(title, color = KMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(start = 5.dp, top = 18.dp, bottom = 8.dp))
+}
+@Composable
+private fun MoreQuickAction(label: String, title: String, click: () -> Unit, modifier: Modifier, tint: Color) {
+    Surface(
+        modifier = modifier.height(46.dp).clickable(onClick = click),
+        shape = RoundedCornerShape(14.dp),
+        color = KCard2,
+        border = BorderStroke(1.dp, KBorder)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            Text(label, color = tint, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(7.dp))
+            Text(title, color = KText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
