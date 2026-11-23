@@ -212,7 +212,6 @@ private fun matchesCategory(article: NewsItem, category: String): Boolean {
         "الانتقالات" -> article.category == "transfers" ||
             has("انتقال", "صفقة", "ميركاتو", "إعارة", "تجديد عقد", "مفاوضات", "ضم اللاعب")
         "الإصابات" -> has("إصابة", "مصاب", "غياب", "إيقاف", "جاهزية", "عودة للتدريبات", "تأهيل", "injury", "injured", "suspended")
-        "الفانتازي" -> has("فانتازي", "fantasy", "fantasy premier league", "الكابتن", "تشكيلة الجولة", "دبل جيم ويك", "وايلد كارد")
         else -> false
     }
 }
