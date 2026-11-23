@@ -526,7 +526,7 @@ internal object KoraxSmartAlerts {
                 val age = relativeNewsAge(item.optString("publishedAt"))
                 val isBreaking = Regex("عاجل|رسميا|بشكل رسمي", RegexOption.IGNORE_CASE).containsMatchIn(articleTitle)
                 val notificationTitle = if (isBreaking) "عاجل 🚨 • $age" else "كرة القدم ⚽ • $age"
-                val expandedBody = listOf(articleTitle, summary).filter { it.isNotBlank() }.joinToString("\\n")
+                val expandedBody = listOf(articleTitle, summary).filter { it.isNotBlank() }.joinToString("\n")
                     .ifBlank { "اضغط لقراءة تفاصيل الخبر" }
                 val image = item.optString("imageUrl").takeIf { it.startsWith("https://") }.orEmpty()
                 val key = item.optString("url").ifBlank { item.optString("id") }
