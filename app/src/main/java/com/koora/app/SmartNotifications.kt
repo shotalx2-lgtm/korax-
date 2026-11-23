@@ -127,6 +127,11 @@ internal object KoraxSmartAlerts {
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
 
+    fun setBackgroundUpdates(context: Context, enabled: Boolean) {
+        if (enabled) scheduleBackground(context)
+        else WorkManager.getInstance(context).cancelUniqueWork("korax_smart_alerts")
+    }
+
     fun scheduleBackground(context: Context) {
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -315,7 +320,9 @@ internal object KoraxSmartAlerts {
                 }
                 if (!seenEvents.add(key)) continue
                 if (kind == "goal") newGoalCount++
-                if (kind != null) notifyEvent(context, kind, match, event)
+                if (kind != null && matchesFavorite(context, match, event)) {
+                    notifyEvent(context, kind, match, event)
+                }
             }
 
             if (seeded && old != null && oldHomeScore >= 0 && oldAwayScore >= 0 &&
@@ -356,6 +363,7 @@ internal object KoraxSmartAlerts {
     }
 
     private fun notifyEvent(context: Context, kind: String, match: JSONObject, event: JSONObject) {
+        if (!matchesFavorite(context, match, event)) return
         val home = match.optJSONObject("homeTeam")
         val away = match.optJSONObject("awayTeam")
         val teamId = event.optString("team_id")
@@ -421,7 +429,7 @@ internal object KoraxSmartAlerts {
     }
 
     private fun notifyMatchStatus(context: Context, kind: String, match: JSONObject) {
-        if (!isEnabled(context, kind)) return
+        if (!isEnabled(context, kind) || !matchesFavorite(context, match, null)) return
         val home = match.optJSONObject("homeTeam")
         val away = match.optJSONObject("awayTeam")
         val competition = match.optJSONObject("competition")
@@ -441,7 +449,7 @@ internal object KoraxSmartAlerts {
     }
 
     private fun notifyGenericGoal(context: Context, match: JSONObject) {
-        if (!isEnabled(context, "goal")) return
+        if (!isEnabled(context, "goal") || !matchesFavorite(context, match, null)) return
         val home = match.optJSONObject("homeTeam")
         val away = match.optJSONObject("awayTeam")
         val competition = match.optJSONObject("competition")
@@ -489,6 +497,60 @@ internal object KoraxSmartAlerts {
             .putBoolean("news_seeded", true)
             .putString(SEEN_NEWS_KEY, writeSet(seen, 250))
             .apply()
+    }
+
+    private fun matchesFavorite(context: Context, match: JSONObject, event: JSONObject?): Boolean {
+        val all = KoraxFavoriteStore.all(context)
+        if (all.isEmpty()) return true
+        val followed = all.filter { it.notify }
+        if (followed.isEmpty()) return false
+
+        val home = match.optJSONObject("homeTeam")
+        val away = match.optJSONObject("awayTeam")
+        val competition = match.optJSONObject("competition")
+        val eventTeamId = event?.optString("team_id").orEmpty()
+        val eventPlayerId = event?.optString("player_id").orEmpty()
+        val eventPlayerName = event?.optString("player_name").orEmpty()
+        val homeId = home?.optString("id").orEmpty()
+        val awayId = away?.optString("id").orEmpty()
+        val homeName = home?.optString("name").orEmpty()
+        val awayName = away?.optString("name").orEmpty()
+        val competitionId = competition?.optString("id").orEmpty()
+        val competitionSlug = competition?.optString("slug").orEmpty()
+        val competitionName = competition?.optString("name").orEmpty()
+
+        return followed.any { favorite ->
+            when (favorite.kind) {
+                "club", "national" ->
+                    favorite.id == homeId || favorite.id == awayId ||
+                    favorite.slug == homeId || favorite.slug == awayId ||
+                    favorite.name.equals(homeName, true) || favorite.name.equals(awayName, true)
+                "league", "tournament" ->
+                    favorite.id == competitionId || favorite.slug == competitionSlug ||
+                    favorite.name.equals(competitionName, true) ||
+                    (competitionName.isNotBlank() && competitionName.contains(favorite.name, true))
+                "player" -> event != null && (
+                    favorite.id == eventPlayerId ||
+                    favorite.slug == eventPlayerId ||
+                    favorite.name.equals(eventPlayerName, true)
+                )
+                else -> false
+            }
+        }
+    }
+
+    private fun newsMatchesFavorite(context: Context, item: JSONObject): Boolean {
+        val all = KoraxFavoriteStore.all(context)
+        if (all.isEmpty()) return true
+        val followed = all.filter { it.notify }
+        if (followed.isEmpty()) return false
+        val text = (item.optString("title") + " " + item.optString("summary")).lowercase(Locale.ROOT)
+        val category = item.optString("category").lowercase(Locale.ROOT)
+        return followed.any { favorite ->
+            text.contains(favorite.name.lowercase(Locale.ROOT)) ||
+                (favorite.kind == "league" && category == favorite.slug.lowercase(Locale.ROOT)) ||
+                (favorite.kind == "tournament" && text.contains(favorite.name.lowercase(Locale.ROOT)))
+        }
     }
 
     private fun scoreOrUnknown(raw: Any?): Int =
