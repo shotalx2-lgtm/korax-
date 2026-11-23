@@ -20,6 +20,8 @@ class FootballNewsFilterTest {
     @Test fun trustsDedicatedFootballPublishers() {
         assertTrue(FootballNewsFilter.isFootballNews("خبر عن قائمة المنتخب", "", "كووورة"))
         assertTrue(FootballNewsFilter.isFootballNews("Latest team update", "", "BBC Sport"))
+        assertTrue(FootballNewsFilter.isFootballNews("Latest transfer update", "", "Sky Sports"))
+        assertTrue(FootballNewsFilter.isFootballNews("انتقالات اليوم", "", "بطولات - الأهلي"))
     }
 
     @Test fun rejectsPoliticalAndGeneralStoriesFromMixedFeeds() {
@@ -28,6 +30,14 @@ class FootballNewsFilterTest {
         assertFalse(FootballNewsFilter.isFootballNews("المنتخب الحكومي يعلن تشكيلته", ""))
         assertFalse(FootballNewsFilter.isFootballNews("هدف جديد في خطة التنمية", ""))
         assertFalse(FootballNewsFilter.isFootballNews("مدرب التنمية يعلن تفاصيل المبادرة", ""))
+        assertFalse(FootballNewsFilter.isFootballNews("الحكومة تعلن قائمة جديدة", "", "الإخبارية – تغطية اليوم السابع"))
+    }
+
+    @Test fun rejectsOtherSportsEvenWhenFootballClubsAreMentioned() {
+        assertFalse(FootballNewsFilter.isFootballNews("الزمالك يفوز بكأس كرة السلة", ""))
+        assertFalse(FootballNewsFilter.isFootballNews("محمد صلاح يتابع نهائي التنس", ""))
+        assertFalse(FootballNewsFilter.isFootballNews("برشلونة يعلن فريق كرة اليد", ""))
+        assertFalse(FootballNewsFilter.isFootballNews("Real Madrid wins basketball final", ""))
     }
 
     @Test fun genericFootballWordsDoNotPassByThemselves() {
