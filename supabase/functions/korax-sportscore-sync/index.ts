@@ -9,7 +9,6 @@ const GITHUB_OIDC_JWKS = createRemoteJWKSet(
 const ALLOWED_GITHUB_REPOSITORY = "shotalx2-lgtm/korax-";
 const ALLOWED_GITHUB_WORKFLOWS = new Set([
   "shotalx2-lgtm/korax-/.github/workflows/korax-sportscore-sync.yml@refs/heads/main",
-  "shotalx2-lgtm/korax-/.github/workflows/android.yml@refs/heads/main",
 ]);
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
