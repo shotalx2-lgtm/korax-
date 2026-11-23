@@ -11,8 +11,8 @@ internal object FootballAlertClassifier {
             listOf("assist", "assisted by", "تمريره حاسمة", "تمريرة حاسمة", "صناعة الهدف", "صانع الهدف").any(value::contains) -> "assist"
             listOf("red card", "second yellow", "طرد", "بطاقة حمراء", "إنذار ثان").any(value::contains) -> "red_card"
             listOf("yellow card", "بطاقة صفراء", "إنذار").any(value::contains) -> "yellow_card"
-            listOf("penalty missed", "penalty saved", "penalty awarded", "penalty shootout",
-                "ركلة جزاء", "ركلات الترجيح").any(value::contains) -> "penalty"
+            listOf("penalty", "missed penalty", "penalty missed", "penalty saved", "penalty awarded", "penalty shootout",
+                "ركلة جزاء", "ركلات الجزاء", "ركلات الترجيح").any(value::contains) -> "penalty"
             listOf("substitution", "substituted", "substitute", "player replaced", "تبديل", "استبدال", "نزول", "خروج اللاعب").any(value::contains) -> "substitution"
             listOf("injury", "injured", "medical treatment", "إصابة", "مصاب", "علاج اللاعب").any(value::contains) -> "injury"
             listOf("half time", "halftime", "half-time", "end of first half", "استراحة", "نهاية الشوط الأول").any(value::contains) -> "halftime"
