@@ -1,6 +1,8 @@
 name: KORAX SportScore sync
 
 on:
+  push:
+    branches: [feat/supabase-korax-backend, main]
   workflow_dispatch:
   schedule:
     - cron: "*/5 * * * *"
