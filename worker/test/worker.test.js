@@ -117,9 +117,10 @@ test("Youm7 redirect failures fall back to a publisher-attributed RSS mirror", a
     if (url.includes("www.youm7.com/rss/SectionRss")) {
       return new Response("redirect loop", { status: 508 });
     }
+    const articleSlug = url.includes("alikhbariya.net") ? "youm7-story" : "other-" + encodeURIComponent(url);
     const xml = `<rss><channel><item>
       <title><![CDATA[أخبار كرة القدم من اليوم السابع]]></title>
-      <link>https://publisher.example/youm7-story</link>
+      <link>https://publisher.example/${articleSlug}</link>
       <description><![CDATA[ملخص الخبر الرياضي]]></description>
       <pubDate>Sun, 22 Nov 2026 17:00:00 GMT</pubDate>
       <enclosure url="https://images.example/youm7.jpg" type="image/jpeg"/>
