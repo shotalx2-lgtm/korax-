@@ -40,16 +40,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.credentials.ClearCredentialStateRequest
-import androidx.credentials.CredentialManager
-import androidx.credentials.CustomCredential
-import androidx.credentials.GetCredentialRequest
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.google.firebase.FirebaseApp
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.GoogleAuthProvider
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -104,7 +94,7 @@ private fun KoraxSplash() {
                 Spacer(Modifier.height(25.dp))
                 Box(Modifier.width(54.dp).height(3.dp).clip(CircleShape).background(KLime))
                 Spacer(Modifier.height(18.dp))
-                Text("NEWS  •  TRANSFERS  •  FANTASY", color = Color(0xFFBEC5CE), fontSize = 9.sp, letterSpacing = 1.sp)
+                Text("NEWS  •  MATCHES  •  LEAGUES", color = Color(0xFFBEC5CE), fontSize = 9.sp, letterSpacing = 1.sp)
             }
         }
     } else KoraxApp()
@@ -251,7 +241,6 @@ private fun KoraxApp() {
             val tabs = listOf(
                 Triple("matches", "المباريات", Icons.Filled.CalendarMonth),
                 Triple("news", "الأخبار", Icons.Filled.Search),
-                Triple("fantasy", "الفانتازي", Icons.Filled.SportsSoccer),
                 Triple("transfers", "الانتقالات", Icons.Filled.SwapHoriz),
                 Triple("more", "المزيد", Icons.Filled.Settings)
             )
@@ -269,12 +258,10 @@ private fun KoraxApp() {
             when (tab) {
                 "news" -> NewsScreen(
                     onOpenLive = { matchLiveRequested = true; tab = "matches" },
-                    onChooseDate = { selected -> matchDate = selected; matchLiveRequested = false; tab = "matches" },
-                    onOpenFantasy = { tab = "fantasy" }
+                    onChooseDate = { selected -> matchDate = selected; matchLiveRequested = false; tab = "matches" }
                 )
                 "transfers" -> TransfersScreen()
                 "matches" -> MatchesScreen(initialLive = matchLiveRequested, selectedDate = matchDate)
-                "fantasy" -> FantasyScreen()
                 "favorites" -> StateCard("المفضلة", "تابع أنديتك ولاعبيك لإضافتهم هنا. مزامنة المفضلة بين الأجهزة تحتاج حسابًا سحابيًا.", "♡")
                 "notifications" -> StateCard("الإشعارات", "ستظهر هنا تنبيهات المباريات والأخبار والفانتازي بعد تفعيل خدمة الإشعارات.", "♧")
                 else -> MoreScreen({ tab = "news" }, { tab = "favorites" }, { tab = "notifications" })
@@ -337,32 +324,9 @@ private fun BrandToolbar(onSearch: () -> Unit, onLive: () -> Unit, onDate: () ->
 }
 
 @Composable
-private fun FantasyShortcut(onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(17.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF172006)),
-        border = BorderStroke(1.dp, Color(0xFF465717))
-    ) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(38.dp).clip(RoundedCornerShape(11.dp)).background(KLime), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.SportsSoccer, null, tint = Color.Black)
-            }
-            Spacer(Modifier.width(11.dp))
-            Column(Modifier.weight(1f)) {
-                Text("KORAX XI", color = KLime, fontSize = 13.sp, fontWeight = FontWeight.Black, letterSpacing = .7.sp)
-                Text("ادخل إلى فريقك وسوق اللاعبين والنقاط", color = Color(0xFFD0D5C3), fontSize = 10.sp)
-            }
-            Text("دخول  ←", color = KLime, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
 private fun NewsScreen(
     onOpenLive: () -> Unit,
-    onChooseDate: (String) -> Unit,
-    onOpenFantasy: () -> Unit
+    onChooseDate: (String) -> Unit
 ) {
     var articles by remember { mutableStateOf<List<NewsItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -437,8 +401,6 @@ private fun NewsScreen(
             }
         }
         Spacer(Modifier.height(9.dp))
-        FantasyShortcut(onClick = onOpenFantasy)
-        Spacer(Modifier.height(8.dp))
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = KLime) }
             articles.isEmpty() -> StateCard("تعذر تحميل الأخبار", error.ifBlank { "تأكد من نشر Worker وضبط رابط API." }, "📰")
@@ -674,184 +636,14 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
 
 
 @Composable
-private fun AccountCard() {
-    val context = LocalContext.current
-    val auth: FirebaseAuth? = remember {
-        if (FirebaseApp.getApps(context).isNotEmpty()) runCatching { FirebaseAuth.getInstance() }.getOrNull()
-        else null
-    }
-    var currentUser by remember(auth) { mutableStateOf(auth?.currentUser) }
-    var busy by remember { mutableStateOf(false) }
-    var feedback by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var creatingAccount by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-
-    DisposableEffect(auth) {
-        if (auth != null) {
-            val listener = FirebaseAuth.AuthStateListener { currentUser = it.currentUser }
-            auth.addAuthStateListener(listener)
-            onDispose { auth.removeAuthStateListener(listener) }
-        } else onDispose { }
-    }
-
-    fun runEmailAuth(create: Boolean) {
-        val firebaseAuth = auth
-        if (firebaseAuth == null) {
-            feedback = "يلزم إعداد Firebase أولًا."
-            return
-        }
-        scope.launch {
-            busy = true
-            feedback = ""
-            runCatching {
-                val cleanEmail = email.trim()
-                check(cleanEmail.contains("@")) { "اكتب بريدًا إلكترونيًا صحيحًا." }
-                check(password.length >= 6) { "كلمة المرور يجب أن تكون 6 أحرف على الأقل." }
-                if (create) firebaseAuth.createUserWithEmailAndPassword(cleanEmail, password).await()
-                else firebaseAuth.signInWithEmailAndPassword(cleanEmail, password).await()
-            }.onSuccess {
-                feedback = if (create) "تم إنشاء الحساب وتسجيل الدخول." else "تم تسجيل الدخول بنجاح."
-            }.onFailure { error ->
-                feedback = error.localizedMessage ?: "تعذر إكمال تسجيل الدخول."
-            }
-            busy = false
-        }
-    }
-
-    fun runGoogleAuth() {
-        val firebaseAuth = auth
-        if (firebaseAuth == null) {
-            feedback = "يلزم إعداد Firebase أولًا."
-            return
-        }
-        scope.launch {
-            busy = true
-            feedback = ""
-            runCatching {
-                val clientIdResource = context.resources.getIdentifier(
-                    "default_web_client_id", "string", context.packageName
-                )
-                check(clientIdResource != 0) {
-                    "إعداد OAuth غير موجود. أضف google-services.json بعد تفعيل Google في Firebase."
-                }
-                val googleOption = GetGoogleIdOption.Builder()
-                    .setServerClientId(context.getString(clientIdResource))
-                    .setFilterByAuthorizedAccounts(false)
-                    .build()
-                val request = GetCredentialRequest.Builder()
-                    .addCredentialOption(googleOption)
-                    .build()
-                val result = CredentialManager.create(context).getCredential(context, request)
-                val credential = result.credential
-                check(
-                    credential is CustomCredential &&
-                        credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                ) { "لم يتم استلام بيانات اعتماد Google صالحة." }
-                val googleToken = GoogleIdTokenCredential.createFrom(credential.data)
-                val firebaseCredential = GoogleAuthProvider.getCredential(googleToken.idToken, null)
-                firebaseAuth.signInWithCredential(firebaseCredential).await()
-            }.onSuccess {
-                feedback = "تم تسجيل الدخول بنجاح."
-            }.onFailure { error ->
-                feedback = error.localizedMessage ?: "تعذر تسجيل الدخول. تحقق من إعداد Firebase."
-            }
-            busy = false
-        }
-    }
-
-    Card(
-        Modifier.fillMaxWidth().padding(bottom = 10.dp),
-        shape = RoundedCornerShape(17.dp),
-        colors = CardDefaults.cardColors(containerColor = KCard),
-        border = BorderStroke(1.dp, KBorder)
-    ) {
-        Column(Modifier.fillMaxWidth().padding(15.dp)) {
-            Text("حساب KORAX", color = KText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(5.dp))
-            when {
-                currentUser != null -> {
-                    Text(currentUser?.displayName ?: currentUser?.email.orEmpty(), color = KLime, fontSize = 12.sp)
-                    Text(currentUser?.email.orEmpty(), color = KMuted, fontSize = 10.sp)
-                    Button(
-                        enabled = !busy,
-                        onClick = {
-                            scope.launch {
-                                busy = true
-                                auth?.signOut()
-                                runCatching {
-                                    CredentialManager.create(context).clearCredentialState(ClearCredentialStateRequest())
-                                }
-                                feedback = "تم تسجيل الخروج من حساب KORAX."
-                                busy = false
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = KCard2, contentColor = KText)
-                    ) { Text(if (busy) "جارٍ التنفيذ..." else "تسجيل الخروج") }
-                }
-                auth == null -> {
-                    Text(
-                        "تسجيل البريد وGoogle جاهز برمجيًا، لكن يلزم إضافة إعداد Firebase الخاص بتطبيق KORAX وتفعيل طريقتَي الدخول من لوحة Firebase.",
-                        color = KMuted, fontSize = 11.sp, lineHeight = 17.sp
-                    )
-                }
-                else -> {
-                    Text("سجّل الدخول لحفظ حسابك وربط بياناتك.", color = KMuted, fontSize = 11.sp)
-                    Spacer(Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = email, onValueChange = { email = it },
-                        label = { Text("البريد الإلكتروني") }, singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(7.dp))
-                    OutlinedTextField(
-                        value = password, onValueChange = { password = it },
-                        label = { Text("كلمة المرور") }, singleLine = true,
-                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    Button(
-                        enabled = !busy,
-                        onClick = { runEmailAuth(creatingAccount) },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = KLime, contentColor = Color.Black)
-                    ) {
-                        Text(if (busy) "جارٍ التنفيذ..." else if (creatingAccount) "إنشاء حساب بالبريد" else "تسجيل الدخول بالبريد")
-                    }
-                    TextButton(
-                        enabled = !busy,
-                        onClick = { creatingAccount = !creatingAccount; feedback = "" },
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                    ) {
-                        Text(if (creatingAccount) "لديك حساب؟ سجّل الدخول" else "ليس لديك حساب؟ أنشئ حسابًا")
-                    }
-                    Button(
-                        enabled = !busy,
-                        onClick = { runGoogleAuth() },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = KCard2, contentColor = KText)
-                    ) { Text(if (busy) "جارٍ تسجيل الدخول..." else "تسجيل الدخول باستخدام Google") }
-                }
-            }
-            if (feedback.isNotBlank()) {
-                Text(feedback, color = if (currentUser != null) KLime else KMuted, fontSize = 10.sp)
-            }
-        }
-    }
-}
-
-@Composable
 private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        KoraxHeader("المزيد", "إعدادات وتجربتك في KORAX")
+        KoraxHeader("المزيد", "كل أخبار ومباريات كرة القدم في مكان واحد")
         Column(Modifier.padding(horizontal = 14.dp)) {
-            AccountCard()
             MoreRow("الأخبار", "العودة إلى مركز الأخبار", "⌂", home)
             MoreRow("المفضلة", "الأندية واللاعبون الذين تتابعهم", "♡", favorites)
             MoreRow("الإشعارات", "مركز تنبيهات المباريات والأخبار", "♧", notifications)
-            StateCard("KORAX X", "نسخة Android متصلة بمصادر RSS وواجهات البيانات التي يتم إعدادها على الخادم.", "X")
+            StateCard("KORAX", "تطبيق لمتابعة الأخبار والمباريات والبطولات والنتائج والإحصائيات. تسجيل الدخول غير مطلوب حاليًا.", "X")
         }
     }
 }
