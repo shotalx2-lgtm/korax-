@@ -173,7 +173,7 @@ private suspend fun loadNews(): List<NewsItem> {
         NewsItem(x.optString("id", url), title, x.optString("summary"), url,
             x.optString("source", "مصدر رياضي"), x.optString("publishedAt"),
             x.https("imageUrl").takeIf { it.isNotBlank() }, x.optString("category", "football"))
-    }.distinctBy { it.url }
+    }.distinctBy { it.title.lowercase(Locale.ROOT).replace(Regex("\\s+"), " ").trim() }
 }
 
 private suspend fun loadTransfers(): List<TransferItem> {
@@ -373,7 +373,7 @@ private fun KoraxApp() {
                     onChooseDate = { selected -> matchDate = selected; matchLiveRequested = false; tab = "matches" },
                     onOpenArticle = { selectedArticle = it }
                 )
-                tab == "transfers" -> TransfersScreen()
+                tab == "transfers" -> KoraxTopicPage(onBack = { tab = "more" }, onOpenArticle = { selectedArticle = it })
                 tab == "matches" -> MatchesScreen(initialLive = matchLiveRequested, selectedDate = matchDate, onOpenMatch = { selectedMatchId = it })
                 tab == "explore" -> KoraxFavoriteSelectionScreen(
                     isFirstRun = false,
