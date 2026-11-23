@@ -28,7 +28,7 @@ async function isAuthorizedGitHubRun(req: Request): Promise<boolean> {
       algorithms: ["RS256"],
     });
     return payload.repository === ALLOWED_GITHUB_REPOSITORY &&
-      payload.ref === "refs/heads/main" &&
+      ["refs/heads/main", "refs/heads/feat/supabase-korax-backend"].includes(String(payload.ref || "")) &&
       ALLOWED_GITHUB_WORKFLOWS.has(String(payload.workflow_ref || ""));
   } catch (error) {
     console.error("[korax-sportscore-sync] GitHub OIDC validation failed", String(error));
