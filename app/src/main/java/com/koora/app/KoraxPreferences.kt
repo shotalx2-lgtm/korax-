@@ -104,7 +104,7 @@ internal object KoraxSettingsStore {
 
     fun setTheme(context: Context, value: String) {
         prefs(context).edit().putString("theme", value).apply()
-        KoraxThemePalette.setLight(value == "light")
+        KoraxThemePalette.applyLightMode(value == "light")
     }
 
     fun requestPermissionAsked(context: Context): Boolean =
@@ -119,7 +119,7 @@ internal object KoraxThemePalette {
     var light by mutableStateOf(false)
         private set
 
-    fun setLight(value: Boolean) {
+    fun applyLightMode(value: Boolean) {
         light = value
     }
 
