@@ -511,6 +511,8 @@ internal object KoraxSmartAlerts {
         val eventTeamId = event?.optString("team_id").orEmpty()
         val eventPlayerId = event?.optString("player_id").orEmpty()
         val eventPlayerName = event?.optString("player_name").orEmpty()
+        val assistPlayerId = event?.optString("assist_player_id").orEmpty()
+        val assistPlayerName = event?.optString("assist_player_name").orEmpty()
         val homeId = home?.optString("id").orEmpty()
         val awayId = away?.optString("id").orEmpty()
         val homeName = home?.optString("name").orEmpty()
@@ -530,9 +532,10 @@ internal object KoraxSmartAlerts {
                     favorite.name.equals(competitionName, true) ||
                     (competitionName.isNotBlank() && competitionName.contains(favorite.name, true))
                 "player" -> event != null && (
-                    favorite.id == eventPlayerId ||
-                    favorite.slug == eventPlayerId ||
-                    favorite.name.equals(eventPlayerName, true)
+                    favorite.id == eventPlayerId || favorite.id == assistPlayerId ||
+                    favorite.slug == eventPlayerId || favorite.slug == assistPlayerId ||
+                    favorite.name.equals(eventPlayerName, true) ||
+                    favorite.name.equals(assistPlayerName, true)
                 )
                 else -> false
             }
