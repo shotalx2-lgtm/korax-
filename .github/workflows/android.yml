@@ -81,7 +81,41 @@ jobs:
             });
           '
 
-          matches="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches?live=1")"
+          supabase_root="https://hwrsjmdcivdluztnhpxo.supabase.co"
+          data_health="$(curl --silent --show-error --fail --max-time 20 --header "apikey: $SUPABASE_PUBLISHABLE_KEY" "$supabase_root/functions/v1/korax-data")"
+          printf '%s' "$data_health" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              console.log("Existing Supabase football-data function:", JSON.stringify({
+                status: value.status, provider: value.provider,
+                sportsApiKeyConfigured: value.sportsApiKeyConfigured
+              }));
+            });
+          '
+
+          match_date="$(date -u +%F)"
+          if printf '%s' "$data_health" | node -e 'let raw="";process.stdin.on("data",c=>raw+=c);process.stdin.on("end",()=>process.exit(JSON.parse(raw).sportsApiKeyConfigured ? 0 : 1))'; then
+            sports_payload="$(curl --silent --show-error --fail --max-time 35 --request POST --header "apikey: $SUPABASE_PUBLISHABLE_KEY" --header "content-type: application/json" --data "{\"path\":\"/fixtures?date=$match_date&sport=football\"}" "$supabase_root/functions/v1/korax-data")"
+            printf '%s' "$sports_payload" | node -e '
+              let raw = "";
+              process.stdin.on("data", chunk => raw += chunk);
+              process.stdin.on("end", () => {
+                const value = JSON.parse(raw);
+                const root = value?.data ?? value;
+                const rows = Array.isArray(root) ? root : (root?.fixtures || root?.results || root?.data || []);
+                console.log("Existing SportsAPI fixture diagnostic:", JSON.stringify({
+                  topKeys: Object.keys(value || {}),
+                  rowCount: rows.length,
+                  sampleKeys: Object.keys(rows[0] || {}),
+                  sample: rows[0] || null
+                }).slice(0, 3000));
+              });
+            '
+          fi
+
+                    matches="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches?live=1")"
           printf '%s' "$matches" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
