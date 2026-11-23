@@ -67,6 +67,27 @@ private fun JSONObject.readImage(vararg keys: String): String =
 
 private fun String.urlEncoded(): String = URLEncoder.encode(this, "UTF-8")
 
+internal object KoraxMatchWatchStore {
+    private const val PREFS = "korax_match_watch_v1"
+    private const val KEY = "watched_matches"
+
+    fun isWatching(context: Context, matchId: String): Boolean {
+        if (matchId.isBlank()) return false
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getStringSet(KEY, emptySet())?.contains(matchId) == true
+    }
+
+    fun toggle(context: Context, matchId: String): Boolean {
+        if (matchId.isBlank()) return false
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val next = prefs.getStringSet(KEY, emptySet())?.toMutableSet() ?: mutableSetOf()
+        val watching = if (next.contains(matchId)) { next.remove(matchId); false }
+            else { next.add(matchId); true }
+        prefs.edit().putStringSet(KEY, next).apply()
+        return watching
+    }
+}
+
 internal object KoraxOfflineStore {
     private const val PREFS = "korax_offline_articles_v1"
     private const val KEY = "articles"
@@ -587,6 +608,9 @@ private fun MatchDetailContent(match: JSONObject) {
     val events = match.optJSONArray("events") ?: JSONArray()
     val lineups = match.optJSONArray("lineups") ?: JSONArray()
     val stats = match.optJSONArray("statistics") ?: JSONArray()
+    val context = LocalContext.current
+    val matchId = match.optString("id")
+    var watching by remember(matchId) { mutableStateOf(KoraxMatchWatchStore.isWatching(context, matchId)) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(13.dp)) {
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = XCard), border = BorderStroke(1.dp, XBorder), shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.padding(15.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -608,6 +632,17 @@ private fun MatchDetailContent(match: JSONObject) {
                 Text(match.optJSONObject("venue")?.optString("name").orEmpty().ifBlank { match.optString("venue") }, color = XMuted, fontSize = 9.sp)
                 Text("الحكم: " + match.optJSONObject("referee")?.optString("name").orEmpty().ifBlank { "غير متاح" }, color = XMuted, fontSize = 9.sp)
             }
+        }
+        Button(
+            onClick = { watching = KoraxMatchWatchStore.toggle(context, matchId) },
+            enabled = matchId.isNotBlank(),
+            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (watching) XCard2 else XAccent,
+                contentColor = if (watching) XText else Color.Black
+            )
+        ) {
+            Text(if (watching) "✓ تتابع هذه المباراة — إيقاف التنبيه" else "🔔 تابع المباراة ونبّهني بأحداثها", fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
         if (stats.length() > 0) {
             Text("إحصائيات المباراة", color = XText, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 16.dp, bottom = 7.dp))
