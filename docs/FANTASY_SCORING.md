@@ -1,41 +1,40 @@
-# KORAX Fantasy scoring and player data
+# KORAX Fantasy — data and scoring status
 
-## Supported competitions
+> **Not a shipped feature in the current Android main branch.** This document records experimental design notes, not a production fantasy service.
 
-The fantasy player catalogue is built from the current seasons of these six competitions:
+## What exists today
 
-- English Premier League
-- Spanish La Liga
-- French Ligue 1
-- Italian Serie A
-- German Bundesliga
-- Saudi Pro League
+The current Android app does not contain a complete fantasy squad builder, round deadlines, official player market, transfer engine, captain scoring, live gameweek calculations, or multi-user fantasy leagues.
 
-The backend resolves each competition and current season from the provider, then retrieves each season's participating teams and team-season squads. Player images, positions, clubs, and available season statistics are returned with the catalogue. If the provider subscription does not include a competition, the API reports that league as unavailable instead of filling it with invented data.
+The optional/legacy Cloudflare Worker source contains a `/api/fantasy/players` prototype. Its own response metadata describes the catalogue as `top_scorers_and_assists_only` and sets `roundScoringAvailable: false`. It combines players returned by top-scorer and assist leaderboards; this is not a full league squad catalogue.
 
-## Initial KORAX season scoring
+The prototype currently assigns starting prices by position:
 
-The first catalogue scoring model is versioned as `KORAX-SEASON-1`:
-
-| Event/statistic | Points |
+| Position | Prototype starting price |
 |---|---:|
-| Appearance | +2 |
-| Goal by goalkeeper/defender | +6 |
-| Goal by midfielder | +5 |
-| Goal by forward | +4 |
-| Assist | +3 |
-| Clean sheet by goalkeeper/defender | +4 |
-| Clean sheet by midfielder | +1 |
-| Every 3 goalkeeper saves | +1 |
-| Penalty save | +5 |
-| Penalty miss | -2 |
-| Yellow card | -1 |
-| Red card | -3 |
-| Own goal | -2 |
-| Every 2 goals conceded by goalkeeper/defender | -1 |
+| Goalkeeper | 4.5m |
+| Defender | 5.0m |
+| Midfielder | 6.0m |
+| Forward | 6.5m |
 
-This is KORAX's initial custom season-total formula, not an official Premier League/FPL points schedule. The current endpoint uses provider season aggregates, so these points are season totals. Match-by-match gameweek scoring, live in-play recalculation, points corrections, and deadline locking remain separate implementation requirements before public fantasy competitions can be opened.
+These are fixed KORAX defaults, **not provider market prices**. They must not be presented to users as real market valuations.
 
-## Pricing
+## Experimental season formula
 
-Initial prices are KORAX starting prices by position (goalkeeper 4.5m, defender 5.0m, midfielder 6.0m, forward 6.5m). They are not claimed to be official provider market valuations. A production market-price engine needs a defined price-change policy and server-side history so users cannot alter prices locally.
+The prototype's `KORAX-SEASON-1` formula calculates season-total points from aggregated player statistics. It is not the official Fantasy Premier League scoring schedule and does not calculate points for individual gameweeks.
+
+It does not currently provide verified match-by-match points, round corrections, live in-play recalculation, deadline locking, or an audited price history. Do not use season totals as round scores.
+
+## Requirements before production
+
+A real fantasy engine needs a verified provider and data contract for:
+
+- Complete player rosters for each selected competition and season, with stable IDs and team membership.
+- Reliable positions, squad status, shirt numbers, and player availability.
+- Match-level player statistics linked to the correct fixture and gameweek.
+- Confirmed goals, assists, minutes, clean sheets, saves, cards, own goals, penalty events, and corrections.
+- Injury and suspension status with timestamps and source attribution.
+- A price source or a transparent KORAX valuation algorithm, server-side price history, and locked prices at each deadline.
+- Server-authoritative squads, budgets, transfers, captain/vice-captain rules, round totals, leaderboards, and audit logs.
+
+No player price, injury status, or fantasy point total should be invented or inferred from a missing provider field. Provider selection must be based on a live coverage test for the exact leagues and fields required.

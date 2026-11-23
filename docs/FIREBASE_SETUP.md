@@ -1,36 +1,35 @@
-# Firebase and Google sign-in setup for KORAX
+# Firebase status and future integration notes
 
-The Android project now contains the Google Credential Manager + Firebase Authentication flow. The sign-in button is shown in **More → KORAX Account** when Firebase is configured.
+## Current status on main (23 November 2026)
 
-## One-time Firebase setup
+Firebase is **not integrated into the current Android app**.
 
-1. Create a Firebase project for KORAX.
-2. Add an Android app with package name `com.koora.app`.
-3. In Firebase Authentication → Sign-in method, enable both **Email/Password** and **Google** providers.
-4. Add the SHA-1 and SHA-256 fingerprints for the certificate that signs the APK users will install. The current CI debug certificate is for testing only; production must use a stable release keystore.
-5. Download the updated `google-services.json` for the Android app.
+Verified in the current `main` branch:
 
-## GitHub Actions setup
+- `app/build.gradle.kts` has no Firebase Authentication, Firebase Messaging, Google Credential Manager, or Google Sign-In dependencies/plugin.
+- `AndroidManifest.xml` has no Firebase Messaging service.
+- The application has no active email/password or Google sign-in flow.
+- The Android app does not register an FCM token with `korax-push-register`.
+- The Android app does not use Firestore to save fantasy teams.
+- `firestore.rules` and this document are setup remnants/documentation, not proof that those features are integrated.
 
-Do not commit `google-services.json` to the public repository.
+Do not create or add Firebase secrets just to make the current 0.6.2 app build. The current app builds without `google-services.json`.
 
-Encode the file as Base64 on your own computer and save the result as a GitHub Actions repository secret named:
+## Recommended architecture before adding accounts
 
-- `FIREBASE_CONFIG_JSON_B64`
+Supabase already owns KORAX's backend data and server-side functions. Prefer evaluating **Supabase Auth** as the single identity system for email/password and Google sign-in. This avoids maintaining separate Firebase and Supabase user identities.
 
-The Android workflow decodes this secret into `app/google-services.json` before Gradle runs. When the secret is absent, the project still builds, but Firebase sign-in remains unavailable and the account screen explains that configuration is required.
+If remote Android push notifications are needed, Firebase Cloud Messaging can be evaluated as a delivery transport only. The app would need the FCM SDK, token registration/refresh, a messaging service, notification preferences, and a secure server-side sender. The existing `korax-push-register` and `korax_push_outbox` are backend groundwork only; they do not mean Android devices currently receive FCM.
 
-## Fantasy cloud saves
+Do not add Firebase Auth, Firestore, or FCM until the exact role of each service is agreed and an end-to-end test is defined.
 
-1. In the Firebase console, create a Cloud Firestore database.
-2. Publish the repository's `firestore.rules` rules to the Firestore database.
-3. The Android fantasy screen saves the signed-in user's squad, budget, team name, formation, captain, vice-captain, and transfer log to `fantasyTeams/{Firebase UID}`. The player catalogue remains cached separately and is not duplicated in every user's cloud document.
+## Safe integration requirements
 
-The rules intentionally allow each user to read and change only their own fantasy save. Multiplayer leagues, shared leaderboards, friend requests, and chat need additional collections and stricter membership-based rules before those features are enabled.
+When implementation is approved:
 
-## Important boundaries
-
-- Email/password registration and sign-in, and Google sign-in, authenticate a user with Firebase Authentication.
-- Authentication alone does not create cloud fantasy saves, leagues, leaderboards, friend requests, or chat. Those require a database, security rules, and application screens; they must be completed and tested separately.
-- Never place Sportmonks credentials, Firebase service-account private keys, or other server secrets in the Android APK or public source code.
-- Before a public release, configure a stable release signing key and register its certificate fingerprints in Firebase.
+1. Keep service-role keys and service-account private keys server-side only.
+2. Never commit `google-services.json`, private keys, or production tokens to the public repository.
+3. Store required credentials in the appropriate secure provider settings, not in chat or Android source.
+4. Add token registration, refresh, removal on sign-out, delivery retries, and user notification controls before claiming remote push is operational.
+5. Verify the signing certificate and Google OAuth configuration for the actual release package.
+6. Test account creation, login, Google callback, session refresh, sign-out, and data isolation before enabling account-dependent app features.
