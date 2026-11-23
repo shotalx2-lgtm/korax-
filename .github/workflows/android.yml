@@ -116,6 +116,24 @@ jobs:
             '
           fi
 
+                    echo "Testing official SportScore public API directly from the GitHub runner..."
+          for provider_url in \
+            "https://sportscore.com/api/widget/matches/?sport=football&limit=3" \
+            "https://sportscore.com/api/v1/fixtures/?sport=football&date=$(date -u +%F)&limit=3" \
+            "https://sportscore.com/api/v1/matches/?sport=football&limit=3"; do
+            status="$(curl --silent --show-error --max-time 20 --output "$RUNNER_TEMP/sportscore-direct.json" --write-out '%{http_code}' --header "user-agent: sportscore-mcp/0.3 (+https://sportscore.com/developers/)" --header "accept: application/json" "$provider_url" || true)"
+            node -e '
+              const fs = require("node:fs");
+              const raw = fs.readFileSync(process.env.RUNNER_TEMP + "/sportscore-direct.json", "utf8");
+              let value = null;
+              try { value = JSON.parse(raw); } catch {}
+              const root = value?.data ?? value;
+              const rows = Array.isArray(root) ? root : (root?.matches || root?.fixtures || root?.results || []);
+              console.log("SportScore direct:", process.env.PROVIDER_URL, "HTTP", process.env.PROVIDER_STATUS,
+                "keys", Object.keys(value || {}), "rows", rows.length);
+            ' PROVIDER_URL="$provider_url" PROVIDER_STATUS="$status"
+          done
+
                     matches="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches?live=1")"
           printf '%s' "$matches" | node -e '
             let raw = "";
