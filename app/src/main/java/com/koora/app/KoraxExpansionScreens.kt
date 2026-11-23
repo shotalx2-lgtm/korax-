@@ -518,8 +518,8 @@ private fun JSONObject.toToolMatch(): ToolMatch? {
     val id = optString("id").ifBlank { home + "-" + away + "-" + optString("startTime") }
     return ToolMatch(
         id, home, away,
-        homeObj?.readImage("crest", "logoUrl").orEmpty(),
-        awayObj?.readImage("crest", "logoUrl").orEmpty(),
+        homeObj?.readImage("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
+        awayObj?.readImage("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
         score, readText("status").ifBlank { "الحالة غير متاحة" },
         readText("startTime"), optJSONObject("competition")?.optString("name").orEmpty().ifBlank { optString("competitionName") }
     )
@@ -620,12 +620,12 @@ private fun MatchDetailContent(match: JSONObject) {
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (home?.readImage("crest", "logoUrl").orEmpty().isNotBlank()) coil.compose.AsyncImage(home!!.readImage("crest", "logoUrl"), homeName, Modifier.size(52.dp), contentScale = ContentScale.Fit)
+                        if (home?.readImage("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty().isNotBlank()) coil.compose.AsyncImage(home!!.readImage("crest", "logoUrl"), homeName, Modifier.size(52.dp), contentScale = ContentScale.Fit)
                         Text(homeName, color = XText, fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                     Text(score, color = XAccent, fontSize = 23.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 9.dp))
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                        if (away?.readImage("crest", "logoUrl").orEmpty().isNotBlank()) coil.compose.AsyncImage(away!!.readImage("crest", "logoUrl"), awayName, Modifier.size(52.dp), contentScale = ContentScale.Fit)
+                        if (away?.readImage("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty().isNotBlank()) coil.compose.AsyncImage(away!!.readImage("crest", "logoUrl"), awayName, Modifier.size(52.dp), contentScale = ContentScale.Fit)
                         Text(awayName, color = XText, fontWeight = FontWeight.Bold, fontSize = 11.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
