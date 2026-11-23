@@ -593,7 +593,7 @@ private fun NewsScreen(
             )
             Spacer(Modifier.height(7.dp))
         }
-        if (!setupComplete) {
+        if (!KoraxFavoriteStore.setupComplete(context)) {
             Card(
                 Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 4.dp),
                 colors = CardDefaults.cardColors(containerColor = KCard),
