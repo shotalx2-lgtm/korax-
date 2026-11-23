@@ -288,6 +288,7 @@ private fun KoraxApp() {
     var matchDate by rememberSaveable { mutableStateOf(todayIso()) }
     var selectedArticle by remember { mutableStateOf<NewsItem?>(null) }
     var selectedProfile by remember { mutableStateOf<KoraxFavorite?>(null) }
+    var selectedMatchId by rememberSaveable { mutableStateOf<String?>(null) }
     var setupComplete by remember { mutableStateOf(KoraxFavoriteStore.setupComplete(context)) }
     var permissionAsked by remember { mutableStateOf(KoraxSettingsStore.requestPermissionAsked(context)) }
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -332,7 +333,7 @@ private fun KoraxApp() {
     }
 
     Scaffold(containerColor = KBg, bottomBar = {
-        if (selectedArticle == null && selectedProfile == null && tab != "settings" && tab != "notifications") {
+        if (selectedArticle == null && selectedProfile == null && selectedMatchId == null && tab != "settings" && tab != "notifications") {
             NavigationBar(containerColor = KCard) {
                 val tabs = listOf(
                     Triple("matches", "المباريات", Icons.Filled.CalendarMonth),
@@ -358,7 +359,7 @@ private fun KoraxApp() {
             }
         }
     }) { padding ->
-        Box(Modifier.fillMaxSize().padding(if (selectedArticle == null && selectedProfile == null) padding else PaddingValues(0.dp))) {
+        Box(Modifier.fillMaxSize().padding(if (selectedArticle == null && selectedProfile == null && selectedMatchId == null) padding else PaddingValues(0.dp))) {
             when {
                 selectedArticle != null -> KoraxNewsDetailScreen(selectedArticle!!) { selectedArticle = null }
                 selectedProfile != null -> KoraxEntityProfileScreen(
@@ -366,13 +367,14 @@ private fun KoraxApp() {
                     onBack = { selectedProfile = null },
                     onOpenPlayer = { selectedProfile = it }
                 )
+                selectedMatchId != null -> KoraxMatchDetailPage(selectedMatchId!!) { selectedMatchId = null }
                 tab == "news" -> NewsScreen(
                     onOpenLive = { matchLiveRequested = true; tab = "matches" },
                     onChooseDate = { selected -> matchDate = selected; matchLiveRequested = false; tab = "matches" },
                     onOpenArticle = { selectedArticle = it }
                 )
                 tab == "transfers" -> TransfersScreen()
-                tab == "matches" -> MatchesScreen(initialLive = matchLiveRequested, selectedDate = matchDate)
+                tab == "matches" -> MatchesScreen(initialLive = matchLiveRequested, selectedDate = matchDate, onOpenMatch = { selectedMatchId = it })
                 tab == "explore" -> KoraxFavoriteSelectionScreen(
                     isFirstRun = false,
                     onFinish = { tab = "favorites" },
@@ -383,6 +385,11 @@ private fun KoraxApp() {
                     onAddMore = { tab = "explore" }
                 )
                 tab == "notifications" -> KoraxNotificationsScreen { tab = "more" }
+                tab == "tools" -> KoraxExpansionScreen(
+                    onBack = { tab = "more" },
+                    onOpenMatch = { selectedMatchId = it },
+                    onOpenArticle = { selectedArticle = it }
+                )
                 tab == "settings" -> KoraxSettingsScreen(
                     onBack = { tab = "more" },
                     onOpenNotifications = { tab = "notifications" },
@@ -394,7 +401,8 @@ private fun KoraxApp() {
                     notifications = { tab = "notifications" },
                     explore = { tab = "explore" },
                     settings = { tab = "settings" },
-                    transfers = { tab = "transfers" }
+                    transfers = { tab = "transfers" },
+                    tools = { tab = "tools" }
                 )
             }
         }
@@ -742,7 +750,7 @@ private fun TransfersScreen() {
 }
 
 @Composable
-private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
+private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatch: (String) -> Unit) {
     var live by rememberSaveable(selectedDate, initialLive) { mutableStateOf(initialLive) }
     var matches by remember { mutableStateOf<List<MatchItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -771,7 +779,7 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
             }
             else -> LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(matches, key = { it.id }) { match ->
-                    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = KCard), border = BorderStroke(1.dp, KBorder)) {
+                    Card(Modifier.fillMaxWidth().clickable { onOpenMatch(match.id) }, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = KCard), border = BorderStroke(1.dp, KBorder)) {
                         Column(Modifier.padding(11.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(match.league.ifBlank { "بطولة" }, color = KLime, fontSize = 10.sp, modifier = Modifier.weight(1f))
@@ -808,7 +816,7 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
 
 
 @Composable
-private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit, explore: () -> Unit, settings: () -> Unit, transfers: () -> Unit) {
+private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit, explore: () -> Unit, settings: () -> Unit, transfers: () -> Unit, tools: () -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         KoraxHeader("المزيد", "كل أخبار ومباريات كرة القدم في مكان واحد")
         Column(Modifier.padding(horizontal = 14.dp)) {
@@ -816,6 +824,7 @@ private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: (
             MoreRow("المفضلة", "الأندية واللاعبون الذين تتابعهم", "♡", favorites)
             MoreRow("استكشف", "اكتشف البطولات والأندية والمنتخبات واللاعبين", "⌕", explore)
             MoreRow("الانتقالات", "أخبار وانتقالات اللاعبين المتاحة من المصدر", "⇄", transfers)
+            MoreRow("مختبر المميزات الجديدة", "المقارنة والأرشيف والمساعد والنسخ الاحتياطي وفحص المصادر", "✦", tools)
             MoreRow("الإشعارات", "مركز تنبيهات المباريات والأخبار", "♧", notifications)
             MoreRow("الإعدادات", "المظهر والصور وتوفير البيانات والتحديثات", "⚙", settings)
             StateCard("KORAX", "تابع كرة القدم، الأخبار، المباريات، الدوريات، البطولات، الأندية واللاعبين. المفضلة والتعليقات المحلية محفوظة على جهازك.", "X")
