@@ -157,6 +157,7 @@ internal suspend fun apiJson(path: String): JSONObject = withContext(Dispatchers
         connectTimeout = 12000
         readTimeout = 18000
         setRequestProperty("Accept", "application/json")
+        setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
         setRequestProperty("Accept-Language", "ar,en;q=0.8")
         setRequestProperty("User-Agent", "KORAX-Android/0.6")
     }
