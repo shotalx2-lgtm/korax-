@@ -587,9 +587,12 @@ private fun NewsScreen(
 
 @Composable
 private fun NewsCard(article: NewsItem, onOpen: () -> Unit, onComment: () -> Unit) {
+    val context = LocalContext.current
+    val showImages = KoraxSettingsStore.getBoolean(context, "show_images", true) &&
+        !KoraxSettingsStore.getBoolean(context, "data_saver", false)
     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = KCard), border = BorderStroke(1.dp, KBorder)) {
         Column {
-            if (!article.image.isNullOrBlank()) {
+            if (showImages && !article.image.isNullOrBlank()) {
                 coil.compose.AsyncImage(model = article.image, contentDescription = article.title,
                     modifier = Modifier.fillMaxWidth().height(172.dp).clickable(onClick = onOpen), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
             } else Box(Modifier.fillMaxWidth().height(102.dp).background(Brush.horizontalGradient(listOf(Color(0xFF1B2508), Color(0xFF151B24)))).clickable(onClick = onOpen), contentAlignment = Alignment.Center) {
@@ -766,12 +769,12 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
                             Spacer(Modifier.height(9.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    if (match.homeLogo.isNotBlank()) coil.compose.AsyncImage(model = match.homeLogo, contentDescription = match.home, modifier = Modifier.size(30.dp))
+                                    if (match.homeLogo.isNotBlank() && KoraxSettingsStore.getBoolean(LocalContext.current, "show_images", true) && !KoraxSettingsStore.getBoolean(LocalContext.current, "data_saver", false)) coil.compose.AsyncImage(model = match.homeLogo, contentDescription = match.home, modifier = Modifier.size(30.dp))
                                     Text(match.home, color = KText, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
                                 Text(match.score, color = KLime, fontSize = 18.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 8.dp))
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    if (match.awayLogo.isNotBlank()) coil.compose.AsyncImage(model = match.awayLogo, contentDescription = match.away, modifier = Modifier.size(30.dp))
+                                    if (match.awayLogo.isNotBlank() && KoraxSettingsStore.getBoolean(LocalContext.current, "show_images", true) && !KoraxSettingsStore.getBoolean(LocalContext.current, "data_saver", false)) coil.compose.AsyncImage(model = match.awayLogo, contentDescription = match.away, modifier = Modifier.size(30.dp))
                                     Text(match.away, color = KText, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
                             }
