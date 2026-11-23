@@ -157,6 +157,7 @@ internal suspend fun apiJson(path: String): JSONObject = withContext(Dispatchers
         connectTimeout = 12000
         readTimeout = 18000
         setRequestProperty("Accept", "application/json")
+        setRequestProperty("apikey", BuildConfig.SUPABASE_PUBLISHABLE_KEY)
         setRequestProperty("Accept-Language", "ar,en;q=0.8")
         setRequestProperty("User-Agent", "KORAX-Android/0.6")
     }
@@ -265,7 +266,7 @@ private suspend fun loadMatches(live: Boolean, selectedDate: String): List<Match
             a?.https("crest").orEmpty().ifBlank { a?.https("logoUrl").orEmpty() },
             score, localizeMatchStatus(x.optString("status", "غير متاحة")), x.optString("startTime"),
             x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") },
-            detailsAvailable = stableMatchId != null)
+            detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false))
     }.distinctBy { it.id }
 }
 

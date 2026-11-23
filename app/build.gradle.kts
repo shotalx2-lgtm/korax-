@@ -25,11 +25,13 @@ android {
         applicationId = "com.koora.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.6.1"
+        versionCode = 9
+        versionName = "0.6.2"
 
-        val apiBase = providers.gradleProperty("KOORA_API_BASE_URL").orElse("").get()
+        val apiBase = providers.gradleProperty("KOORA_API_BASE_URL")
+            .orElse("https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-api").get()
         buildConfigField("String", "KOORA_API_BASE_URL", "\"$apiBase\"")
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"sb_publishable_qGcLhGeCxVU5MvFVQ2YlPQ_XKGS42QW\"")
     }
 
     buildFeatures {

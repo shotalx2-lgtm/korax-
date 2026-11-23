@@ -1,4 +1,4 @@
-name: KORAX Android build
+name: KORAX Android build # Supabase fixture and detail cache validation
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   build:
@@ -26,28 +27,38 @@ jobs:
           npm run check
           npm test
 
-      - name: Smoke-test deployed KORAX Worker (diagnostic while Worker publish access is pending)
-        continue-on-error: true
+      - name: Sync live SportScore data into Supabase cache
         env:
-          KOORA_API_BASE_URL: ${{ secrets.KOORA_API_BASE_URL || 'https://korax.shotalx2.workers.dev' }}
+          SUPABASE_URL: https://hwrsjmdcivdluztnhpxo.supabase.co
+          SUPABASE_PUBLISHABLE_KEY: sb_publishable_qGcLhGeCxVU5MvFVQ2YlPQ_XKGS42QW
+          KORAX_FORCE_FULL_SYNC: "true"
+        run: node scripts/sync-sportscore.mjs
+
+      - name: Verify Supabase KORAX API endpoints
+        env:
+          KOORA_API_BASE_URL: https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-api
         run: |
           set -euo pipefail
           base="${KOORA_API_BASE_URL%/}"
+          SUPABASE_PUBLISHABLE_KEY="sb_publishable_qGcLhGeCxVU5MvFVQ2YlPQ_XKGS42QW"
+          api_curl() {
+            curl --header "apikey: $SUPABASE_PUBLISHABLE_KEY" "$@"
+          }
 
-          health="$(curl --silent --show-error --fail --retry 18 --retry-all-errors --retry-delay 5 --max-time 20 "$base/health")"
+          health="$(api_curl --silent --show-error --fail --retry 18 --retry-all-errors --retry-delay 5 --max-time 20 "$base/health")"
           printf '%s' "$health" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
             process.stdin.on("end", () => {
               const value = JSON.parse(raw);
               if (value.ok !== true || value.service !== "KORAX API") {
-                throw new Error("Unexpected production Worker health response: " + raw);
+                throw new Error("Unexpected production Supabase health response: " + raw);
               }
-              console.log("KORAX Worker health passed:", value.service);
+              console.log("KORAX Supabase health passed:", value.service);
             });
           '
 
-          competitions="$(curl --silent --show-error --fail --max-time 25 "$base/api/competitions")"
+          competitions="$(api_curl --silent --show-error --fail --max-time 25 "$base/api/competitions")"
           printf '%s' "$competitions" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
@@ -60,7 +71,7 @@ jobs:
             });
           '
 
-          news="$(curl --silent --show-error --fail --max-time 60 "$base/api/news?language=ar&per_page=10")"
+          news="$(api_curl --silent --show-error --fail --max-time 60 "$base/api/news?language=ar&per_page=10")"
           printf '%s' "$news" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
@@ -78,13 +89,32 @@ jobs:
             });
           '
 
-          matches="$(curl --silent --show-error --fail --max-time 35 "$base/api/matches?live=1")"
+          echo "Testing official SportScore public API directly from the GitHub runner..."
+          for provider_url in \
+            "https://sportscore.com/api/widget/matches/?sport=football&limit=3" \
+            "https://sportscore.com/api/v1/fixtures/?sport=football&date=$(date -u +%F)&limit=3" \
+            "https://sportscore.com/api/v1/matches/?sport=football&limit=3"; do
+            status="$(curl --silent --show-error --max-time 20 --output "$RUNNER_TEMP/sportscore-direct.json" --write-out '%{http_code}' --header "user-agent: sportscore-mcp/0.3 (+https://sportscore.com/developers/)" --header "accept: application/json" "$provider_url" || true)"
+            PROVIDER_URL="$provider_url" PROVIDER_STATUS="$status" node -e '
+              const fs = require("node:fs");
+              const raw = fs.readFileSync(process.env.RUNNER_TEMP + "/sportscore-direct.json", "utf8");
+              let value = null;
+              try { value = JSON.parse(raw); } catch {}
+              const root = value?.data ?? value;
+              const rows = Array.isArray(root) ? root : (root?.matches || root?.fixtures || root?.results || []);
+              console.log("SportScore direct:", process.env.PROVIDER_URL, "HTTP", process.env.PROVIDER_STATUS,
+                "keys", Object.keys(value || {}), "rows", rows.length,
+                "sample", JSON.stringify(rows[0] || null).slice(0, 2500));
+            '
+          done
+
+                    matches="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches?live=1")"
           printf '%s' "$matches" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
             process.stdin.on("end", () => {
               const value = JSON.parse(raw);
-              if (value.source !== "sportscore" || !Array.isArray(value.data)) {
+              if (value.source !== "sportscore-supabase-cache" || !Array.isArray(value.data)) {
                 throw new Error("Live matches API response does not match the KORAX contract: " + raw);
               }
               console.log("Live matches endpoint passed:", value.data.length, "current live matches");
@@ -92,7 +122,7 @@ jobs:
           '
 
           match_date="$(date -u +%F)"
-          schedule="$(curl --silent --show-error --fail --max-time 35 "$base/api/matches?date=$match_date")"
+          schedule="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches?date=$match_date")"
 
           raw_fixtures="$(curl --silent --show-error --fail --max-time 35 "https://sportscore.com/api/v1/fixtures/?sport=football&date=$match_date&limit=3")"
           printf '%s' "$raw_fixtures" | node -e '
@@ -116,7 +146,7 @@ jobs:
             process.stdin.on("data", chunk => raw += chunk);
             process.stdin.on("end", () => {
               const value = JSON.parse(raw);
-              if (value.source !== "sportscore" || !Array.isArray(value.data)) {
+              if (value.source !== "sportscore-supabase-cache" || !Array.isArray(value.data)) {
                 throw new Error("Dated matches API response does not match the KORAX contract: " + raw);
               }
               if (value.data.length === 0) throw new Error("SportScore returned no scheduled fixtures for the current UTC date.");
@@ -136,7 +166,7 @@ jobs:
               process.stdout.write(String(first.id));
             });
           ')"
-          match_detail="$(curl --silent --show-error --fail --max-time 35 "$base/api/matches/$match_id")"
+          match_detail="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/matches/$match_id")"
           printf '%s' "$match_detail" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
@@ -146,10 +176,11 @@ jobs:
               const home = item?.homeTeam?.name || item?.home;
               const away = item?.awayTeam?.name || item?.away;
               if (!item || !home || !away) throw new Error("Match detail did not return both teams: " + raw);
+              if (item.detailAvailable !== true) throw new Error("The selected match does not have a cached detail record.");
               if (!Array.isArray(item.events) || !Array.isArray(item.lineups) || !Array.isArray(item.statistics)) {
                 throw new Error("Match detail is missing normalized events, lineups or statistics arrays.");
               }
-              console.log("Match detail passed:", home, "vs", away, "; events:", item.events.length);
+              console.log("Match detail passed:", home, "vs", away, "; events:", item.events.length, "; lineups:", item.lineups.length);
             });
           '
 
@@ -163,14 +194,17 @@ jobs:
               process.stdout.write(String(first.slug || first.id));
             });
           ')"
-          standings="$(curl --silent --show-error --fail --max-time 35 "$base/api/competitions/$first_competition")"
+          standings="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/competitions/$first_competition")"
           printf '%s' "$standings" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
             process.stdin.on("end", () => {
               const value = JSON.parse(raw);
-              if (!Object.prototype.hasOwnProperty.call(value, "data")) throw new Error("Competition detail/standings response is missing data.");
-              console.log("Competition detail endpoint passed.");
+              const data = value.data;
+              const tables = Array.isArray(data?.tables) ? data.tables : [];
+              const rows = tables.flatMap(table => Array.isArray(table?.rows) ? table.rows : []);
+              if (rows.length === 0) throw new Error("Competition standings returned no team rows.");
+              console.log("Competition standings passed:", rows.length, "teams");
             });
           '
 
@@ -207,7 +241,7 @@ jobs:
       - name: Validate release integration configuration
         id: release_config
         env:
-          KOORA_API_BASE_URL: ${{ secrets.KOORA_API_BASE_URL || 'https://korax.shotalx2.workers.dev' }}
+          KOORA_API_BASE_URL: https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-api
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -215,7 +249,7 @@ jobs:
         run: |
           ready=true
           if [ -z "$KOORA_API_BASE_URL" ] || [[ "$KOORA_API_BASE_URL" != https://* ]]; then
-            echo "Release APK blocked: configure KOORA_API_BASE_URL with the deployed Cloudflare Worker HTTPS URL."
+            echo "Release APK blocked: configure KOORA_API_BASE_URL with the deployed Supabase Edge Function HTTPS URL."
             ready=false
           fi
           if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
@@ -226,11 +260,14 @@ jobs:
       - name: Run Android unit tests
         run: gradle :app:testDebugUnitTest --stacktrace
       - name: Build optimized release APK
-        run: gradle :app:assembleRelease --stacktrace -PKOORA_API_BASE_URL="${{ secrets.KOORA_API_BASE_URL || 'https://korax.shotalx2.workers.dev' }}"
+        run: gradle :app:assembleRelease --stacktrace -PKOORA_API_BASE_URL="https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-api"
       - name: Prepare test APK asset
         run: |
           cp app/build/outputs/apk/release/app-release.apk KORAX-Android.apk
           file KORAX-Android.apk
+      - name: Verify signed APK with apksigner
+        run: "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs KORAX-Android.apk
+
       - name: Publish optimized APK as a GitHub prerelease
         if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.release_config.outputs.ready == 'true' && vars.KORAX_RELEASE_ENABLED == 'true'
         uses: softprops/action-gh-release@v2

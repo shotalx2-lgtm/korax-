@@ -1,0 +1,33 @@
+name: KORAX SportScore sync
+
+on:
+  push:
+    branches: [feat/supabase-korax-backend, main]
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: korax-sportscore-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Fetch SportScore and sync Supabase cache
+        env:
+          SUPABASE_URL: https://hwrsjmdcivdluztnhpxo.supabase.co
+          SUPABASE_PUBLISHABLE_KEY: sb_publishable_qGcLhGeCxVU5MvFVQ2YlPQ_XKGS42QW
+        run: node scripts/sync-sportscore.mjs
