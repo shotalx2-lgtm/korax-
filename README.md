@@ -1,29 +1,29 @@
-# KORAX — Arabic Football & Fantasy
+# KORAX — تطبيق كرة قدم شامل
 
-KORAX is an Arabic-first native Android football app built with Kotlin and Jetpack Compose.
+KORAX تطبيق أندرويد عربي لمتابعة كرة القدم، يركز في نسخته الحالية على الأخبار والمباريات والبطولات والنتائج.
 
-## Current app build
-- Arabic football news from Youm7, Alikhbariya and Google News RSS feeds, with source attribution, publisher article links, image extraction where supplied by the feed, and a local cache for offline viewing.
-- A Cloudflare Worker endpoint at `GET /api/news` aggregates and edge-caches Arabic news.
-- Fantasy squad management on the device: 100m game budget, 15-player squad rules, position quotas, a three-player-per-club limit, transfers, formations, captain/vice-captain and local history.
-- When the football backend is configured, the Fantasy market can import up to 50 real player records from the provider. Initial game prices are KORAX defaults, not official market prices; points are not official until a season-scoped statistics/scoring service is connected.
-- News uses a lazy list and cropped, on-demand images. Hardware acceleration is enabled. Network work runs off the UI thread and news is cached locally to reduce loading and stutter on lower-end phones.
+## نطاق التطبيق الحالي
+- أخبار كرة القدم العربية والعالمية باللغة العربية، مع رابط المصدر وصورة الخبر عند توفرها.
+- مباريات مباشرة ومباريات حسب التاريخ، مع النتائج والحالة وشعارات الفرق عندما يوفرها المصدر.
+- أخبار الانتقالات والإصابات.
+- تسجيل الدخول والحسابات غير موجودة في النسخة الحالية، ويمكن إضافتها مستقبلًا إذا احتاجت ميزات متقدمة إلى حساب.
+- لعبة الفانتازيا أُزيلت من نطاق التطبيق الحالي.
 
-## Important limitations
-This is not yet a production multi-user fantasy platform. Fantasy teams and transfer history are still stored locally on the device. Accounts, Google sign-in, shared leagues, leaderboards, head-to-head play, authoritative season player prices and points, live fantasy scoring, automatic substitutions, chips, push notifications, payments, administrator roles and cloud synchronization still need a deployed authenticated backend and persistent database.
+## الميزات الجاري تطويرها
+- صفحات البطولات وجداول الترتيب والمباريات والنتائج.
+- صفحات الأندية واللاعبين والإحصائيات والهدافين.
+- تفاصيل المباراة والأحداث والتشكيلات عندما تكون متاحة من مزود البيانات.
+- البحث والمفضلة والتنبيهات المحلية.
 
-A build or passing test does not prove capacity for millions of concurrent users. That requires production infrastructure configuration, load tests, monitoring, rate limiting, backups, incident recovery and a provider subscription with the required competitions and statistics.
+لا يعرض التطبيق نتيجة أو إحصائية على أنها مؤكدة إذا لم يوفرها مصدر البيانات. وقد تختلف تغطية البطولات والإحصائيات حسب المصدر.
 
-## Football data backend
-The repository includes a Cloudflare Worker adapter for Sportmonks and the Arabic RSS news aggregator. Deploy the Worker and configure:
-- `SPORTMONKS_API_TOKEN` as a Worker secret (never place it in the APK).
-- `KOORA_API_BASE_URL` as a GitHub Actions secret containing the Worker's HTTPS base URL.
-- A Sportmonks subscription covering the leagues and player statistics used by the product.
+## البنية ومصادر البيانات
+يتضمن المستودع تطبيق Android أصليًا مبنيًا باستخدام Kotlin وJetpack Compose، وخادم Cloudflare Worker يجمع أخبار RSS ويحول بيانات كرة القدم إلى واجهة API موحدة. لا تُحفظ مفاتيح الخادم داخل APK أو المستودع العام.
 
-Check image rights and commercial redistribution terms for all provider content before public release.
+نشر آخر تحديثات Worker يحتاج إلى GitHub Actions secret باسم `CLOUDFLARE_API_TOKEN`. ويجب ضبط رابط Worker الإنتاجي في `KOORA_API_BASE_URL`.
 
-## Android build
-GitHub Actions builds an optimized, minified release APK for testing. CI signs it with the Android debug certificate; it is installable for testing but is not a Play Store production-signed release.
+## الاختبار والإصدار
+نجاح البناء والاختبارات الآلية لا يعني وحده أن التطبيق جاهز للإطلاق العام أو يتحمل ملايين المستخدمين. يلزم اختبار التطبيق على أجهزة فعلية، والتحقق من تغطية البيانات وحقوق استخدامها، واختبارات الأداء والأمان والتحميل، وتجهيز توقيع إنتاجي وسياسة الخصوصية قبل النشر.
 
-## Repository
+## المستودع
 https://github.com/shotalx2-lgtm/korax-
