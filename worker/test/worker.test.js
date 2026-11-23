@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import worker from "../src/index.js";
-import { htmlText, classifyNewsCategory, parseRssFeed, normalizeFixture, isLiveFixture } from "../src/index.js";
+import { htmlText, classifyNewsCategory, parseRssFeed, normalizeEvent, normalizeFixture, isLiveFixture } from "../src/index.js";
 
 function installCache() {
   const original = globalThis.caches;
@@ -275,4 +275,31 @@ test("SportScore has no confirmed transfer endpoint, so the API does not invent 
   const body = await response.json();
   assert.deepEqual(body.data, []);
   assert.equal(body.meta.available, false);
+});
+
+test("match events preserve player, assister, team and competition image metadata for notifications", () => {
+  const fixture = {
+    fixture: {
+      id: 701,
+      slug: "club-a-vs-club-b",
+      home: { id: 11, name: "Club A", image_path: "https://images.example/a.png" },
+      away: { id: 22, name: "Club B", image_path: "https://images.example/b.png" },
+      competition: { name: "Example League", image_path: "https://images.example/league.png" },
+      events: [{
+        minute: 67,
+        type: { name: "Goal" },
+        player: { id: 91, name: "Striker", image_path: "https://images.example/player.png" },
+        participant: { id: 11, name: "Club A", image_path: "https://images.example/a.png" },
+        assist: { id: 92, name: "Creator", image_path: "https://images.example/creator.png" },
+        addition: "Header"
+      }]
+    }
+  };
+  const match = normalizeFixture(fixture);
+  assert.equal(match.competition.imageUrl, "https://images.example/league.png");
+  assert.equal(match.events[0].player_image_url, "https://images.example/player.png");
+  assert.equal(match.events[0].assist_player_name, "Creator");
+  assert.equal(match.events[0].assist_player_image_url, "https://images.example/creator.png");
+  assert.equal(match.events[0].team_image_url, "https://images.example/a.png");
+  assert.equal(match.events[0].team.id, 11);
 });
