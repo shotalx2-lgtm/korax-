@@ -75,21 +75,33 @@ jobs:
             });
           '
 
-          if matches="$(curl --silent --show-error --fail --max-time 35 "$base/api/matches?live=1")"; then
-            printf '%s' "$matches" | node -e '
-              let raw = "";
-              process.stdin.on("data", chunk => raw += chunk);
-              process.stdin.on("end", () => {
-                const value = JSON.parse(raw);
-                if (!Array.isArray(value.data)) {
-                  throw new Error("Live matches API response is malformed: " + raw);
-                }
-                console.log("Live matches endpoint responded:", value.data.length, "live matches");
-              });
-            '
-          else
-            echo "::warning::Live matches endpoint is reachable only when the upstream SportScore service is available; inspect the Worker logs if this continues."
-          fi
+          matches="$(curl --silent --show-error --fail --max-time 35 "$base/api/matches?live=1")"
+          printf '%s' "$matches" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              if (value.source !== "sportscore" || !Array.isArray(value.data)) {
+                throw new Error("Live matches API response does not match the KORAX contract: " + raw);
+              }
+              console.log("Live matches endpoint passed:", value.data.length, "current live matches");
+            });
+          '
+
+          match_date="$(date -u +%F)"
+          schedule="$(curl --silent --show-error --fail --max-time 35 "$base/api/matches?date=$match_date")"
+          printf '%s' "$schedule" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              if (value.source !== "sportscore" || !Array.isArray(value.data)) {
+                throw new Error("Dated matches API response does not match the KORAX contract: " + raw);
+              }
+              console.log("Dated matches endpoint passed:", value.data.length, "matches for the current UTC date");
+            });
+          '
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
