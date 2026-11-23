@@ -1,4 +1,4 @@
-name = "koora-api"
+name = "korax"
 main = "src/index.js"
 compatibility_date = "2026-11-22"
 workers_dev = true
