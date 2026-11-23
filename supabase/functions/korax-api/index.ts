@@ -1346,7 +1346,7 @@ async function route(request, env) {
         },
       });
     }
-    return json({ data, source: "sportscore-competition-index" });    return json({ data, source: "sportscore-competition-index" });
+    return json({ data, source: "sportscore-competition-index" });
   }
 
   const competition = path.match(/^\/api\/competitions\/([A-Za-z0-9_-]+)$/);
@@ -1397,7 +1397,9 @@ async function route(request, env) {
         providerSearchUnavailable: true,
       },
     });
-  }  const team = path.match(/^\/api\/teams\/([A-Za-z0-9_-]+)$/);
+  }
+
+  const team = path.match(/^\/api\/teams\/([A-Za-z0-9_-]+)$/);
   if (team) {
     if (team[1].startsWith("cached-team-")) {
       const data = await getCachedTeamProfile(team[1]);
@@ -1407,7 +1409,9 @@ async function route(request, env) {
     }
     const payload = await cachedProviderRequest("/api/widget/team/", { sport: "football", slug: team[1], limit: 30 }, env, 300);
     return json({ data: unwrap(payload), source: "sportscore" });
-  }  const player = path.match(/^\/api\/players\/([A-Za-z0-9_-]+)$/);
+  }
+
+  const player = path.match(/^\/api\/players\/([A-Za-z0-9_-]+)$/);
   if (player) {
     if (player[1].startsWith("cached-player-")) {
       const data = await getCachedPlayerProfile(player[1]);
@@ -1417,7 +1421,9 @@ async function route(request, env) {
     }
     const payload = await cachedProviderRequest("/api/widget/player/", { sport: "football", slug: player[1] }, env, 300);
     return json({ data: unwrap(payload), source: "sportscore" });
-  }  if (path === "/api/transfers") {
+  }
+
+  if (path === "/api/transfers") {
     return json({
       data: [], source: "sportscore",
       meta: { available: false, reason: "provider_has_no_confirmed_transfers_endpoint" },
