@@ -500,6 +500,7 @@ internal object KoraxSmartAlerts {
     }
 
     private fun matchesFavorite(context: Context, match: JSONObject, event: JSONObject?): Boolean {
+        if (!KoraxFavoriteStore.setupComplete(context)) return false
         val all = KoraxFavoriteStore.all(context)
         if (all.isEmpty()) return true
         val followed = all.filter { it.notify }
@@ -543,6 +544,7 @@ internal object KoraxSmartAlerts {
     }
 
     private fun newsMatchesFavorite(context: Context, item: JSONObject): Boolean {
+        if (!KoraxFavoriteStore.setupComplete(context)) return false
         val all = KoraxFavoriteStore.all(context)
         if (all.isEmpty()) return true
         val followed = all.filter { it.notify }
