@@ -199,7 +199,11 @@ internal object KoraxSmartAlerts {
         ensureChannels(context)
 
         val matchPayload = fetchJson("$base/api/matches?live=1")
-        processLiveMatches(context, matchPayload)
+        processMatchUpdates(context, matchPayload)
+        val localDate = java.text.SimpleDateFormat("yyyy-MM-dd", Locale.US).format(java.util.Date())
+        runCatching {
+            processMatchUpdates(context, fetchJson("$base/api/matches?date=$localDate"))
+        }
 
         val preferences = prefs(context)
         val lastNewsPoll = preferences.getLong("last_news_poll", 0L)
@@ -228,7 +232,7 @@ internal object KoraxSmartAlerts {
         }
     }
 
-    private fun processLiveMatches(context: Context, payload: JSONObject) {
+    private fun processMatchUpdates(context: Context, payload: JSONObject) {
         val rows = payload.optJSONArray("data") ?: JSONArray()
         if (rows.length() == 0) return
         val preferences = prefs(context)
@@ -244,6 +248,31 @@ internal object KoraxSmartAlerts {
             val away = match.optJSONObject("awayTeam")
             val events = match.optJSONArray("events") ?: JSONArray()
             val old = states.optJSONObject(matchId)
+            if (seeded && old != null) {
+                val previousStatus = old.optString("status").lowercase(Locale.ROOT)
+                val currentStatus = match.optString("status").lowercase(Locale.ROOT)
+                val wasLive = previousStatus.contains("live") || previousStatus.contains("in play") ||
+                    previousStatus.contains("1st half") || previousStatus.contains("2nd half") ||
+                    previousStatus.contains("مباشر") || previousStatus.contains("الشوط")
+                val isLive = currentStatus.contains("live") || currentStatus.contains("in play") ||
+                    currentStatus.contains("1st half") || currentStatus.contains("2nd half") ||
+                    currentStatus.contains("مباشر") || currentStatus.contains("الشوط")
+                val wasHalfTime = previousStatus.contains("half time") || previousStatus.contains("halftime") ||
+                    previousStatus.contains("استراحة")
+                val isHalfTime = currentStatus.contains("half time") || currentStatus.contains("halftime") ||
+                    currentStatus.contains("استراحة")
+                val wasFinished = previousStatus.contains("finished") || previousStatus == "ft" ||
+                    previousStatus.contains("full time") || previousStatus.contains("ended") ||
+                    previousStatus.contains("انتهت")
+                val isFinished = currentStatus.contains("finished") || currentStatus == "ft" ||
+                    currentStatus.contains("full time") || currentStatus.contains("ended") ||
+                    currentStatus.contains("انتهت")
+                when {
+                    !wasFinished && isFinished -> notifyMatchStatus(context, "fulltime", match)
+                    !wasHalfTime && isHalfTime -> notifyMatchStatus(context, "halftime", match)
+                    !wasLive && isLive -> notifyMatchStatus(context, "kickoff", match)
+                }
+            }
             val oldHomeScore = old?.optInt("homeScore", -1) ?: -1
             val oldAwayScore = old?.optInt("awayScore", -1) ?: -1
             val homeScore = scoreOrUnknown(match.opt("homeScore"))
@@ -371,6 +400,26 @@ internal object KoraxSmartAlerts {
                 "$key|assist"
             )
         }
+    }
+
+    private fun notifyMatchStatus(context: Context, kind: String, match: JSONObject) {
+        if (!isEnabled(context, kind)) return
+        val home = match.optJSONObject("homeTeam")
+        val away = match.optJSONObject("awayTeam")
+        val competition = match.optJSONObject("competition")
+        val title = when (kind) {
+            "kickoff" -> "🚩 انطلقت المباراة الآن"
+            "halftime" -> "⏸️ نهاية الشوط الأول"
+            else -> "🏁 انتهت المباراة"
+        }
+        val message = listOf(
+            home?.optString("name").orEmpty(),
+            scoreLabel(match),
+            away?.optString("name").orEmpty(),
+            competition?.optString("name").orEmpty()
+        ).filter { it.isNotBlank() }.joinToString(" • ")
+        val logo = home?.optString("crest").orEmpty().ifBlank { away?.optString("crest").orEmpty() }
+        send(context, kind, title, message.ifBlank { "تحديث حالة المباراة" }, logo, "", "${match.optString("id")}|$kind|${match.optString("status")}")
     }
 
     private fun notifyGenericGoal(context: Context, match: JSONObject) {
