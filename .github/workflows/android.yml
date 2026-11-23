@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   build:
@@ -25,6 +26,13 @@ jobs:
         run: |
           npm run check
           npm test
+
+      - name: Sync live SportScore data into Supabase cache
+        env:
+          SUPABASE_URL: https://hwrsjmdcivdluztnhpxo.supabase.co
+          SUPABASE_PUBLISHABLE_KEY: sb_publishable_qGcLhGeCxVU5MvFVQ2YlPQ_XKGS42QW
+          KORAX_FORCE_FULL_SYNC: "true"
+        run: node scripts/sync-sportscore.mjs
 
       - name: Verify Supabase KORAX API endpoints
         env:
@@ -141,7 +149,7 @@ jobs:
             process.stdin.on("data", chunk => raw += chunk);
             process.stdin.on("end", () => {
               const value = JSON.parse(raw);
-              if (value.source !== "sportscore" || !Array.isArray(value.data)) {
+              if (value.source !== "sportscore-supabase-cache" || !Array.isArray(value.data)) {
                 throw new Error("Live matches API response does not match the KORAX contract: " + raw);
               }
               console.log("Live matches endpoint passed:", value.data.length, "current live matches");
@@ -173,7 +181,7 @@ jobs:
             process.stdin.on("data", chunk => raw += chunk);
             process.stdin.on("end", () => {
               const value = JSON.parse(raw);
-              if (value.source !== "sportscore" || !Array.isArray(value.data)) {
+              if (value.source !== "sportscore-supabase-cache" || !Array.isArray(value.data)) {
                 throw new Error("Dated matches API response does not match the KORAX contract: " + raw);
               }
               if (value.data.length === 0) throw new Error("SportScore returned no scheduled fixtures for the current UTC date.");
