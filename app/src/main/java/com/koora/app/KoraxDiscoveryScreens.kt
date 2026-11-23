@@ -139,8 +139,11 @@ private suspend fun searchFavoriteItems(kind: String, query: String): List<Korax
         val row = rows.optJSONObject(index) ?: return@mapNotNull null
         val actualKind = when (kind) {
             "league", "tournament" -> {
-                val responseKind = row.optString("kind")
-                if (responseKind == "tournament") "tournament" else if (kind == "tournament") "tournament" else "league"
+                when (row.optString("kind")) {
+                    "tournament" -> "tournament"
+                    "league" -> "league"
+                    else -> kind
+                }
             }
             else -> kind
         }
@@ -412,6 +415,8 @@ private fun FavoriteSearchResultCard(
             ) {
                 if (item.imageUrl.isNotBlank() && KoraxSettingsStore.getBoolean(
                         androidx.compose.ui.platform.LocalContext.current, "show_images", true
+                    ) && !KoraxSettingsStore.getBoolean(
+                        androidx.compose.ui.platform.LocalContext.current, "data_saver", false
                     )
                 ) {
                     coil.compose.AsyncImage(
