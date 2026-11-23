@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SportsSoccer
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -262,7 +261,7 @@ private fun KoraxApp() {
                 "transfers" -> TransfersScreen()
                 "matches" -> MatchesScreen(initialLive = matchLiveRequested, selectedDate = matchDate)
                 "favorites" -> StateCard("المفضلة", "تابع أنديتك ولاعبيك لإضافتهم هنا. مزامنة المفضلة بين الأجهزة تحتاج حسابًا سحابيًا.", "♡")
-                "notifications" -> StateCard("الإشعارات", "ستظهر هنا تنبيهات المباريات والأخبار والفانتازي بعد تفعيل خدمة الإشعارات.", "♧")
+                "notifications" -> StateCard("الإشعارات", "ستظهر هنا تنبيهات المباريات والأخبار بعد تفعيل خدمة الإشعارات.", "♧")
                 else -> MoreScreen({ tab = "news" }, { tab = "favorites" }, { tab = "notifications" })
             }
         }
