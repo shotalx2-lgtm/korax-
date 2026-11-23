@@ -303,3 +303,44 @@ test("match events preserve player, assister, team and competition image metadat
   assert.equal(match.events[0].team_image_url, "https://images.example/a.png");
   assert.equal(match.events[0].team.id, 11);
 });
+
+test("competition search returns provider-backed leagues and tournaments for favorites", async () => {
+  const originalFetch = globalThis.fetch;
+  const restoreCache = installCache();
+  let requested = "";
+  globalThis.fetch = async (input) => {
+    requested = String(input);
+    return new Response(JSON.stringify({
+      competitions: [
+        {
+          id: 501, slug: "fifa-world-cup-2026", name: "FIFA World Cup",
+          type: "tournament", country: "World",
+          image_path: "https://images.example/world-cup.png",
+        },
+        {
+          id: 502, slug: "premier-league-2026", name: "Premier League",
+          type: "league", country: "England",
+          image_path: "https://images.example/premier.png",
+        },
+      ],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const response = await worker.fetch(
+      new Request("https://korax.test/api/competitions?search=World%20Cup"),
+      {}
+    );
+    assert.equal(response.status, 200);
+    assert.match(requested, /sportscore\.com\/api\/v1\/search\//);
+    const body = await response.json();
+    assert.equal(body.source, "sportscore-search");
+    assert.equal(body.meta.query, "World Cup");
+    assert.equal(body.data[0].slug, "fifa-world-cup-2026");
+    assert.equal(body.data[0].kind, "tournament");
+    assert.equal(body.data[0].imageUrl, "https://images.example/world-cup.png");
+    assert.equal(body.data[1].kind, "league");
+  } finally {
+    globalThis.fetch = originalFetch;
+    restoreCache();
+  }
+});
