@@ -141,15 +141,24 @@ private suspend fun searchFavoriteItems(kind: String, query: String): List<Korax
     val rows = payload.optJSONArray("data") ?: JSONArray()
     return (0 until rows.length()).mapNotNull { index ->
         val row = rows.optJSONObject(index) ?: return@mapNotNull null
+        val competitionSlug = row.firstString(
+            "slug", "url_slug", "competition_slug", "league_slug", "id"
+        ).lowercase()
+        val declaredCompetitionKind = row.optString("kind").ifBlank {
+            if (competitionSlug in setOf("champions-league", "world-cup")) "tournament" else "league"
+        }
+        val teamDescriptor = listOf(
+            row.optString("type"), row.optString("entity_type"), row.optString("team_type"),
+            row.optString("category"), row.optString("gender")
+        ).joinToString(" ").lowercase()
+        val appearsNational = row.optBoolean("national") || row.optBoolean("is_national") ||
+            row.optBoolean("national_team") ||
+            Regex("national[_ -]team|منتخب").containsMatchIn(teamDescriptor)
         val actualKind = when (kind) {
-            "league", "tournament" -> {
-                when (row.optString("kind")) {
-                    "tournament" -> "tournament"
-                    "league" -> "league"
-                    else -> kind
-                }
-            }
-            "club", "national" -> if (row.optString("koraxKind") == "national") "national" else "club"
+            "league", "tournament" -> declaredCompetitionKind
+            "club", "national" -> if (
+                row.optString("koraxKind") == "national" || appearsNational
+            ) "national" else "club"
             else -> kind
         }
         row.asFavorite(actualKind)
