@@ -838,6 +838,7 @@ internal fun KoraxSettingsScreen(
     onManageFavorites: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
     var theme by remember { mutableStateOf(KoraxSettingsStore.theme(context)) }
     var showImages by remember { mutableStateOf(KoraxSettingsStore.getBoolean(context, "show_images", true)) }
     var dataSaver by remember { mutableStateOf(KoraxSettingsStore.getBoolean(context, "data_saver", false)) }
@@ -854,7 +855,13 @@ internal fun KoraxSettingsScreen(
                     Row(Modifier.fillMaxWidth().clickable {
                         theme = value
                         KoraxSettingsStore.setTheme(context, value)
-                        if (value == "system") KoraxThemePalette.applyLightMode(false)
+                        KoraxThemePalette.applyLightMode(
+                            when (value) {
+                                "light" -> true
+                                "system" -> !systemDark
+                                else -> false
+                            }
+                        )
                     }.padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(label, color = DText, fontSize = 11.sp, modifier = Modifier.weight(1f))
                         if (theme == value) Text("✓", color = DAccent, fontWeight = FontWeight.Black)
