@@ -876,13 +876,13 @@ async function getCachedFantasyPlayers(env) {
 }
 
 const KORAX_COMPETITIONS = [
-  { id: "jednm9whz0ryox8", slug: "jednm9whz0ryox8", name: "الدوري الإنجليزي", country: "إنجلترا" },
-  { id: "vl7oqdehlyr510j", slug: "vl7oqdehlyr510j", name: "الدوري الإسباني", country: "إسبانيا" },
-  { id: "yl5ergphnzr8k0o", slug: "yl5ergphnzr8k0o", name: "الدوري الفرنسي", country: "فرنسا" },
-  { id: "4zp5rzghp5q82w1", slug: "4zp5rzghp5q82w1", name: "الدوري الإيطالي", country: "إيطاليا" },
-  { id: "gy0or5jhg6qwzv3", slug: "gy0or5jhg6qwzv3", name: "الدوري الألماني", country: "ألمانيا" },
+  { id: "premier-league", slug: "premier-league", name: "الدوري الإنجليزي", country: "إنجلترا" },
+  { id: "la-liga", slug: "la-liga", name: "الدوري الإسباني", country: "إسبانيا" },
+  { id: "ligue-1", slug: "ligue-1", name: "الدوري الفرنسي", country: "فرنسا" },
+  { id: "serie-a", slug: "serie-a", name: "الدوري الإيطالي", country: "إيطاليا" },
+  { id: "bundesliga", slug: "bundesliga", name: "الدوري الألماني", country: "ألمانيا" },
   { id: "saudi-pro-league", slug: "saudi-pro-league", name: "الدوري السعودي", country: "السعودية" },
-  { id: "z8yomo4h7wq0j6l", slug: "z8yomo4h7wq0j6l", name: "دوري أبطال أوروبا", country: "أوروبا" },
+  { id: "uefa-champions-league", slug: "uefa-champions-league", name: "دوري أبطال أوروبا", country: "أوروبا" },
 ];
 
 
