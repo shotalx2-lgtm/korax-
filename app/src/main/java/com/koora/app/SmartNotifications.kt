@@ -299,7 +299,8 @@ internal object KoraxSmartAlerts {
             .apply()
     }
 
-    private fun notifyEvent(context: Context, kind: String, match: JSONObject, event: JSONObject) {\n        if (!isEnabled(context, kind)) return
+    private fun notifyEvent(context: Context, kind: String, match: JSONObject, event: JSONObject) {
+        if (!isEnabled(context, kind)) return
         val home = match.optJSONObject("homeTeam")
         val away = match.optJSONObject("awayTeam")
         val teamId = event.optString("team_id")
@@ -357,7 +358,8 @@ internal object KoraxSmartAlerts {
         }
     }
 
-    private fun notifyGenericGoal(context: Context, match: JSONObject) {\n        if (!isEnabled(context, "goal")) return
+    private fun notifyGenericGoal(context: Context, match: JSONObject) {
+        if (!isEnabled(context, "goal")) return
         val home = match.optJSONObject("homeTeam")
         val away = match.optJSONObject("awayTeam")
         val competition = match.optJSONObject("competition")
