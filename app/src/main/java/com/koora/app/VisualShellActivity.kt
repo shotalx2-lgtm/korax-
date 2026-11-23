@@ -130,9 +130,11 @@ private fun JSONObject.rows() = optJSONArray("data") ?: JSONArray()
 private fun JSONObject.https(name: String) = optString(name).takeIf { it.startsWith("https://") }.orEmpty()
 
 private suspend fun loadNews(): List<NewsItem> {
-    val data = apiJson("/api/news?per_page=60").rows()
+    // The app is Arabic-first: never mix English RSS entries into the Arabic news feed.
+    val data = apiJson("/api/news?language=ar&per_page=60").rows()
     return (0 until data.length()).mapNotNull { i ->
         val x = data.optJSONObject(i) ?: return@mapNotNull null
+        if (!x.optString("language").equals("ar", ignoreCase = true)) return@mapNotNull null
         val url = x.optString("url")
         val title = x.optString("title").trim()
         if (title.isBlank() || !url.startsWith("https://")) return@mapNotNull null
@@ -159,6 +161,20 @@ private suspend fun loadTransfers(): List<TransferItem> {
     }
 }
 
+private fun localizeMatchStatus(raw: String): String {
+    val value = raw.lowercase(Locale.ROOT).replace("_", " ").trim()
+    return when {
+        value.contains("live") || value.contains("in play") || value.contains("inplay") -> "مباشر"
+        value.contains("half time") || value.contains("halftime") -> "استراحة"
+        value.contains("finished") || value == "ft" || value.contains("full time") -> "انتهت"
+        value.contains("not started") || value.contains("scheduled") || value == "ns" -> "لم تبدأ"
+        value.contains("postponed") -> "تأجلت"
+        value.contains("cancelled") || value.contains("canceled") -> "أُلغيت"
+        value.contains("suspended") -> "متوقفة"
+        else -> raw.ifBlank { "الحالة غير متاحة" }
+    }
+}
+
 private suspend fun loadMatches(live: Boolean, selectedDate: String): List<MatchItem> {
     val data = apiJson(if (live) "/api/matches?live=1" else "/api/matches?date=$selectedDate").rows()
     return (0 until data.length()).mapNotNull { i ->
@@ -169,12 +185,16 @@ private suspend fun loadMatches(live: Boolean, selectedDate: String): List<Match
         if (home.isBlank() || away.isBlank()) return@mapNotNull null
         val hs = x.opt("homeScore"); val ascore = x.opt("awayScore")
         val score = if (hs != null && ascore != null && hs != JSONObject.NULL && ascore != JSONObject.NULL) "$hs - $ascore" else "VS"
-        MatchItem(x.optString("id", i.toString()), home, away,
+        // Avoid duplicate empty keys when a provider fixture omits its stable ID.
+        val fixtureId = x.optString("id").takeIf { it.isNotBlank() } ?: listOf(
+            home, away, x.optString("startTime"), x.optString("competitionName")
+        ).filter { it.isNotBlank() }.joinToString("|").ifBlank { "match-$i" }
+        MatchItem(fixtureId, home, away,
             h?.https("crest").orEmpty().ifBlank { h?.https("logoUrl").orEmpty() },
             a?.https("crest").orEmpty().ifBlank { a?.https("logoUrl").orEmpty() },
-            score, x.optString("status", "غير متاحة"), x.optString("startTime"),
+            score, localizeMatchStatus(x.optString("status", "غير متاحة")), x.optString("startTime"),
             x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") })
-    }
+    }.distinctBy { it.id }
 }
 
 private val newsCategories = listOf("الكل", "العالمية", "العربية", "الدوري الإنجليزي", "الدوري الإسباني", "الدوري الإيطالي", "الدوري الألماني", "الدوري الفرنسي", "الدوري السعودي", "الانتقالات", "الإصابات", "الفانتازي")
@@ -589,7 +609,7 @@ private fun TransfersScreen() {
 
 @Composable
 private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
-    var live by rememberSaveable { mutableStateOf(initialLive) }
+    var live by rememberSaveable(selectedDate, initialLive) { mutableStateOf(initialLive) }
     var matches by remember { mutableStateOf<List<MatchItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
@@ -608,10 +628,14 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String) {
             FilterChip(selected = live, onClick = { live = true }, label = { Text("LIVE") })
         }
         when {
-            loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = KLime) }
-            error.isNotBlank() -> StateCard("المباريات غير متاحة", "$error\nتحقق من إعداد مزود البيانات.", "⚽")
-            matches.isEmpty() -> StateCard(if (live) "لا توجد مباريات مباشرة" else "لا توجد مباريات اليوم", "لم تصل بيانات لهذا الاختيار من المصدر المتصل.", "📅")
-            else -> LazyColumn(contentPadding = PaddingValues(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = KLime) }
+            error.isNotBlank() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                StateCard("المباريات غير متاحة", "$error\nتحقق من إعداد مزود البيانات.", "⚽")
+            }
+            matches.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                StateCard(if (live) "لا توجد مباريات مباشرة" else "لا توجد مباريات في هذا التاريخ", "لم تصل بيانات لهذا الاختيار من المصدر المتصل.", "📅")
+            }
+            else -> LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(13.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(matches, key = { it.id }) { match ->
                     Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = KCard), border = BorderStroke(1.dp, KBorder)) {
                         Column(Modifier.padding(11.dp)) {
