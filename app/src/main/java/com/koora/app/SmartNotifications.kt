@@ -526,11 +526,11 @@ internal object KoraxSmartAlerts {
                 val age = relativeNewsAge(item.optString("publishedAt"))
                 val isBreaking = Regex("عاجل|رسميا|بشكل رسمي", RegexOption.IGNORE_CASE).containsMatchIn(articleTitle)
                 val notificationTitle = if (isBreaking) "عاجل 🚨 • $age" else "كرة القدم ⚽ • $age"
-                val body = listOf(source, articleTitle, summary).filter { it.isNotBlank() }.joinToString(" • ")
+                val expandedBody = listOf(articleTitle, summary).filter { it.isNotBlank() }.joinToString("\\n")
                     .ifBlank { "اضغط لقراءة تفاصيل الخبر" }
                 val image = item.optString("imageUrl").takeIf { it.startsWith("https://") }.orEmpty()
                 val key = item.optString("url").ifBlank { item.optString("id") }
-                send(context, "news", notificationTitle, body, "", image, key)
+                send(context, "news", notificationTitle, articleTitle, "", image, key, expandedBody)
             }
         }
         preferences.edit()
@@ -627,7 +627,8 @@ internal object KoraxSmartAlerts {
         message: String,
         iconUrl: String,
         pictureUrl: String,
-        uniqueKey: String
+        uniqueKey: String,
+        expandedMessage: String = message
     ) {
         if (!hasPermission(context)) return
         ensureChannels(context)
@@ -647,12 +648,12 @@ internal object KoraxSmartAlerts {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(expandedMessage))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(true)
-            .setSubText("KORAX • كرة القدم")
+            .setSubText(if (kind == "news") "KORAX • أخبار كرة القدم" else "KORAX • كرة القدم")
             .setTicker(title)
             .setColor(android.graphics.Color.rgb(37, 216, 189))
             .setCategory(if (kind == "news") NotificationCompat.CATEGORY_RECOMMENDATION else NotificationCompat.CATEGORY_EVENT)
