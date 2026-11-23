@@ -9,8 +9,7 @@ const GITHUB_OIDC_JWKS = createRemoteJWKSet(
 const ALLOWED_GITHUB_REPOSITORY = "shotalx2-lgtm/korax-";
 const ALLOWED_GITHUB_WORKFLOWS = new Set([
   "shotalx2-lgtm/korax-/.github/workflows/korax-sportscore-sync.yml@refs/heads/main",
-  "shotalx2-lgtm/korax-/.github/workflows/korax-sportscore-sync.yml@refs/heads/feat/supabase-korax-backend",
-  "shotalx2-lgtm/korax-/.github/workflows/android.yml@refs/pull/13/merge",
+  "shotalx2-lgtm/korax-/.github/workflows/android.yml@refs/heads/main",
 ]);
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {
@@ -29,7 +28,7 @@ async function isAuthorizedGitHubRun(req: Request): Promise<boolean> {
       algorithms: ["RS256"],
     });
     return payload.repository === ALLOWED_GITHUB_REPOSITORY &&
-      ["refs/heads/main", "refs/heads/feat/supabase-korax-backend", "refs/pull/13/merge"].includes(String(payload.ref || "")) &&
+      payload.ref === "refs/heads/main" &&
       ALLOWED_GITHUB_WORKFLOWS.has(String(payload.workflow_ref || ""));
   } catch (error) {
     console.error("[korax-sportscore-sync] GitHub OIDC validation failed", String(error));
