@@ -101,10 +101,13 @@ internal object KoraxOfflineStore {
             val row = array.optJSONObject(index) ?: return@mapNotNull null
             val url = row.optString("url")
             val title = row.optString("title")
+            val summary = row.optString("summary")
+            val source = row.optString("source")
             if (url.isBlank() || title.isBlank()) return@mapNotNull null
+            if (!FootballNewsFilter.isFootballNews(title, summary, source)) return@mapNotNull null
             NewsItem(
-                row.optString("id", url), title, row.optString("summary"), url,
-                row.optString("source"), row.optString("date"),
+                row.optString("id", url), title, summary, url,
+                source, row.optString("date"),
                 row.optString("image").takeIf { it.startsWith("https://") },
                 row.optString("category", "football")
             )
