@@ -133,6 +133,13 @@ test("news categorization avoids false Saudi labels from generic Arabic words", 
   );
 });
 
+test("news categorization recognizes the remaining European leagues and source-specific club feeds", () => {
+  assert.equal(classifyNewsCategory("يوفنتوس يحقق الفوز", "", { id: "btolat-juventus" }), "serie-a");
+  assert.equal(classifyNewsCategory("بايرن ميونخ يفوز في البوندسليغا", "", { id: "bbc-football" }), "bundesliga");
+  assert.equal(classifyNewsCategory("باريس سان جيرمان يتأهل", "", { id: "btolat-psg" }), "ligue-1");
+  assert.equal(classifyNewsCategory("الزمالك يعلن قرارًا جديدًا", "", { id: "btolat-zamalek" }), "egypt");
+});
+
 test("RSS parser reads media thumbnails and sanitizes publisher summaries", () => {
   const xml = `<?xml version="1.0"?>
     <rss><channel><item>
