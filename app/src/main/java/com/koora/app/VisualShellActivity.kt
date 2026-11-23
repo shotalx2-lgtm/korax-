@@ -61,6 +61,8 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.time.Instant
+import java.time.ZoneOffset
 
 internal val KBg: Color get() = KoraxThemePalette.background
 internal val KCard: Color get() = KoraxThemePalette.card
@@ -300,19 +302,20 @@ private fun KoraxApp() {
     }
 
     if (!setupComplete) {
-        KoraxFavoriteSelectionScreen(
-            isFirstRun = true,
-            onFinish = {
-                setupComplete = true
-                tab = "news"
-            },
-            onOpenProfile = { selectedProfile = it }
-        )
         if (selectedProfile != null) {
             KoraxEntityProfileScreen(
                 favorite = selectedProfile!!,
                 onBack = { selectedProfile = null },
                 onOpenPlayer = { selectedProfile = it }
+            )
+        } else {
+            KoraxFavoriteSelectionScreen(
+                isFirstRun = true,
+                onFinish = {
+                    setupComplete = true
+                    tab = "news"
+                },
+                onOpenProfile = { selectedProfile = it }
             )
         }
         return
@@ -442,6 +445,43 @@ private fun BrandToolbar(onSearch: () -> Unit, onLive: () -> Unit, onDate: () ->
 }
 
 @Composable
+private fun KoraxDatePickerDialog(
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    val state = rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
+    DatePickerDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val selected = state.selectedDateMillis ?: return@TextButton
+                    val date = Instant.ofEpochMilli(selected).atZone(ZoneOffset.UTC).toLocalDate()
+                    onSelect(String.format(Locale.US, "%04d-%02d-%02d", date.year, date.monthValue, date.dayOfMonth))
+                }
+            ) { Text("تأكيد التاريخ", color = KLime, fontWeight = FontWeight.Bold) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء", color = KMuted) } },
+        shape = RoundedCornerShape(22.dp),
+        colors = DatePickerDefaults.colors(containerColor = KCard)
+    ) {
+        DatePicker(
+            state = state,
+            title = { Text("اختر يوم المباريات", color = KText, modifier = Modifier.padding(16.dp)) },
+            headline = null,
+            showModeToggle = false,
+            colors = DatePickerDefaults.colors(
+                containerColor = KCard,
+                selectedDayContainerColor = KLime,
+                selectedDayContentColor = Color.Black,
+                todayDateBorderColor = KLime,
+                todayContentColor = KLime
+            )
+        )
+    }
+}
+
+@Composable
 private fun NewsScreen(
     onOpenLive: () -> Unit,
     onChooseDate: (String) -> Unit,
@@ -454,6 +494,7 @@ private fun NewsScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var selected by remember { mutableStateOf<NewsItem?>(null) }
+    var showDatePicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -467,16 +508,7 @@ private fun NewsScreen(
     }
 
     fun chooseMatchDate() {
-        val calendar = Calendar.getInstance()
-        DatePickerDialog(
-            context,
-            { _, year, month, day ->
-                onChooseDate(String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, day))
-            },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH)
-        ).show()
+        showDatePicker = true
     }
 
     LaunchedEffect(Unit) { refresh() }
@@ -542,6 +574,15 @@ private fun NewsScreen(
         }
     }
     selected?.let { CommentsDialog(it) { selected = null } }
+    if (showDatePicker) {
+        KoraxDatePickerDialog(
+            onDismiss = { showDatePicker = false },
+            onSelect = { date ->
+                showDatePicker = false
+                onChooseDate(date)
+            }
+        )
+    }
 }
 
 @Composable
