@@ -64,6 +64,8 @@ import java.util.Locale
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 internal val KBg: Color get() = KoraxThemePalette.background
 internal val KCard: Color get() = KoraxThemePalette.card
@@ -231,6 +233,16 @@ private fun localizeMatchStatus(raw: String): String {
         value.contains("suspended") -> "متوقفة"
         else -> raw.ifBlank { "الحالة غير متاحة" }
     }
+}
+
+private fun displayKickoff(raw: String): String {
+    if (raw.isBlank()) return "موعد البداية غير متاح"
+    val parsed = runCatching {
+        DateTimeFormatter.ofPattern("HH:mm • dd/MM", Locale.getDefault())
+            .withZone(ZoneId.systemDefault())
+            .format(Instant.parse(raw))
+    }.getOrNull()
+    return parsed ?: raw
 }
 
 private suspend fun loadMatches(live: Boolean, selectedDate: String): List<MatchItem> {
@@ -864,7 +876,7 @@ private fun MatchesScreen(initialLive: Boolean, selectedDate: String, onOpenMatc
                                     Text(match.away, color = KText, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 }
                             }
-                            if (match.kickoff.isNotBlank()) Text(match.kickoff, color = KMuted, fontSize = 9.sp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 7.dp))
+                            Text(displayKickoff(match.kickoff), color = KMuted, fontSize = 9.sp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 7.dp))
                         }
                     }
                 }
