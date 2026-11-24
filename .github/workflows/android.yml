@@ -74,6 +74,23 @@ jobs:
             });
           '
 
+          global_search="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/entities/search?search=Arsenal")"
+          printf '%s' "$global_search" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              if (!Array.isArray(value.data) || !value.meta || value.meta.query !== "Arsenal") {
+                throw new Error("Global football entity search contract failed: " + raw);
+              }
+              const invalid = value.data.filter(item =>
+                !item.id || !item.name || !["club","national","player","coach","league","tournament"].includes(item.koraxKind || item.kind || item.type)
+              );
+              if (invalid.length) throw new Error("Global entity search returned records without normalized identity/type.");
+              console.log("Global entity search endpoint passed:", value.data.length, "items; source:", value.source);
+            });
+          '
+
           news="$(api_curl --silent --show-error --fail --max-time 60 "$base/api/news?language=ar&per_page=10")"
           printf '%s' "$news" | node -e '
             let raw = "";
