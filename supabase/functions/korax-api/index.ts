@@ -818,7 +818,7 @@ async function searchCanonicalEntities(query, types, limit) {
   if (ids.length) {
     try {
       assets = await dbRows(
-        "/rest/v1/korax_entity_assets?select=entity_id,asset_type,asset_url,is_primary,license_status" +
+        "/rest/v1/korax_entity_assets?select=entity_id,asset_type,asset_url,is_primary,license_status,license_code" +
         "&entity_id=in.(" + ids.map(encodeURIComponent).join(",") + ")" +
         "&license_status=eq.verified&order=is_primary.desc&limit=500"
       );
@@ -828,7 +828,9 @@ async function searchCanonicalEntities(query, types, limit) {
   }
   const imageByEntity = new Map();
   for (const asset of Array.isArray(assets) ? assets : []) {
-    if (!imageByEntity.has(asset.entity_id) && /^https:\/\//i.test(String(asset.asset_url || ""))) {
+    const noAttributionLicense = /cc0|public domain/i.test(String(asset.license_code || ""));
+    if (noAttributionLicense && !imageByEntity.has(asset.entity_id) &&
+        /^https:\/\//i.test(String(asset.asset_url || ""))) {
       imageByEntity.set(asset.entity_id, asset.asset_url);
     }
   }
@@ -879,7 +881,9 @@ async function getCanonicalEntityProfile(id) {
     if (!item || !item.field_key || facts[item.field_key] !== undefined) continue;
     facts[item.field_key] = item.value;
   }
-  const verifiedAssets = Array.isArray(assetRows) ? assetRows : [];
+  const verifiedAssets = (Array.isArray(assetRows) ? assetRows : []).filter(asset =>
+    /cc0|public domain/i.test(String(asset.license_code || ""))
+  );
   const preferredImage = verifiedAssets.find(asset => asset.is_primary) || verifiedAssets[0] || null;
   const metadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata : {};
   const root = {
