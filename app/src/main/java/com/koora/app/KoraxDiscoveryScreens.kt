@@ -138,10 +138,22 @@ private fun JSONObject.asFavorite(kind: String): KoraxFavorite? {
 private suspend fun searchFavoriteItems(kind: String, query: String): List<KoraxFavorite> {
     if (kind == "all") {
         if (query.length < 2) return emptyList()
-        return listOf("league", "tournament", "club", "national", "player", "coach")
-            .flatMap { searchFavoriteItems(it, query) }
-            .distinctBy { it.kind + ":" + it.id }
-            .take(60)
+        val payload = apiJson("/api/entities/search?search=" + encodeQuery(query))
+        val rows = payload.optJSONArray("data") ?: JSONArray()
+        return (0 until rows.length()).mapNotNull { index ->
+            val row = rows.optJSONObject(index) ?: return@mapNotNull null
+            val actualKind = row.optString("koraxKind").ifBlank {
+                row.optString("kind").ifBlank {
+                    when (row.optString("type")) {
+                        "player" -> "player"
+                        "coach" -> "coach"
+                        else -> "club"
+                    }
+                }
+            }
+            if (actualKind !in setOf("league", "tournament", "club", "national", "player", "coach")) return@mapNotNull null
+            row.asFavorite(actualKind)
+        }.distinctBy { it.kind + ":" + it.id }.take(60)
     }
     val encoded = encodeQuery(query)
     val path = when (kind) {
