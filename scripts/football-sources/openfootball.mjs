@@ -11,6 +11,8 @@ export const OPENFOOTBALL_SEASON_FILES = [
   { path: "2026-27/fr.1.json", competitionName: "Ligue 1", season: "2026-27", countryCode: "FR" },
   { path: "2026-27/nl.1.json", competitionName: "Eredivisie", season: "2026-27", countryCode: "NL" },
   { path: "2026-27/pt.1.json", competitionName: "Primeira Liga", season: "2026-27", countryCode: "PT" },
+  { path: "2026-27/en.2.json", competitionName: "English Championship", season: "2026-27", countryCode: "GB" },
+  { path: "2026/br.1.json", competitionName: "Brasileiro Série A", season: "2026", countryCode: "BR" },
 ];
 
 function numericScore(value) {
