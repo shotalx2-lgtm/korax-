@@ -1081,7 +1081,7 @@ private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: (
     val context = LocalContext.current
     val followedCount = KoraxFavoriteStore.all(context).size
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-        KoraxHeader("المزيد", "حساب المشجع وإعدادات KORAX")
+        KoraxHeader("المزيد", "مركز المشجع وإعدادات KORAX")
         Column(Modifier.padding(horizontal = 14.dp)) {
             Card(
                 Modifier.fillMaxWidth(),
@@ -1110,7 +1110,7 @@ private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: (
             Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MoreQuickAction("☆", "المفضلة", favorites, Modifier.weight(1f), Color(0xFF8D72D7))
-                MoreQuickAction("⇄", "الانتقالات", transfers, Modifier.weight(1f), KLime)
+                MoreQuickAction("⇄", "أخبار الانتقالات", transfers, Modifier.weight(1f), KLime)
             }
             MoreSectionLabel("كرة القدم")
             MoreRow("الأخبار", "آخر أخبار كرة القدم من المصادر المتاحة", "⌂", home)
