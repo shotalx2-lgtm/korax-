@@ -2,6 +2,15 @@ name: KORAX World Data Sync
 
 on:
   workflow_dispatch:
+    inputs:
+      sync_scope:
+        description: "Choose full metadata/fixtures refresh or only OpenLigaDB fixtures"
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - openligadb
   schedule:
     - cron: "40 3 * * *"
     - cron: "*/15 * * * *"
@@ -24,7 +33,7 @@ concurrency:
 
 jobs:
   sync:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.schedule == '40 3 * * *')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.schedule == '40 3 * * *' || (github.event_name == 'workflow_dispatch' && inputs.sync_scope == 'all'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -43,7 +52,7 @@ jobs:
         run: node scripts/sync-world-data.mjs
 
   openligadb:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '*/15 * * * *')
+    if: github.ref == 'refs/heads/main' && ((github.event_name == 'workflow_dispatch' && inputs.sync_scope == 'openligadb') || github.event.schedule == '*/15 * * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
