@@ -167,10 +167,12 @@ function leagueRecord(league) {
 export function createTheSportsDbClient(options = {}) {
   const getJson = createJsonClient({
     source: "thesportsdb",
-    minIntervalMs: 2_500,
-    maxRequests: 100,
-    timeoutMs: 15_000,
-    maxRetries: 1,
+    // The shared free endpoint is also used by other projects. Keep this well
+    // below its published 30/min ceiling and stop immediately on rate limiting.
+    minIntervalMs: 12_000,
+    maxRequests: 10,
+    timeoutMs: 20_000,
+    maxRetries: 0,
     defaultHeaders: { "user-agent": "KORAX-World-Data-Engine/1.0 (football metadata sync)" },
     ...options,
   });
