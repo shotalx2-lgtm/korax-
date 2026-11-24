@@ -19,6 +19,36 @@ function metadataValue(metadata, key) {
 function normalizeFileName(value) {
   return String(value || "").replace(/^File:/i, "").replace(/_/g, " ").normalize("NFC").trim();
 }
+function normalizeSearchText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+export function normalizeCommonsSearchResult(page, entity) {
+  const fileName = normalizeFileName(page?.title);
+  const entityId = String(entity?.id || entity?.entityId || "");
+  const entityType = String(entity?.entity_type || entity?.entityType || "");
+  const name = String(entity?.name || entity?.canonical_name || entity?.name_en || "");
+  if (!fileName || !entityId || !["club", "national", "player"].includes(entityType)) return null;
+  if (!/\.(?:svg|png|jpe?g|webp)$/i.test(fileName)) return null;
+  const titleKey = normalizeSearchText(fileName.replace(/\.[^.]+$/, ""));
+  const nameKey = normalizeSearchText(name);
+  const tokens = nameKey.split(/\s+/).filter(token => token.length > 2 && !["football", "club", "team", "fc", "afc", "cf", "sc"].includes(token));
+  if (!tokens.length || !tokens.every(token => titleKey.includes(token))) return null;
+  const isPlayer = entityType === "player";
+  const extension = fileName.split(".").pop().toLowerCase();
+  if (isPlayer && !["jpg", "jpeg", "png", "webp"].includes(extension)) return null;
+  if (!isPlayer && !["svg", "png"].includes(extension)) return null;
+  return {
+    entityId,
+    fileName,
+    assetType: isPlayer ? "portrait" : "logo",
+    searchMatchedName: name,
+  };
+}
 function normalizeLicense(shortName, usageTerms) {
   const value = `${shortName || ""} ${usageTerms || ""}`.trim();
   if (/non.?commercial|\bNC\b|no commercial/i.test(value)) return { allowed: false, code: shortName || "non-commercial" };
@@ -84,6 +114,30 @@ export function createCommonsClient(options = {}) {
   });
 
   return {
+    async searchEntityFiles(entities, limit = 25) {
+      const candidates = [];
+      const selected = (Array.isArray(entities) ? entities : [])
+        .filter(entity => ["club", "national", "player"].includes(String(entity?.entity_type || entity?.entityType || "")))
+        .slice(0, Math.max(0, Math.min(25, Number(limit) || 25)));
+      for (const entity of selected) {
+        const name = String(entity?.name || entity?.canonical_name || entity?.name_en || "").trim();
+        if (!name) continue;
+        const params = new URLSearchParams({
+          action: "query",
+          format: "json",
+          formatversion: "2",
+          list: "search",
+          srnamespace: "6",
+          srsearch: '"' + name + '"',
+          srlimit: "6",
+        });
+        const payload = await getJson(`${API}?${params.toString()}`);
+        const pages = Array.isArray(payload?.query?.search) ? payload.query.search : [];
+        const matches = pages.map(page => normalizeCommonsSearchResult(page, entity)).filter(Boolean);
+        if (matches.length) candidates.push(matches[0]);
+      }
+      return candidates;
+    },
     async verifyAssets(candidates) {
       const allCandidates = (Array.isArray(candidates) ? candidates : []).filter(item => item?.fileName);
       const uniqueFiles = [...new Set(allCandidates.map(item => normalizeFileName(item.fileName)))];
@@ -115,4 +169,4 @@ export function createCommonsClient(options = {}) {
   };
 }
 
-export const commonsNormalizers = { normalizeCommonsPage, normalizeLicense };
+export const commonsNormalizers = { normalizeCommonsPage, normalizeLicense, normalizeCommonsSearchResult };

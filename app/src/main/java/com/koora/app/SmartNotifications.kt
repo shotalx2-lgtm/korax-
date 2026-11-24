@@ -214,7 +214,7 @@ internal object KoraxSmartAlerts {
     }
 
     private fun channelId(kind: String, withSound: Boolean): String =
-        if (withSound) "korax_${kind}_v4" else "korax_alerts_v4_silent"
+        if (withSound) "korax_${kind}_v5" else "korax_alerts_v5_silent"
 
     suspend fun poll(context: Context) = withContext(Dispatchers.IO) {
         val base = BuildConfig.KOORA_API_BASE_URL.trim().trimEnd('/')
@@ -435,7 +435,7 @@ internal object KoraxSmartAlerts {
         val matchLabel = listOf(home?.optString("name").orEmpty(), score, away?.optString("name").orEmpty())
             .filter { it.isNotBlank() }.joinToString("  ")
         val title = when (kind) {
-            "goal" -> if (teamName.isNotBlank()) "⚽ هــــدف لــــ$teamName" else "⚽ هــــدف!"
+            "goal" -> if (teamName.isNotBlank()) "⚽ هدف لـ$teamName" else "⚽ هدف!"
             "assist" -> "🎯 تمريرة حاسمة!"
             "var" -> "📺 مراجعة VAR"
             "cancel" -> "🚫 تم إلغاء الهدف"
@@ -450,12 +450,26 @@ internal object KoraxSmartAlerts {
             else -> "تحديث في المباراة"
         }
         val person = if (kind == "assist" && assist.isNotBlank()) assist else player
-        val message = listOf(
+        val message = when (kind) {
+            "goal" -> listOf(
+                person.takeUnless { it == "لاعب غير محدد" },
+                minute,
+                score
+            ).filterNotNull().filter { it.isNotBlank() }.joinToString(" • ")
+            else -> listOf(
+                person.takeUnless { it == "لاعب غير محدد" },
+                minute,
+                matchLabel
+            ).filterNotNull().filter { it.isNotBlank() }.joinToString(" • ")
+        }
+        val expandedMessage = listOf(
+            teamName.takeIf { it.isNotBlank() },
             person.takeUnless { it == "لاعب غير محدد" },
             minute,
             matchLabel,
-            competitionName.takeIf { kind != "goal" }
-        ).filterNotNull().filter { it.isNotBlank() }.joinToString(" • ")
+            competitionName.takeIf { it.isNotBlank() },
+            assist.takeIf { kind == "goal" && it.isNotBlank() }?.let { "صناعة الهدف: $it" }
+        ).filterNotNull().joinToString(" • ")
         val playerImage = event.optString("player_image_url")
             .takeIf { it.startsWith("https://") }.orEmpty()
         val competitionImage = competition?.optString("imageUrl")
@@ -464,7 +478,7 @@ internal object KoraxSmartAlerts {
         val key = listOf(match.optString("id"), kind, event.optString("minute"), player, event.optString("detail"))
             .joinToString("|")
         if (isEnabled(context, kind)) {
-            send(context, kind, title, message.ifBlank { matchLabel }, iconImage, playerImage, key, matchId = match.optString("id"))
+            send(context, kind, title, message.ifBlank { matchLabel }, iconImage, playerImage, key, expandedMessage, matchId = match.optString("id"))
         }
 
         if (kind == "goal" && assist.isNotBlank() && isEnabled(context, "assist")) {
@@ -536,22 +550,26 @@ internal object KoraxSmartAlerts {
             val key = item.optString("url").ifBlank { item.optString("id") }
             if (key.isBlank() || key in seen) continue
             if (!seeded) {
+                // Seed the cache once without flooding a fresh installation with old headlines.
                 seen.add(key)
-            } else if (newsMatchesFavorite(context, item) && isEnabled(context, "news")) {
+            } else if (isEnabled(context, "news")) {
+                // General football news is global: it must not depend on a team/player/league favorite.
                 fresh.add(item)
             } else {
                 seen.add(key)
             }
         }
         if (seeded && isEnabled(context, "news")) {
-            val item = fresh.firstOrNull()
-            if (item != null) {
+            // Deliver every unseen football article returned by the API, not just the first one.
+            fresh.forEach { item ->
                 val articleTitle = item.optString("title").ifBlank { "خبر كروي جديد" }
                 val summary = item.optString("summary")
                 val isBreaking = Regex("عاجل|رسميا|رسميًا|بشكل رسمي", RegexOption.IGNORE_CASE).containsMatchIn(articleTitle)
-                val notificationTitle = if (isBreaking) "🚨 عاجل • ${articleTitle.take(58)}" else "📰 ${articleTitle.take(64)}"
-                val snippet = summary.replace(Regex("\\s+"), " ").trim().take(112)
-                val expandedBody = listOf(articleTitle, snippet).filter { it.isNotBlank() }.joinToString(" • ")
+                val notificationTitle = if (isBreaking) "🚨 عاجل" else "📰 خبر كروي"
+                val snippet = articleTitle.replace(Regex("\\s+"), " ").trim().take(96)
+                val detailPreview = summary.replace(Regex("\\s+"), " ").trim().take(150)
+                val expandedBody = listOf(articleTitle, detailPreview)
+                    .filter { it.isNotBlank() }.joinToString(" • ")
                     .ifBlank { "اضغط لقراءة تفاصيل الخبر" }
                 val image = item.optString("imageUrl").takeIf { it.startsWith("https://") }.orEmpty()
                 val key = item.optString("url").ifBlank { item.optString("id") }
@@ -706,9 +724,9 @@ internal object KoraxSmartAlerts {
         )
         val builder = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(title.take(72))
-            .setContentText(message.replace(Regex("\\s+"), " ").trim().take(112))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(expandedMessage.replace(Regex("\\s+"), " ").trim().take(190)))
+            .setContentTitle(title.replace(Regex("\\s+"), " ").trim().take(48))
+            .setContentText(message.replace(Regex("\\s+"), " ").trim().take(88))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(expandedMessage.replace(Regex("\\s+"), " ").trim().take(220)))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
@@ -723,7 +741,7 @@ internal object KoraxSmartAlerts {
                 NotificationCompat.BigPictureStyle()
                     .bigPicture(pictureBitmap)
                     .bigLargeIcon(contextIconBitmap ?: brandBitmap)
-                    .setSummaryText(expandedMessage.replace(Regex("\\s+"), " ").trim().take(112))
+                    .setSummaryText(expandedMessage.replace(Regex("\\s+"), " ").trim().take(96))
             )
         }
         runCatching {

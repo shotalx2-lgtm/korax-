@@ -49,7 +49,7 @@ android {
         applicationId = "com.koora.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
+        versionCode = 19
         versionName = "0.7.1"
 
         val apiBase = providers.gradleProperty("KOORA_API_BASE_URL")

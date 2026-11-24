@@ -4,6 +4,27 @@ import { commonsNormalizers } from "./commons.mjs";
 
 const value = value => ({ value });
 
+test("matches only Commons image files whose titles contain the full entity name", () => {
+  const found = commonsNormalizers.normalizeCommonsSearchResult(
+    { title: "File:Mohamed_Salah_Liverpool_2024.jpg" },
+    { id: "entity-1", entity_type: "player", canonical_name: "Mohamed Salah" }
+  );
+  assert.equal(found.entityId, "entity-1");
+  assert.equal(found.assetType, "portrait");
+  assert.equal(found.fileName, "Mohamed Salah Liverpool 2024.jpg");
+
+  const missingName = commonsNormalizers.normalizeCommonsSearchResult(
+    { title: "File:Random_Footballer.jpg" },
+    { id: "entity-1", entity_type: "player", canonical_name: "Mohamed Salah" }
+  );
+  const unsupported = commonsNormalizers.normalizeCommonsSearchResult(
+    { title: "File:Mohamed_Salah_document.pdf" },
+    { id: "entity-1", entity_type: "player", canonical_name: "Mohamed Salah" }
+  );
+  assert.equal(missingName, null);
+  assert.equal(unsupported, null);
+});
+
 test("verifies a CC BY portrait and preserves creator/license attribution", () => {
   const result = commonsNormalizers.normalizeCommonsPage({
     title: "File:Player.jpg",

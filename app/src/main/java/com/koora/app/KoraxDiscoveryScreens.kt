@@ -131,7 +131,7 @@ private fun JSONObject.asFavorite(kind: String): KoraxFavorite? {
         kind = kind,
         imageUrl = nested.firstImage(),
         country = country,
-        notify = true,
+        notify = false,
         imageAttribution = nested.optString("imageAttribution"),
         imageLicense = nested.optString("imageLicense"),
         imageLicenseUrl = nested.optString("imageLicenseUrl"),
@@ -139,9 +139,27 @@ private fun JSONObject.asFavorite(kind: String): KoraxFavorite? {
     )
 }
 
-private suspend fun searchFavoriteItems(kind: String, query: String): List<KoraxFavorite> {
+private suspend fun searchFavoriteItems(kind: String, query: String, offset: Int = 0): List<KoraxFavorite> {
+    if (query.trim().length < 2) {
+        val types = when (kind) {
+            "all" -> "club,national,player,coach,league,tournament"
+            "league", "tournament", "club", "national", "player", "coach" -> kind
+            else -> return emptyList()
+        }
+        val payload = apiJson(
+            "/api/entities/catalogue?types=" + encodeQuery(types) +
+                "&per_page=31&offset=" + offset.coerceIn(0, 5_000)
+        )
+        val rows = payload.optJSONArray("data") ?: JSONArray()
+        return (0 until rows.length()).mapNotNull { index ->
+            val row = rows.optJSONObject(index) ?: return@mapNotNull null
+            val actualKind = row.optString("koraxKind").ifBlank { row.optString("entity_type") }
+            if (actualKind !in setOf("league", "tournament", "club", "national", "player", "coach")) return@mapNotNull null
+            row.asFavorite(actualKind)
+        }.distinctBy { it.kind + ":" + it.id }
+    }
+
     if (kind == "all") {
-        if (query.length < 2) return emptyList()
         val payload = apiJson("/api/entities/search?search=" + encodeQuery(query))
         val rows = payload.optJSONArray("data") ?: JSONArray()
         return (0 until rows.length()).mapNotNull { index ->
@@ -159,17 +177,16 @@ private suspend fun searchFavoriteItems(kind: String, query: String): List<Korax
             row.asFavorite(actualKind)
         }.distinctBy { it.kind + ":" + it.id }.take(60)
     }
+
     val encoded = encodeQuery(query)
     val path = when (kind) {
-        "league", "tournament" -> if (query.length >= 2) "/api/competitions?search=$encoded" else "/api/competitions"
-        "player" -> if (query.length >= 2) "/api/players?search=$encoded&types=player" else return emptyList()
-        "coach" -> if (query.length >= 2) "/api/players?search=$encoded&types=coach" else return emptyList()
-        else -> if (query.length >= 2) "/api/teams?search=$encoded" else return emptyList()
+        "league", "tournament" -> "/api/competitions?search=$encoded"
+        "player" -> "/api/players?search=$encoded&types=player"
+        "coach" -> "/api/players?search=$encoded&types=coach"
+        else -> "/api/teams?search=$encoded"
     }
     val payload = apiJson(path)
     val rows = payload.optJSONArray("data") ?: JSONArray()
-    val localCompetitionFallback = kind in setOf("league", "tournament") &&
-        payload.optString("source") != "sportscore-search"
     return (0 until rows.length()).mapNotNull { index ->
         val row = rows.optJSONObject(index) ?: return@mapNotNull null
         val competitionSlug = row.firstString(
@@ -194,12 +211,8 @@ private suspend fun searchFavoriteItems(kind: String, query: String): List<Korax
         }
         row.asFavorite(actualKind)
     }.filter { it.kind == kind }
-        .filter {
-            !localCompetitionFallback || query.isBlank() ||
-                it.name.contains(query, ignoreCase = true) ||
-                it.country.contains(query, ignoreCase = true)
-        }
-        .distinctBy { it.kind + ":" + it.id }.take(50)
+        .distinctBy { it.kind + ":" + it.id }
+        .take(50)
 }
 
 @Composable
@@ -251,14 +264,23 @@ internal fun KoraxFavoriteSelectionScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<KoraxFavorite>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
+    var hasMore by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
 
-    suspend fun search() {
+    suspend fun search(append: Boolean = false) {
+        if (loading) return
         loading = true
         error = ""
-        val found = runCatching { searchFavoriteItems(kind, query.trim()) }
-        results = found.getOrDefault(emptyList())
+        val currentQuery = query.trim()
+        val offset = if (append && currentQuery.length < 2) results.size else 0
+        val found = runCatching { searchFavoriteItems(kind, currentQuery, offset) }
+        val page = found.getOrDefault(emptyList())
+        hasMore = currentQuery.length < 2 && page.size > 30
+        val visiblePage = if (currentQuery.length < 2) page.take(30) else page
+        results = if (append) {
+            (results + visiblePage).distinctBy { it.kind + ":" + it.id }
+        } else visiblePage
         error = found.exceptionOrNull()?.message.orEmpty()
         loading = false
     }
@@ -381,7 +403,7 @@ internal fun KoraxFavoriteSelectionScreen(
                 quick.drop(3).forEach { value ->
                     FilterChip(
                         selected = false,
-                        onClick = { query = value; scope.launch { searchFavoriteItems(kind, value).also { results = it } } },
+                        onClick = { query = value },
                         label = { Text(value, fontSize = 9.sp) }
                     )
                 }
@@ -406,7 +428,7 @@ internal fun KoraxFavoriteSelectionScreen(
             }
             results.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
-                    if (query.trim().length < 2) "اكتب حرفين على الأقل لعرض اقتراحات فورية" else "لا توجد نتائج مطابقة في البيانات المتاحة حاليًا",
+                    if (query.trim().isBlank()) "لا توجد سجلات متاحة لهذا القسم في فهرس البيانات الحالي" else if (query.trim().length < 2) "اكتب حرفين على الأقل لعرض اقتراحات البحث" else "لا توجد نتائج مطابقة في البيانات المتاحة حاليًا",
                     color = DMuted, fontSize = 11.sp
                 )
             }
@@ -427,6 +449,20 @@ internal fun KoraxFavoriteSelectionScreen(
                             KoraxFavoriteStore.save(context, selected)
                         }
                     )
+                }
+                if (hasMore) {
+                    item {
+                        Button(
+                            onClick = { scope.launch { search(append = true) } },
+                            enabled = !loading,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            shape = RoundedCornerShape(13.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = DCard2,
+                                contentColor = DAccent
+                            )
+                        ) { Text(if (loading) "جارٍ التحميل..." else "تحميل المزيد", fontWeight = FontWeight.Bold) }
+                    }
                 }
             }
         }
@@ -788,7 +824,7 @@ internal fun KoraxEntityProfileScreen(
     var error by remember(favorite.kind, favorite.slug) { mutableStateOf("") }
     var following by remember(favorite.kind, favorite.slug) { mutableStateOf(KoraxFavoriteStore.isFavorite(context, favorite)) }
     var notify by remember(favorite.kind, favorite.slug) {
-        mutableStateOf(KoraxFavoriteStore.all(context).firstOrNull { it.kind == favorite.kind && it.id == favorite.id }?.notify ?: true)
+        mutableStateOf(KoraxFavoriteStore.all(context).firstOrNull { it.kind == favorite.kind && it.id == favorite.id }?.notify ?: false)
     }
     val scope = rememberCoroutineScope()
 
