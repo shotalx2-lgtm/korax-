@@ -120,11 +120,34 @@ function mapMatch(match: any) {
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   if (!(await isAuthorizedGitHubRun(req))) return json({ error: "UNAUTHORIZED_GITHUB_WORKFLOW" }, 401);
+  let syncRunKey = "";
+  let syncRunStartedAt = new Date().toISOString();
+  let syncRequestCount = 0;
   try {
     const payload = await req.json();
+    const workflowRunId = String(payload?.workflowRunId || "");
+    const workflowRunAttempt = String(payload?.workflowRunAttempt || "1");
+    syncRunKey = workflowRunId ? workflowRunId + ":" + workflowRunAttempt : String(payload?.syncedAt || syncRunStartedAt);
+    syncRunStartedAt = String(payload?.startedAt || syncRunStartedAt);
+    syncRequestCount = parseIntOrNull(payload?.requestCount) ?? 0;
     const matchesIn = Array.isArray(payload?.matches) ? payload.matches : [];
     const detailsIn = Array.isArray(payload?.details) ? payload.details : [];
     const competitionsIn = Array.isArray(payload?.competitions) ? payload.competitions : [];
+    const recordsSeen = matchesIn.length + detailsIn.length + competitionsIn.length;
+    await rest("/rest/v1/korax_source_sync_runs?on_conflict=source_key,run_key", {
+      method: "POST",
+      headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+      body: JSON.stringify({
+        source_key: "sportscore",
+        workflow_run_id: workflowRunId || null,
+        run_key: syncRunKey,
+        status: "running",
+        started_at: syncRunStartedAt,
+        request_count: syncRequestCount,
+        records_seen: recordsSeen,
+        metadata: { workflow_run_attempt: workflowRunAttempt },
+      }),
+    });
     const deduped = new Map<string, any>();
     for (const source of matchesIn) {
       const row = mapMatch(source);
@@ -177,14 +200,66 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    const finishedAt = new Date().toISOString();
+    const syncMetadata = {
+      matches_upserted: rows.length,
+      details_patched: detailRows.length,
+      standings_upserted: competitionRows.length,
+      received_matches: matchesIn.length,
+      received_details: detailsIn.length,
+      received_standings: competitionsIn.length,
+      counts_are_processed_rows_not_insert_update_deltas: true,
+    };
+    await rest("/rest/v1/korax_source_sync_runs?source_key=eq.sportscore&run_key=eq." + encodeURIComponent(syncRunKey), {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        status: "success",
+        finished_at: finishedAt,
+        records_skipped: Math.max(0, matchesIn.length - rows.length),
+        metadata: syncMetadata,
+      }),
+    });
+    await rest("/rest/v1/korax_source_registry?source_key=eq.sportscore", {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify({
+        health_status: "healthy",
+        last_success_at: finishedAt,
+        last_error_at: null,
+        last_error: null,
+        updated_at: finishedAt,
+      }),
+    });
+
     return json({
       ok: true,
       received: { matches: matchesIn.length, details: detailsIn.length, competitions: competitionsIn.length },
       stored: { matches: rows.length, details: detailRows.length, competitions: competitionRows.length },
-      updatedAt: new Date().toISOString(),
+      requestCount: syncRequestCount,
+      syncRunKey,
+      updatedAt: finishedAt,
     });
   } catch (error) {
-    console.error("[korax-sportscore-sync] sync failed", String(error));
-    return json({ error: "SYNC_FAILED", message: error instanceof Error ? error.message : String(error) }, 500);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[korax-sportscore-sync] sync failed", message);
+    if (syncRunKey) {
+      const failedAt = new Date().toISOString();
+      try {
+        await rest("/rest/v1/korax_source_sync_runs?source_key=eq.sportscore&run_key=eq." + encodeURIComponent(syncRunKey), {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ status: "failed", finished_at: failedAt, request_count: syncRequestCount, error_count: 1, error_summary: message.slice(0, 1000) }),
+        });
+        await rest("/rest/v1/korax_source_registry?source_key=eq.sportscore", {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({ health_status: "degraded", last_error_at: failedAt, last_error: message.slice(0, 1000), updated_at: failedAt }),
+        });
+      } catch (recordError) {
+        console.error("[korax-sportscore-sync] unable to record failed run", String(recordError));
+      }
+    }
+    return json({ error: "SYNC_FAILED", message }, 500);
   }
 });
