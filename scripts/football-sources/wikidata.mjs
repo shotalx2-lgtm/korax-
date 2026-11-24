@@ -25,7 +25,7 @@ function bindingValue(binding, key) {
   return binding?.[key]?.value ?? null;
 }
 function qidFromUri(uri) {
-  const match = String(uri || "").match(/\\/(Q\\d+)$/);
+  const match = String(uri || "").match(/\/(Q\d+)$/);
   return match?.[1] || null;
 }
 function commonsFileName(url) {
