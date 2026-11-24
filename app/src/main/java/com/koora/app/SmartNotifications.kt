@@ -550,16 +550,18 @@ internal object KoraxSmartAlerts {
             val key = item.optString("url").ifBlank { item.optString("id") }
             if (key.isBlank() || key in seen) continue
             if (!seeded) {
+                // Seed the cache once without flooding a fresh installation with old headlines.
                 seen.add(key)
-            } else if (newsMatchesFavorite(context, item) && isEnabled(context, "news")) {
+            } else if (isEnabled(context, "news")) {
+                // General football news is global: it must not depend on a team/player/league favorite.
                 fresh.add(item)
             } else {
                 seen.add(key)
             }
         }
         if (seeded && isEnabled(context, "news")) {
-            val item = fresh.firstOrNull()
-            if (item != null) {
+            // Deliver every unseen football article returned by the API, not just the first one.
+            fresh.forEach { item ->
                 val articleTitle = item.optString("title").ifBlank { "خبر كروي جديد" }
                 val summary = item.optString("summary")
                 val isBreaking = Regex("عاجل|رسميا|رسميًا|بشكل رسمي", RegexOption.IGNORE_CASE).containsMatchIn(articleTitle)
