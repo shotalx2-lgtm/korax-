@@ -512,6 +512,8 @@ private fun KoraxApp() {
                     transfers = { tab = "transfers" },
                     tools = { tab = "tools" }
                 )
+                    }
+                }
             }
         }
     }
