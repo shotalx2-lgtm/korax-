@@ -611,8 +611,6 @@ private fun NewsScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("الكل") }
-    var query by rememberSaveable { mutableStateOf("") }
-    var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var selected by remember { mutableStateOf<NewsItem?>(null) }
     var showDatePicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -639,33 +637,16 @@ private fun NewsScreen(
                 (it.title + " " + it.summary).contains(name, ignoreCase = true)
             }
         } else matchesCategory(it, category)
-        categoryMatch && (query.isBlank() || (it.title + " " + it.summary).contains(query, true))
+        categoryMatch
     }
 
     Column(Modifier.fillMaxSize()) {
         BrandToolbar(
-            onSearch = { searchExpanded = !searchExpanded },
+            onSearch = onExplore,
             onLive = onOpenLive,
             onDate = { chooseMatchDate() },
             onRefresh = { scope.launch { refresh() } }
         )
-        if (searchExpanded) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                placeholder = { Text("ابحث عن لاعب أو نادٍ أو خبر...", color = KMuted, fontSize = 12.sp) },
-                leadingIcon = { Icon(Icons.Filled.Search, null, tint = KLime) },
-                trailingIcon = {
-                    TextButton(onClick = { query = ""; searchExpanded = false }) {
-                        Text("إغلاق", color = KLime, fontSize = 10.sp)
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp)
-            )
-            Spacer(Modifier.height(7.dp))
-        }
         if (!KoraxFavoriteStore.setupComplete(context)) {
             Card(
                 Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 4.dp),
