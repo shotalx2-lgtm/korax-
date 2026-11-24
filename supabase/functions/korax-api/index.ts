@@ -811,7 +811,7 @@ function isDisplayableEntityAsset(asset) {
   return asset?.license_status === "verified" &&
     allowedLicense &&
     String(asset?.asset_url || "").startsWith("https://") &&
-    (!requiresAttribution || (credit && asset?.license_url && asset?.source_page_url)) &&
+    (!requiresAttribution || (String(asset?.creator || "").trim() && credit && asset?.license_url && asset?.source_page_url)) &&
     !asset?.metadata?.trademarkReviewRequired;
 }
 
