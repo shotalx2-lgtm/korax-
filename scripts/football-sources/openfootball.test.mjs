@@ -16,12 +16,14 @@ test("normalizes finished OpenFootball fixtures without inventing live events", 
   assert.equal(match.isLive, false);
   assert.equal(match.isFinished, true);
   assert.equal(match.rawPayload.round, "Matchday 12");
+  assert.equal(match.kickoffAt, null);
 });
 
 test("keeps scheduled fixtures scoreless when no final score exists", () => {
   const match = normalizeOpenFootballMatch({
     round: "Matchday 18",
     date: "2027-01-05",
+    time: "17:30",
     team1: "Arsenal",
     team2: "Liverpool",
   }, { competitionName: "Premier League", season: "2026-27", countryCode: "GB" });
@@ -29,6 +31,8 @@ test("keeps scheduled fixtures scoreless when no final score exists", () => {
   assert.equal(match.awayScore, null);
   assert.equal(match.status, "scheduled");
   assert.equal(match.isLive, false);
+  assert.equal(match.kickoffAt, null);
+  assert.equal(match.rawPayload.time, "17:30");
 });
 
 test("parses season files and rejects incomplete rows", () => {
