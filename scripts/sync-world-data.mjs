@@ -4,6 +4,7 @@ import { createOpenLigaDbClient, filterCurrentFootballLeagues } from "./football
 import { createOpenFootballClient, OPENFOOTBALL_SEASON_FILES } from "./football-sources/openfootball.mjs";
 import { createWikidataClient, wikidataConstants } from "./football-sources/wikidata.mjs";
 import { createCommonsClient } from "./football-sources/commons.mjs";
+import { buildSyncBatches } from "./football-sources/batches.mjs";
 import { normalizeName, scoreEntityMergeCandidate } from "./football-sources/normalize.mjs";
 
 const SYNC_URL = "https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-world-data-sync";
@@ -309,6 +310,46 @@ async function callSync(token, payload) {
   if (!response.ok) throw new Error("World-data sync HTTP " + response.status + ": " + JSON.stringify(parsed).slice(0, 1200));
   return parsed;
 }
+
+async function persistInBatches(token, payload) {
+  const totals = {};
+  try {
+    const batches = buildSyncBatches(payload);
+    for (let index = 0; index < batches.length; index++) {
+      const batch = batches[index];
+      const table = Object.keys(batch)[0];
+      const response = await callSync(token, { action: "sync", ...batch });
+      const countKey = ({
+        entities: "entities",
+        entitySources: "entitySources",
+        assets: "assets",
+        facts: "facts",
+        externalMatches: "externalMatches",
+        coverage: "coverage",
+        mergeCandidates: "mergeCandidates",
+        sourceRuns: "sourceRuns"
+      })[table];
+      totals[countKey] = (totals[countKey] || 0) + Number(response.counts?.[countKey] || 0);
+      console.log("[korax-world-data-sync] persisted batch " + (index + 1) + "/" + batches.length +
+        " (" + table + "): " + Number(response.counts?.[countKey] || 0));
+    }
+    return { counts: totals, batchCount: batches.length };
+  } catch (error) {
+    const failedRuns = (payload.sourceRuns || []).map(run => ({
+      ...run,
+      status: "failed",
+      error_count: Number(run.error_count || 0) + 1,
+      error_summary: ("Persistence batch failed: " + String(error)).slice(0, 1500),
+      finished_at: new Date().toISOString()
+    }));
+    if (failedRuns.length) {
+      await callSync(token, { action: "sync", sourceRuns: failedRuns }).catch(markError => {
+        console.error("[korax-world-data-sync] could not record failed batch state:", markError);
+      });
+    }
+    throw error;
+  }
+}
 async function runTheSportsDb() {
   const source = createTheSportsDbClient();
   const startedAt = new Date().toISOString();
@@ -461,7 +502,7 @@ async function runWikidata() {
 
   for (const group of groups) {
     try {
-      records.push.apply(records, await source.fetchFootballEntities({ countryQids: group, limit: 350 }));
+      records.push.apply(records, await source.fetchFootballEntities({ countryQids: group, limit: 150 }));
     } catch (error) {
       errors.push("club/competition metadata for countries " + group.join(",") + ": " + String(error).slice(0, 180));
     }
@@ -585,17 +626,15 @@ async function main() {
     mergeCandidates: Array.from(data.mergeCandidates.values()).slice(0, 4000),
     sourceRuns: data.sourceRuns
   };
-  const body = JSON.stringify(payload);
-  const bytes = Buffer.byteLength(body);
-  if (bytes > 3800000) throw new Error("World-data payload too large (" + bytes + " bytes); refusing unsafe write.");
-  const result = await callSync(token, payload);
+  const bytes = Buffer.byteLength(JSON.stringify(payload));
+  const result = await persistInBatches(token, payload);
 
   const summary = Array.from(sourceOutcomes.values()).map(item => ({
     sourceKey: item.sourceKey, status: item.status, requests: item.requestCount, records: item.recordsSeen
   }));
   console.log(JSON.stringify({
     ok: true, runId: RUN_ID, runKey: RUN_KEY, serializedBytes: bytes,
-    sourceOutcomes: summary, counts: result.counts
+    persistedBatchCount: result.batchCount, sourceOutcomes: summary, counts: result.counts
   }, null, 2));
 
   const problems = summary.filter(item => item.status === "failed" || item.status === "partial");
