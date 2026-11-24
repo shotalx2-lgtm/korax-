@@ -15,6 +15,10 @@ function plainText(value) {
 function metadataValue(metadata, key) {
   return plainText(metadata?.[key]?.value);
 }
+
+function normalizeFileName(value) {
+  return String(value || "").replace(/^File:/i, "").replace(/_/g, " ").normalize("NFC").trim();
+}
 function normalizeLicense(shortName, usageTerms) {
   const value = `${shortName || ""} ${usageTerms || ""}`.trim();
   if (/non.?commercial|\bNC\b|no commercial/i.test(value)) return { allowed: false, code: shortName || "non-commercial" };
@@ -28,8 +32,8 @@ function normalizeLicense(shortName, usageTerms) {
 export function normalizeCommonsPage(page, candidates = []) {
   const info = Array.isArray(page?.imageinfo) ? page.imageinfo[0] : null;
   const title = String(page?.title || "");
-  const fileName = title.replace(/^File:/i, "");
-  const candidate = candidates.find(item => item.fileName === fileName);
+  const fileName = normalizeFileName(title);
+  const candidate = candidates.find(item => normalizeFileName(item.fileName) === fileName);
   if (!info || !candidate || page?.missing) return null;
 
   const ext = info.extmetadata || {};
@@ -82,7 +86,7 @@ export function createCommonsClient(options = {}) {
   return {
     async verifyAssets(candidates) {
       const allCandidates = (Array.isArray(candidates) ? candidates : []).filter(item => item?.fileName);
-      const uniqueFiles = [...new Set(allCandidates.map(item => item.fileName))];
+      const uniqueFiles = [...new Set(allCandidates.map(item => normalizeFileName(item.fileName)))];
       const verified = [];
       for (let index = 0; index < uniqueFiles.length; index += 20) {
         const fileChunk = uniqueFiles.slice(index, index + 20);
@@ -98,8 +102,8 @@ export function createCommonsClient(options = {}) {
         const payload = await getJson(`${API}?${params.toString()}`);
         const pages = Array.isArray(payload?.query?.pages) ? payload.query.pages : [];
         for (const page of pages) {
-          const fileName = String(page?.title || "").replace(/^File:/i, "");
-          for (const candidate of allCandidates.filter(item => item.fileName === fileName)) {
+          const fileName = normalizeFileName(page?.title);
+          for (const candidate of allCandidates.filter(item => normalizeFileName(item.fileName) === fileName)) {
             const normalized = normalizeCommonsPage(page, [candidate]);
             if (normalized) verified.push(normalized);
           }

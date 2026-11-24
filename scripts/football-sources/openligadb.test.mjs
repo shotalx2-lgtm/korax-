@@ -49,6 +49,35 @@ test("normalizes OpenLigaDB scores, goals and a stable match fingerprint", () =>
   assert.equal(match.rawPayload.goals.length, 1);
 });
 
+test("does not infer live status from kickoff time or promote half-time scores to final", () => {
+  const match = normalizeOpenLigaMatch({
+    matchID: 100,
+    matchDateTimeUTC: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    matchFinished: false,
+    matchStatus: "",
+    team1: { teamId: 11, teamName: "Arsenal" },
+    team2: { teamId: 12, teamName: "Chelsea" },
+    matchResults: [{ resultName: "Halbzeit", pointsTeam1: 1, pointsTeam2: 0, resultID: 1 }]
+  }, { leagueName: "Premier League", leagueSeason: "2026" });
+  assert.equal(match.isLive, false);
+  assert.equal(match.homeScore, null);
+  assert.equal(match.awayScore, null);
+  assert.equal(match.status, "scheduled");
+
+  const explicitLive = normalizeOpenLigaMatch({
+    matchID: 101,
+    matchDateTimeUTC: new Date().toISOString(),
+    matchFinished: false,
+    matchStatus: "Live",
+    team1: { teamId: 11, teamName: "Arsenal" },
+    team2: { teamId: 12, teamName: "Chelsea" },
+    matchResults: [{ resultName: "Halbzeit", pointsTeam1: 1, pointsTeam2: 0, resultID: 1 }]
+  }, { leagueName: "Premier League", leagueSeason: "2026" });
+  assert.equal(explicitLive.isLive, true);
+  assert.equal(explicitLive.homeScore, null);
+  assert.equal(explicitLive.awayScore, null);
+});
+
 test("normalizes league source IDs and keeps ODbL provenance", () => {
   const league = openLigaDbNormalizers.leagueRecord({
     leagueId: 101,

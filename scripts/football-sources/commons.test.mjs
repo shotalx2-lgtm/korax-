@@ -54,6 +54,27 @@ test("keeps a licensed club logo pending trademark review", () => {
   assert.equal(result.metadata.trademarkReviewRequired, true);
 });
 
+test("matches Wikidata filenames with spaces against Commons page titles with underscores", () => {
+  const result = commonsNormalizers.normalizeCommonsPage({
+    title: "File:Mohamed_Salah_2018.jpg",
+    imageinfo: [{
+      url: "https://upload.wikimedia.org/wikipedia/commons/a/a1/Mohamed_Salah_2018.jpg",
+      descriptionurl: "https://commons.wikimedia.org/wiki/File:Mohamed_Salah_2018.jpg",
+      width: 640,
+      height: 800,
+      extmetadata: {
+        LicenseShortName: value("CC0"),
+        LicenseUrl: value("https://creativecommons.org/publicdomain/zero/1.0/"),
+        UsageTerms: value("Public domain"),
+        Artist: value("Creator")
+      }
+    }]
+  }, [{ fileName: "Mohamed Salah 2018.jpg", assetType: "portrait", entityId: "entity-1" }]);
+  assert.equal(result.entityId, "entity-1");
+  assert.equal(result.fileName, "Mohamed Salah 2018.jpg");
+  assert.equal(result.licenseStatus, "verified");
+});
+
 test("blocks missing or unknown licenses instead of exposing the image", () => {
   const result = commonsNormalizers.normalizeCommonsPage({
     title: "File:Unknown.jpg",

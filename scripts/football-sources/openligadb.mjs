@@ -18,9 +18,7 @@ function dateValue(value) {
 }
 function finalResult(match) {
   const results = Array.isArray(match?.matchResults) ? match.matchResults : [];
-  return results.find(item => /final|endergebnis|after.?90|after.?extra|penalt/i.test(String(item?.resultName || item?.resultType?.resultName || "")))
-    || results.slice().sort((a, b) => Number(b?.resultID || 0) - Number(a?.resultID || 0))[0]
-    || null;
+  return results.find(item => /final|endergebnis|after.?90|after.?extra|penalt/i.test(String(item?.resultName || item?.resultType?.resultName || ""))) || null;
 }
 function leagueRecord(league) {
   const id = number(league?.leagueId);
@@ -93,14 +91,13 @@ export function normalizeOpenLigaMatch(match, league) {
   const kickoff = dateValue(match?.matchDateTimeUTC || match?.matchDateTime);
   if (!matchId || !homeTeam || !awayTeam || !kickoff) return null;
 
-  const result = finalResult(match);
+  const isFinished = match?.matchFinished === true;
+  const result = isFinished ? finalResult(match) : null;
   const homeScore = result ? number(result.pointsTeam1) : null;
   const awayScore = result ? number(result.pointsTeam2) : null;
-  const isFinished = match?.matchFinished === true;
   const statusText = String(match?.matchStatus || "");
-  const now = Date.now();
-  const isLive = !isFinished && !/cancel|postpon|abandon/i.test(statusText) &&
-    kickoff.getTime() <= now && kickoff.getTime() >= now - 4 * 60 * 60 * 1000;
+  const isLive = !isFinished && /live|in.?play|in.?progress|running/i.test(statusText) &&
+    !/cancel|postpon|abandon/i.test(statusText);
   const groupName = text(match?.group?.groupName);
   const fingerprint = createMatchFingerprint({
     competitionName: league.leagueName,
