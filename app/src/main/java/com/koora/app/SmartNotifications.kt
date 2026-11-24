@@ -452,7 +452,7 @@ internal object KoraxSmartAlerts {
         val key = listOf(match.optString("id"), kind, event.optString("minute"), player, event.optString("detail"))
             .joinToString("|")
         if (isEnabled(context, kind)) {
-            send(context, kind, title, message.ifBlank { matchLabel }, iconImage, playerImage, key)
+            send(context, kind, title, message.ifBlank { matchLabel }, iconImage, playerImage, key, matchId = match.optString("id"))
         }
 
         if (kind == "goal" && assist.isNotBlank() && isEnabled(context, "assist")) {
@@ -461,7 +461,8 @@ internal object KoraxSmartAlerts {
                 "$assist • ${teamName.ifBlank { matchLabel }} • ${minute.orEmpty()}",
                 iconImage,
                 event.optString("assist_player_image_url").takeIf { it.startsWith("https://") }.orEmpty(),
-                "$key|assist"
+                "$key|assist",
+                matchId = match.optString("id")
             )
         }
     }
@@ -483,7 +484,7 @@ internal object KoraxSmartAlerts {
             competition?.optString("name").orEmpty()
         ).filter { it.isNotBlank() }.joinToString(" • ")
         val logo = home?.optString("crest").orEmpty().ifBlank { away?.optString("crest").orEmpty() }
-        send(context, kind, title, message.ifBlank { "تحديث حالة المباراة" }, logo, "", "${match.optString("id")}|$kind|${match.optString("status")}")
+        send(context, kind, title, message.ifBlank { "تحديث حالة المباراة" }, logo, "", "${match.optString("id")}|$kind|${match.optString("status")}", matchId = match.optString("id"))
     }
 
     private fun notifyGenericGoal(context: Context, match: JSONObject) {
@@ -502,7 +503,8 @@ internal object KoraxSmartAlerts {
             context, "goal", "⚽ تغيّرت النتيجة!",
             line.ifBlank { "تم تسجيل هدف في مباراة مباشرة" },
             logo, "",
-            "${match.optString("id")}|score|${scoreLabel(match)}"
+            "${match.optString("id")}|score|${scoreLabel(match)}",
+            matchId = match.optString("id")
         )
     }
 
@@ -542,7 +544,15 @@ internal object KoraxSmartAlerts {
                 val image = item.optString("imageUrl").takeIf { it.startsWith("https://") }.orEmpty()
                 val key = item.optString("url").ifBlank { item.optString("id") }
                 seen.add(key)
-                send(context, "news", notificationTitle, snippet.ifBlank { "اضغط لقراءة تفاصيل الخبر" }, "", image, key, expandedBody)
+                send(
+                    context, "news", notificationTitle,
+                    snippet.ifBlank { "اضغط لقراءة تفاصيل الخبر" }, "", image, key, expandedBody,
+                    newsUrl = key,
+                    newsTitle = articleTitle,
+                    newsSource = item.optString("source"),
+                    newsImage = image,
+                    newsDate = item.optString("publishedAt")
+                )
             }
         }
         preferences.edit()
@@ -651,7 +661,13 @@ internal object KoraxSmartAlerts {
         iconUrl: String,
         pictureUrl: String,
         uniqueKey: String,
-        expandedMessage: String = message
+        expandedMessage: String = message,
+        matchId: String = "",
+        newsUrl: String = "",
+        newsTitle: String = "",
+        newsSource: String = "",
+        newsImage: String = "",
+        newsDate: String = ""
     ) {
         if (!hasPermission(context)) return
         ensureChannels(context)
@@ -662,6 +678,15 @@ internal object KoraxSmartAlerts {
         val brandBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.korax_brand)
         val intent = Intent(context, VisualShellActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        if (matchId.isNotBlank()) intent.putExtra("korax_match_id", matchId)
+        if (newsUrl.isNotBlank()) {
+            intent.putExtra("korax_news_url", newsUrl)
+            intent.putExtra("korax_news_title", newsTitle)
+            intent.putExtra("korax_news_summary", message)
+            intent.putExtra("korax_news_source", newsSource)
+            intent.putExtra("korax_news_image", newsImage)
+            intent.putExtra("korax_news_date", newsDate)
+        }
         val requestCode = uniqueKey.hashCode() and 0x7fffffff
         val pendingIntent = PendingIntent.getActivity(
             context, requestCode, intent,
