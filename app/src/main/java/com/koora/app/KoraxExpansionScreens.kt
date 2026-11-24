@@ -961,6 +961,22 @@ private fun MatchLineupSide(
                                                 }
                                                 Spacer(Modifier.height(3.dp))
                                                 Text(name, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center, overflow = TextOverflow.Ellipsis)
+                                                // Render a player rating only when the provider supplied a numeric value.
+                                                val ratingRaw = row.readText("rating", "player_rating", "average_rating")
+                                                val rating = Regex("""^\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:/10)?\\s*$""")
+                                                    .matchEntire(ratingRaw)?.groupValues?.getOrNull(1)
+                                                if (!rating.isNullOrBlank()) {
+                                                    Text(
+                                                        "★ $rating",
+                                                        color = Color.Black,
+                                                        fontSize = 8.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        modifier = Modifier
+                                                            .padding(top = 3.dp)
+                                                            .background(XAccent, RoundedCornerShape(8.dp))
+                                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
                                             }
                                         }
                                         repeat(3 - rowPlayers.size) {
