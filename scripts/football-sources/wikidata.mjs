@@ -189,8 +189,8 @@ export function createWikidataClient(options = {}) {
   const getJson = createJsonClient({
     source: "wikidata",
     minIntervalMs: 15_000,
-    maxRequests: 10,
-    timeoutMs: 55_000,
+    maxRequests: 30,
+    timeoutMs: 20_000,
     maxRetries: 0,
     defaultHeaders: {
       accept: "application/sparql-results+json",
@@ -202,15 +202,15 @@ export function createWikidataClient(options = {}) {
   return {
     async fetchFootballEntities(queryOptions = {}) {
       const query = buildFootballEntitiesQuery(queryOptions);
-      const url = `${SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`;
-      const payload = await getJson(url, { timeoutMs: 55_000 });
+      const url = `${WIKIDATA_SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`;
+      const payload = await getJson(url, { timeoutMs: 20_000 });
       const bindings = payload?.results?.bindings;
       return Array.isArray(bindings) ? bindings.map(normalizeWikidataBinding).filter(Boolean) : [];
     },
     async fetchFootballPeople(queryOptions = {}) {
       const query = buildFootballPeopleQuery(queryOptions);
-      const url = `${SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`;
-      const payload = await getJson(url, { timeoutMs: 55_000 });
+      const url = `${WIKIDATA_SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`;
+      const payload = await getJson(url, { timeoutMs: 20_000 });
       const bindings = payload?.results?.bindings;
       return Array.isArray(bindings) ? bindings.map(normalizeWikidataBinding).filter(Boolean) : [];
     },
