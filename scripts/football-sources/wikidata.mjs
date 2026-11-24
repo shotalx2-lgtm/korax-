@@ -127,89 +127,70 @@ export function normalizeWikidataBinding(binding) {
   };
 }
 
-export function buildFootballEntitiesQuery({ countryQids = COUNTRY_QIDS, limit = 600 } = {}) {
-  const countries = countryQids.map(qid => `wd:${qid}`).join(" ");
-  const classes = Object.entries(CLASS_TYPES).filter(([, type]) => !["player", "coach"].includes(type)).map(([qid]) => `wd:${qid}`).join(" ");
-  const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 600));
-  return `
-SELECT DISTINCT ?item ?class ?itemLabel ?itemAltLabel ?nameAr ?nameEn
-       ?country ?countryLabel ?countryCode ?inception
-       ?stadium ?stadiumLabel ?league ?leagueLabel ?organizer ?organizerLabel
-       ?image ?logo ?flag ?stadiumImage ?stadiumCapacity ?officialWebsite ?competitionClass ?leagueLevel
-       ?uefaTeamId ?transfermarktTeamId ?espnTeamId ?scorebarId ?soccerbaseId
-       ?footballDatabaseId ?transfermarktCompetitionId ?fbrefCompetitionId ?worldFootballId
-WHERE {
-  VALUES ?class { ${classes} }
-  VALUES ?country { ${countries} }
-  ?item wdt:P31 ?class;
-        wdt:P17 ?country.
-  OPTIONAL { ?country wdt:P297 ?countryCode. }
-  OPTIONAL { ?item wdt:P571 ?inception. }
-  OPTIONAL { ?item wdt:P115 ?stadium. }
-  OPTIONAL { ?stadium wdt:P18 ?stadiumImage. }
-  OPTIONAL { ?stadium wdt:P1083 ?stadiumCapacity. }
-  OPTIONAL { ?item wdt:P41 ?flag. }
-  OPTIONAL { ?item wdt:P118 ?league. }
-  OPTIONAL { ?item wdt:P664 ?organizer. }
-  OPTIONAL { ?item wdt:P18 ?image. }
-  OPTIONAL { ?item wdt:P154 ?logo. }
-  OPTIONAL { ?item wdt:P856 ?officialWebsite. }
-  OPTIONAL { ?item wdt:P2094 ?competitionClass. }
-  OPTIONAL { ?item wdt:P3983 ?leagueLevel. }
-  OPTIONAL { ?item wdt:P7361 ?uefaTeamId. }
-  OPTIONAL { ?item wdt:P7223 ?transfermarktTeamId. }
-  OPTIONAL { ?item wdt:P13590 ?espnTeamId. }
-  OPTIONAL { ?item wdt:P6131 ?scorebarId. }
-  OPTIONAL { ?item wdt:P7454 ?soccerbaseId. }
-  OPTIONAL { ?item wdt:P7351 ?footballDatabaseId. }
-  OPTIONAL { ?item wdt:P12758 ?transfermarktCompetitionId. }
-  OPTIONAL { ?item wdt:P13664 ?fbrefCompetitionId. }
-  OPTIONAL { ?item wdt:P14795 ?worldFootballId. }
-  OPTIONAL { ?item rdfs:label ?nameAr. FILTER(LANG(?nameAr) = "ar") }
-  OPTIONAL { ?item rdfs:label ?nameEn. FILTER(LANG(?nameEn) = "en") }
-  OPTIONAL { ?item skos:altLabel ?itemAltLabel. FILTER(LANG(?itemAltLabel) = "en") }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-}
-LIMIT ${safeLimit}
-`.trim();
+export function buildFootballEntitiesQuery({ countryQids = COUNTRY_QIDS, limit = 150 } = {}) {
+  const countries = countryQids.map(qid => "wd:" + qid).join(" ");
+  const classes = Object.entries(CLASS_TYPES)
+    .filter(([, type]) => !["player", "coach"].includes(type))
+    .map(([qid]) => "wd:" + qid).join(" ");
+  const safeLimit = Math.max(1, Math.min(250, Number(limit) || 150));
+  return [
+    "SELECT DISTINCT ?item ?class ?itemLabel ?itemAltLabel ?nameAr ?nameEn",
+    "       ?country ?countryLabel ?countryCode ?inception ?stadium ?stadiumLabel",
+    "       ?image ?logo ?officialWebsite",
+    "WHERE {",
+    "  VALUES ?class { " + classes + " }",
+    "  VALUES ?country { " + countries + " }",
+    "  ?item wdt:P31 ?class; wdt:P17 ?country.",
+    "  ?item rdfs:label ?itemLabel. FILTER(LANG(?itemLabel) = \"en\")",
+    "  ?country rdfs:label ?countryLabel. FILTER(LANG(?countryLabel) = \"en\")",
+    "  OPTIONAL { ?country wdt:P297 ?countryCode. }",
+    "  OPTIONAL { ?item rdfs:label ?nameAr. FILTER(LANG(?nameAr) = \"ar\") }",
+    "  OPTIONAL { ?item skos:altLabel ?itemAltLabel. FILTER(LANG(?itemAltLabel) = \"en\") }",
+    "  OPTIONAL { ?item wdt:P571 ?inception. }",
+    "  OPTIONAL { ?item wdt:P115 ?stadium. }",
+    "  OPTIONAL { ?stadium rdfs:label ?stadiumLabel. FILTER(LANG(?stadiumLabel) = \"en\") }",
+    "  OPTIONAL { ?item wdt:P18 ?image. }",
+    "  OPTIONAL { ?item wdt:P154 ?logo. }",
+    "  OPTIONAL { ?item wdt:P856 ?officialWebsite. }",
+    "}",
+    "LIMIT " + safeLimit
+  ].join("\\n");
 }
 
-export function buildFootballPeopleQuery({ countryQids = COUNTRY_QIDS, limit = 200 } = {}) {
-  const countries = countryQids.map(qid => `wd:${qid}`).join(" ");
-  const safeLimit = Math.max(1, Math.min(500, Number(limit) || 200));
-  return `
-SELECT DISTINCT ?item ?class ?itemLabel ?itemAltLabel ?nameAr ?nameEn
-       ?country ?countryLabel ?countryCode ?birthDate ?image ?team ?teamLabel
-       ?position ?positionLabel ?height ?weight
-WHERE {
-  VALUES ?class { wd:Q937857 wd:Q628099 }
-  VALUES ?country { ${countries} }
-  ?item wdt:P106 ?class;
-        wdt:P27 ?country.
-  OPTIONAL { ?country wdt:P297 ?countryCode. }
-  OPTIONAL { ?item wdt:P569 ?birthDate. }
-  OPTIONAL { ?item wdt:P18 ?image. }
-  OPTIONAL { ?item wdt:P54 ?team. }
-  OPTIONAL { ?item wdt:P413 ?position. }
-  OPTIONAL { ?position rdfs:label ?positionLabel. FILTER(LANG(?positionLabel) = "en") }
-  OPTIONAL { ?item wdt:P2048 ?height. }
-  OPTIONAL { ?item wdt:P2067 ?weight. }
-  OPTIONAL { ?item rdfs:label ?nameAr. FILTER(LANG(?nameAr) = "ar") }
-  OPTIONAL { ?item rdfs:label ?nameEn. FILTER(LANG(?nameEn) = "en") }
-  OPTIONAL { ?item skos:altLabel ?itemAltLabel. FILTER(LANG(?itemAltLabel) = "en") }
-  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-}
-LIMIT ${safeLimit}
-`.trim();
+export function buildFootballPeopleQuery({ countryQids = COUNTRY_QIDS, limit = 100 } = {}) {
+  const countries = countryQids.map(qid => "wd:" + qid).join(" ");
+  const safeLimit = Math.max(1, Math.min(200, Number(limit) || 100));
+  return [
+    "SELECT DISTINCT ?item ?class ?itemLabel ?itemAltLabel ?nameAr ?nameEn",
+    "       ?country ?countryLabel ?countryCode ?birthDate ?image ?team ?teamLabel",
+    "       ?position ?positionLabel",
+    "WHERE {",
+    "  VALUES ?class { wd:Q937857 wd:Q628099 }",
+    "  VALUES ?country { " + countries + " }",
+    "  ?item wdt:P106 ?class; wdt:P27 ?country.",
+    "  ?item rdfs:label ?itemLabel. FILTER(LANG(?itemLabel) = \"en\")",
+    "  ?country rdfs:label ?countryLabel. FILTER(LANG(?countryLabel) = \"en\")",
+    "  OPTIONAL { ?country wdt:P297 ?countryCode. }",
+    "  OPTIONAL { ?item rdfs:label ?nameAr. FILTER(LANG(?nameAr) = \"ar\") }",
+    "  OPTIONAL { ?item skos:altLabel ?itemAltLabel. FILTER(LANG(?itemAltLabel) = \"en\") }",
+    "  OPTIONAL { ?item wdt:P569 ?birthDate. }",
+    "  OPTIONAL { ?item wdt:P18 ?image. }",
+    "  OPTIONAL { ?item wdt:P54 ?team. }",
+    "  OPTIONAL { ?team rdfs:label ?teamLabel. FILTER(LANG(?teamLabel) = \"en\") }",
+    "  OPTIONAL { ?item wdt:P413 ?position. }",
+    "  OPTIONAL { ?position rdfs:label ?positionLabel. FILTER(LANG(?positionLabel) = \"en\") }",
+    "}",
+    "LIMIT " + safeLimit
+  ].join("\\n");
 }
 
 export function createWikidataClient(options = {}) {
   const getJson = createJsonClient({
     source: "wikidata",
-    minIntervalMs: 12_000,
+    minIntervalMs: 15_000,
     maxRequests: 10,
-    timeoutMs: 60_000,
-    maxRetries: 1,
+    timeoutMs: 55_000,
+    maxRetries: 0,
     defaultHeaders: {
       accept: "application/sparql-results+json",
       "user-agent": "KORAX-World-Data-Engine/1.0 (https://github.com/shotalx2-lgtm/korax-)",
@@ -221,14 +202,14 @@ export function createWikidataClient(options = {}) {
     async fetchFootballEntities(queryOptions = {}) {
       const query = buildFootballEntitiesQuery(queryOptions);
       const url = `${SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`;
-      const payload = await getJson(url, { timeoutMs: 60_000 });
+      const payload = await getJson(url, { timeoutMs: 55_000 });
       const bindings = payload?.results?.bindings;
       return Array.isArray(bindings) ? bindings.map(normalizeWikidataBinding).filter(Boolean) : [];
     },
     async fetchFootballPeople(queryOptions = {}) {
       const query = buildFootballPeopleQuery(queryOptions);
       const url = `${SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`;
-      const payload = await getJson(url, { timeoutMs: 60_000 });
+      const payload = await getJson(url, { timeoutMs: 55_000 });
       const bindings = payload?.results?.bindings;
       return Array.isArray(bindings) ? bindings.map(normalizeWikidataBinding).filter(Boolean) : [];
     },
