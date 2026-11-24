@@ -18,6 +18,7 @@ test("maps stable team IDs and structured club facts without trusting fan images
   assert.equal(record.entityType, "club");
   assert.equal(record.externalId, "133604");
   assert.equal(record.metadata.formedYear, 1907);
+  assert.equal(record.metadata.wikidataId, "Q12345");
   assert.equal(record.metadata.stadiumCapacity, 75000);
   assert.equal(record.assets[0].licenseStatus, "unverified");
   assert.equal(record.assets[0].metadata.rightsReviewRequired, true);
@@ -52,4 +53,16 @@ test("maps league IDs and limits free API assumptions to returned records", () =
   assert.equal(record.entityType, "league");
   assert.equal(record.externalId, "4328");
   assert.equal(record.metadata.currentSeason, "2026-2027");
+});
+
+test("classifies coaching staff separately from playing profiles", () => {
+  const record = theSportsDbNormalizers.playerRecord({
+    idPlayer: "123",
+    strPlayer: "Sample Assistant",
+    strPosition: "Assistant Coach",
+    strStatus: "Coaching",
+    idWikidata: "Q67890",
+  });
+  assert.equal(record.entityType, "coach");
+  assert.equal(record.metadata.wikidataId, "Q67890");
 });
