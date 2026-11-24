@@ -157,22 +157,22 @@ internal object KoraxSmartAlerts {
             .build()
 
         val configs = listOf(
-            Triple("goal", "هدف جديد", R.raw.korax_goal),
-            Triple("assist", "تمريرة حاسمة", R.raw.korax_assist),
-            Triple("var", "مراجعة VAR", R.raw.korax_var),
-            Triple("cancel", "إلغاء هدف", R.raw.korax_cancel),
-            Triple("red_card", "البطاقات الحمراء", R.raw.korax_red_card),
-            Triple("yellow_card", "البطاقات الصفراء", R.raw.korax_yellow_card),
-            Triple("penalty", "ركلات الجزاء", R.raw.korax_penalty),
-            Triple("kickoff", "بداية المباراة", R.raw.korax_kickoff),
-            Triple("halftime", "نهاية الشوط الأول", R.raw.korax_halftime),
-            Triple("fulltime", "نهاية المباراة", R.raw.korax_fulltime),
-            Triple("substitution", "التبديلات", R.raw.korax_substitution),
-            Triple("injury", "الإصابات", R.raw.korax_injury),
-            Triple("news", "الأخبار العاجلة", R.raw.korax_news)
+            "goal" to "هدف جديد",
+            "assist" to "تمريرة حاسمة",
+            "var" to "مراجعة VAR",
+            "cancel" to "إلغاء هدف",
+            "red_card" to "البطاقات الحمراء",
+            "yellow_card" to "البطاقات الصفراء",
+            "penalty" to "ركلات الجزاء",
+            "kickoff" to "بداية المباراة",
+            "halftime" to "نهاية الشوط الأول",
+            "fulltime" to "نهاية المباراة",
+            "substitution" to "التبديلات",
+            "injury" to "الإصابات",
+            "news" to "الأخبار العاجلة"
         )
 
-        configs.forEach { (key, label, soundResource) ->
+        configs.forEach { (key, label) ->
             listOf(true, false).forEach { withSound ->
                 val channel = NotificationChannel(
                     channelId(key, withSound),
@@ -548,7 +548,6 @@ internal object KoraxSmartAlerts {
 
     private fun matchesFavorite(context: Context, match: JSONObject, event: JSONObject?): Boolean {
         if (KoraxMatchWatchStore.isWatching(context, match.optString("id"))) return true
-        if (!KoraxFavoriteStore.setupComplete(context)) return false
         val all = KoraxFavoriteStore.all(context)
         if (all.isEmpty()) return false
         val followed = all.filter { it.notify }
@@ -763,7 +762,7 @@ internal object KoraxSmartAlerts {
         }
         send(
             context, kind, "اختبار صوت $label",
-            "هذا مؤثر صوتي تجريبي مخصص لهذا النوع من تنبيهات KORAX.",
+            "هذا اختبار لنغمة الإشعار الحالية لهذا النوع على جهازك.",
             "", "", "korax-test-$kind-${System.currentTimeMillis()}"
         )
     }
@@ -888,7 +887,7 @@ internal fun KoraxNotificationsScreen(onBack: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("المؤثرات الصوتية", color = Color.White, fontWeight = FontWeight.SemiBold)
-                        Text("صوت مستقل للهدف والتمريرة وVAR والإلغاء والبطاقات والأخبار", color = Color(0xFF929AA6), fontSize = 11.sp)
+                        Text("تستخدم نغمة الإشعار الافتراضية للهاتف، ويمكن تخصيص صوت كل نوع من إعدادات قنوات KORAX في أندرويد.", color = Color(0xFF929AA6), fontSize = 11.sp)
                     }
                     Switch(checked = soundEnabled, onCheckedChange = {
                         soundEnabled = it
@@ -900,7 +899,17 @@ internal fun KoraxNotificationsScreen(onBack: () -> Unit) {
                     onClick = { KoraxSmartAlerts.sendTest(context); history = KoraxSmartAlerts.history(context) },
                     enabled = permissionGranted,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF27303B), contentColor = Color.White)
-                ) { Text("اختبار صوت إشعار الهدف") }
+                ) { Text("اختبار إشعار الهدف") }
+                TextButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            )
+                        }
+                    }
+                ) { Text("تخصيص صوت كل نوع من إعدادات أندرويد", color = Color(0xFFD5FF00), fontSize = 11.sp) }
             }
         }
         Spacer(Modifier.height(18.dp))
