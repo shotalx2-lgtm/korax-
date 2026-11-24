@@ -79,6 +79,7 @@ async function main() {
   assert(SUPABASE_URL && PUBLISHABLE_KEY, "Supabase sync configuration missing");
   assert(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, "GitHub Actions OIDC is not enabled for this workflow");
 
+  const syncStartedAt = new Date().toISOString();
   const now = new Date();
   const minute = now.getUTCMinutes();
   const forcedSync = process.env.KORAX_FORCE_FULL_SYNC === "true" ||
@@ -261,7 +262,16 @@ async function main() {
   }
 
   const token = await getGitHubOidc();
-  const payload = { matches, details, competitions, requestCount: sportScoreRequestCount, syncedAt: new Date().toISOString() };
+  const payload = {
+    matches,
+    details,
+    competitions,
+    requestCount: sportScoreRequestCount,
+    workflowRunId: process.env.GITHUB_RUN_ID || "",
+    workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT || "1",
+    startedAt: syncStartedAt,
+    syncedAt: new Date().toISOString(),
+  };
   const response = await fetch(SUPABASE_URL + "/functions/v1/korax-sportscore-sync", {
     method: "POST",
     headers: {
