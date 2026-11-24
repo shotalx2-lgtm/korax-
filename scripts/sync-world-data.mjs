@@ -339,6 +339,7 @@ async function runTheSportsDb() {
     } catch (error) { errors.push(item.league + ": " + String(error).slice(0, 180)); }
   }
   for (const record of records) addRecord("thesportsdb", record);
+  if (!records.length && !errors.length) errors.push("TheSportsDB endpoints responded but returned no usable league, club or player metadata.");
   const stats = source.getStats();
   report("thesportsdb", errors.length ? (records.length ? "partial" : "failed") : "success",
     stats.requestCount, records.length, { errors, startedAt });
@@ -444,6 +445,7 @@ async function runOpenFootball() {
       });
     } catch (error) { errors.push(file.path + ": " + String(error).slice(0, 180)); }
   }
+  if (filesSucceeded === 0 || matches === 0) errors.push("No usable fixture rows were returned from the configured OpenFootball season files.");
   const stats = source.getStats();
   report("openfootball", errors.length ? (filesSucceeded ? "partial" : "failed") : "success",
     stats.requestCount, matches, { errors, startedAt, filesSucceeded, filesConfigured: OPENFOOTBALL_SEASON_FILES.length });
@@ -460,6 +462,7 @@ async function runWikidata() {
     records.push.apply(records, await source.fetchFootballPeople({ limit: 250 }));
   } catch (error) { errors.push("players/coaches: " + String(error).slice(0, 200)); }
   for (const record of records) addRecord("wikidata", record);
+  if (!records.length && !errors.length) errors.push("Wikidata responded without returning usable football entities or people.");
   for (const type of Array.from(new Set(records.map(item => item.entityType)))) {
     addCoverage({
       source_key: "wikidata", entity_type: type, country_code: "", competition_name: "", season: "",
