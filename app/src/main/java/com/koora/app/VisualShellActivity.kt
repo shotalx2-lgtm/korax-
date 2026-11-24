@@ -88,14 +88,46 @@ internal val KBorder: Color get() = KoraxThemePalette.border
 
 class VisualShellActivity : ComponentActivity() {
     private var smartAlertsJob: Job? = null
+    private val notificationRoute = mutableStateOf<KoraxNotificationRoute?>(null)
+
+    private fun updateNotificationRoute(source: Intent?) {
+        val matchId = source?.getStringExtra("korax_match_id").orEmpty()
+        val newsUrl = source?.getStringExtra("korax_news_url").orEmpty()
+        notificationRoute.value = when {
+            matchId.isNotBlank() -> KoraxNotificationRoute(matchId = matchId)
+            newsUrl.isNotBlank() -> {
+                val articleTitle = source?.getStringExtra("korax_news_title").orEmpty().ifBlank { "خبر كروي جديد" }
+                val article = NewsItem(
+                    id = newsUrl,
+                    title = articleTitle,
+                    summary = source?.getStringExtra("korax_news_summary").orEmpty(),
+                    url = newsUrl,
+                    source = source?.getStringExtra("korax_news_source").orEmpty(),
+                    date = source?.getStringExtra("korax_news_date").orEmpty(),
+                    image = source?.getStringExtra("korax_news_image")?.takeIf { it.startsWith("https://") }
+                )
+                KoraxNotificationRoute(article = article)
+            }
+            else -> null
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        updateNotificationRoute(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        updateNotificationRoute(intent)
         KoraxSmartAlerts.ensureChannels(this)
         KoraxSmartAlerts.setBackgroundUpdates(this, KoraxSettingsStore.getBoolean(this, "background_updates", true))
         window.statusBarColor = android.graphics.Color.rgb(0, 0, 0)
         window.navigationBarColor = android.graphics.Color.rgb(0, 0, 0)
         @Suppress("DEPRECATION") window.decorView.systemUiVisibility = 0
         setContent {
+            val route by notificationRoute
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 val paletteLight = KoraxThemePalette.light
                 val scheme = if (paletteLight) {
@@ -111,7 +143,7 @@ class VisualShellActivity : ComponentActivity() {
                         onSurface = KText, outline = KBorder
                     )
                 }
-                MaterialTheme(colorScheme = scheme) { KoraxSplash() }
+                MaterialTheme(colorScheme = scheme) { KoraxSplash(route) }
             }
         }
     }
@@ -135,7 +167,7 @@ class VisualShellActivity : ComponentActivity() {
 }
 
 @Composable
-private fun KoraxSplash() {
+private fun KoraxSplash(initialNotificationRoute: KoraxNotificationRoute?) {
     var intro by rememberSaveable { mutableStateOf(true) }
     val logoScale = remember { Animatable(0.88f) }
     LaunchedEffect(Unit) {
@@ -182,10 +214,11 @@ private fun KoraxSplash() {
                 )
             }
         }
-    } else KoraxApp()
+    } else KoraxApp(initialNotificationRoute)
 }
 
 internal data class NewsItem(val id: String, val title: String, val summary: String, val url: String, val source: String, val date: String, val image: String?, val category: String = "football")
+private data class KoraxNotificationRoute(val matchId: String? = null, val article: NewsItem? = null)
 private data class TransferItem(val id: String, val player: String, val playerImage: String, val from: String, val fromLogo: String, val to: String, val toLogo: String, val type: String, val date: String, val amount: String, val completed: Boolean, val league: String)
 private data class MatchItem(val id: String, val home: String, val away: String, val homeLogo: String, val awayLogo: String, val score: String, val status: String, val kickoff: String, val league: String, val detailsAvailable: Boolean)
 
@@ -365,7 +398,7 @@ private class LocalComments(context: Context) {
 }
 
 @Composable
-private fun KoraxApp() {
+private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
     val context = LocalContext.current
     val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val themeMode = KoraxSettingsStore.theme(context)
@@ -378,9 +411,31 @@ private fun KoraxApp() {
     var tab by rememberSaveable { mutableStateOf("news") }
     var matchLiveRequested by rememberSaveable { mutableStateOf(false) }
     var matchDate by rememberSaveable { mutableStateOf(todayIso()) }
-    var selectedArticle by remember { mutableStateOf<NewsItem?>(null) }
+    var selectedArticle by remember { mutableStateOf(initialNotificationRoute?.article) }
     var selectedProfile by remember { mutableStateOf<KoraxFavorite?>(null) }
-    var selectedMatchId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedMatchId by rememberSaveable { mutableStateOf(initialNotificationRoute?.matchId) }
+    LaunchedEffect(initialNotificationRoute) {
+        when {
+            initialNotificationRoute?.matchId != null -> {
+                selectedArticle = null
+                selectedProfile = null
+                selectedMatchId = initialNotificationRoute.matchId
+                tab = "matches"
+            }
+            initialNotificationRoute?.article != null -> {
+                selectedMatchId = null
+                selectedProfile = null
+                selectedArticle = initialNotificationRoute.article
+                tab = "news"
+            }
+            else -> {
+                selectedArticle = null
+                selectedMatchId = null
+                selectedProfile = null
+                tab = "news"
+            }
+        }
+    }
     var setupComplete by remember { mutableStateOf(KoraxFavoriteStore.setupComplete(context)) }
     var permissionAsked by remember { mutableStateOf(KoraxSettingsStore.requestPermissionAsked(context)) }
     val permissionLauncher = rememberLauncherForActivityResult(
