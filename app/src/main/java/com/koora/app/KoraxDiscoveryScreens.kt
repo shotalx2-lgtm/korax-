@@ -84,7 +84,8 @@ private val favoriteTypes = listOf(
     "tournament" to "بطولة",
     "club" to "نادي",
     "national" to "منتخب",
-    "player" to "لاعب"
+    "player" to "لاعب",
+    "coach" to "مدرب"
 )
 
 private fun encodeQuery(value: String) = URLEncoder.encode(value, StandardCharsets.UTF_8.name())
@@ -137,7 +138,7 @@ private fun JSONObject.asFavorite(kind: String): KoraxFavorite? {
 private suspend fun searchFavoriteItems(kind: String, query: String): List<KoraxFavorite> {
     if (kind == "all") {
         if (query.length < 2) return emptyList()
-        return listOf("league", "tournament", "club", "national", "player")
+        return listOf("league", "tournament", "club", "national", "player", "coach")
             .flatMap { searchFavoriteItems(it, query) }
             .distinctBy { it.kind + ":" + it.id }
             .take(60)
@@ -145,7 +146,8 @@ private suspend fun searchFavoriteItems(kind: String, query: String): List<Korax
     val encoded = encodeQuery(query)
     val path = when (kind) {
         "league", "tournament" -> if (query.length >= 2) "/api/competitions?search=$encoded" else "/api/competitions"
-        "player" -> if (query.length >= 2) "/api/players?search=$encoded" else return emptyList()
+        "player" -> if (query.length >= 2) "/api/players?search=$encoded&types=player" else return emptyList()
+        "coach" -> if (query.length >= 2) "/api/players?search=$encoded&types=coach" else return emptyList()
         else -> if (query.length >= 2) "/api/teams?search=$encoded" else return emptyList()
     }
     val payload = apiJson(path)
