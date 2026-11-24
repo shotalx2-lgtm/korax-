@@ -202,13 +202,13 @@ function addCommonsAsset(asset) {
 function linkTheSportsDbRecordsToWikidata() {
   const wikidataByQid = new Map();
   for (const row of data.entitySources.values()) {
-    if (row.source_key === "wikidata" && /^Q\\d+$/.test(row.external_id)) {
+    if (row.source_key === "wikidata" && /^Q\d+$/.test(row.external_id)) {
       wikidataByQid.set(row.external_id, row.entity_id);
     }
   }
   for (const item of providerRecords) {
     if (item.sourceKey !== "thesportsdb" || !item.wikidataId) continue;
-    const qid = String(item.wikidataId).match(/Q\\d+/);
+    const qid = String(item.wikidataId).match(/Q\d+/);
     const canonicalId = qid ? wikidataByQid.get(qid[0]) : null;
     if (!canonicalId || canonicalId === item.entityId) continue;
     const oldEntity = data.entities.get(item.entityId);
