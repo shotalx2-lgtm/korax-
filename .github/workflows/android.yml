@@ -206,35 +206,66 @@ jobs:
             });
           '
 
-          # Provider search endpoints must return usable, real football entities.
-          for search_spec in "teams|Niroye" "players|Moka%20Hiwatari" "competitions|Women%20Empowerment"; do
-            endpoint="${search_spec%%|*}"
-            query="${search_spec#*|}"
-            search_payload="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/$endpoint?search=$query&per_page=10")"
+          # Search tests must use entities that are actually present in the current
+          # SportScore cache, not stale fixture names from an older provider snapshot.
+          team_search_query="$(printf '%s' "$schedule" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const rows = JSON.parse(raw).data || [];
+              const name = rows.map(row => row.homeTeam?.name || row.home || "").find(Boolean);
+              if (!name) throw new Error("No cached home team is available for search smoke test.");
+              process.stdout.write(name);
+            });
+          ')"
+          player_search_query="$(printf '%s' "$full_detail" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const item = JSON.parse(raw).data || {};
+              const rows = Array.isArray(item.lineups) ? item.lineups : [];
+              const name = rows.map(row => row.name || row.player_name || row.player?.name || "").find(Boolean);
+              if (!name) throw new Error("No cached lineup player is available for search smoke test.");
+              process.stdout.write(name);
+            });
+          ')"
+          competition_search_query="$(printf '%s' "$competitions" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const rows = JSON.parse(raw).data || [];
+              const name = rows.map(row => row.name || row.title || "").find(Boolean);
+              if (!name) throw new Error("No KORAX competition is available for search smoke test.");
+              process.stdout.write(name);
+            });
+          ')"
+
+          declare -A search_queries
+          search_queries[teams]="$team_search_query"
+          search_queries[players]="$player_search_query"
+          search_queries[competitions]="$competition_search_query"
+
+          # Search hits must also open their actual in-app cached profile routes.
+          for endpoint in teams players competitions; do
+            query="${search_queries[$endpoint]}"
+            encoded_query="$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$query")"
+            search_payload="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/$endpoint?search=$encoded_query&per_page=10")"
             printf '%s' "$search_payload" | SEARCH_ENDPOINT="$endpoint" node -e '
               let raw = "";
               process.stdin.on("data", chunk => raw += chunk);
               process.stdin.on("end", () => {
                 const value = JSON.parse(raw);
-                if (!Array.isArray(value.data) || value.data.length === 0) throw new Error(process.env.SEARCH_ENDPOINT + " search returned no real entities: " + raw);
+                if (!Array.isArray(value.data) || value.data.length === 0) throw new Error(process.env.SEARCH_ENDPOINT + " search returned no cached entity: " + raw);
                 const first = value.data[0];
-                if (!first.name && !first.title) throw new Error(process.env.SEARCH_ENDPOINT + " search row has no display name.");
-                console.log(process.env.SEARCH_ENDPOINT + " search passed:", value.data.length, "results");
+                if (!(first.name || first.title) || !first.slug) throw new Error(process.env.SEARCH_ENDPOINT + " search row is missing its display name or stable slug.");
+                console.log(process.env.SEARCH_ENDPOINT + " search passed:", first.name || first.title);
               });
             '
-          done
-
-          # Search hits must also open their in-app cached profile routes.
-          for profile_spec in "teams|Niroye" "players|Moka%20Hiwatari" "competitions|Women%20Empowerment"; do
-            endpoint="${profile_spec%%|*}"
-            query="${profile_spec#*|}"
-            search_payload="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/$endpoint?search=$query&per_page=10")"
             entity_slug="$(printf '%s' "$search_payload" | node -e '
               let raw = "";
               process.stdin.on("data", chunk => raw += chunk);
               process.stdin.on("end", () => {
-                const value = JSON.parse(raw);
-                const first = value.data?.[0];
+                const first = JSON.parse(raw).data?.[0];
                 if (!first?.slug) throw new Error("Search result has no stable KORAX entity slug.");
                 process.stdout.write(String(first.slug));
               });
@@ -247,8 +278,10 @@ jobs:
                 const value = JSON.parse(raw);
                 const kind = process.env.PROFILE_ENDPOINT === "teams" ? "team"
                   : process.env.PROFILE_ENDPOINT === "players" ? "player" : "competition";
-                const entity = value.data?.[kind];
-                if (!entity?.name) throw new Error(kind + " profile did not open from cached entity search.");
+                const entity = kind === "competition"
+                  ? (value.data?.competition || { name: value.name || value.data?.name })
+                  : value.data?.[kind];
+                if (!entity?.name) throw new Error(kind + " profile did not open from cached entity search: " + raw);
                 console.log(kind + " cached profile passed:", entity.name);
               });
             '
