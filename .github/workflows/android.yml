@@ -29,7 +29,9 @@ jobs:
         with:
           deno-version: v2.x
       - name: Type-check the OIDC world-data Edge Function
-        run: deno check supabase/functions/korax-world-data-sync/index.ts
+        run: |
+          deno check supabase/functions/korax-world-data-sync/index.ts
+          deno check supabase/functions/korax-api/index.ts
 
       - name: Test football data worker
         working-directory: worker
