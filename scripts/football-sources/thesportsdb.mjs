@@ -42,7 +42,7 @@ function teamRecord(team) {
     externalUrl,
     canonicalName: name,
     nameEn: name,
-    aliases: [text(team.strTeamShort), text(team.strAlternate)].filter(Boolean),
+    aliases: [text(team.strTeamShort), text(team.strTeamAlternate || team.strAlternate)].filter(Boolean),
     countryName: text(team.strCountry),
     metadata: {
       leagueName: text(team.strLeague),
@@ -57,7 +57,7 @@ function teamRecord(team) {
       idTeam: id,
       strTeam: name,
       strTeamShort: text(team.strTeamShort),
-      strAlternate: text(team.strAlternate),
+      strTeamAlternate: text(team.strTeamAlternate || team.strAlternate),
       strCountry: text(team.strCountry),
       strLeague: text(team.strLeague),
       intFormedYear: integer(team.intFormedYear),
@@ -114,7 +114,7 @@ function leagueRecord(league) {
   const externalUrl = `https://www.thesportsdb.com/league/${encodeURIComponent(id)}`;
   const badge = safeAsset(league.strBadge, "logo", externalUrl);
   return {
-    entityType: /cup|championship|trophy/i.test(name) ? "tournament" : "league",
+    entityType: /cup|championship|trophy|champions league|europa league|conference league|world cup|nations league|super cup/i.test(name) ? "tournament" : "league",
     externalId: id,
     externalUrl,
     canonicalName: name,
@@ -158,11 +158,11 @@ export function createTheSportsDbClient(options = {}) {
     },
     async searchPlayers(name) {
       const payload = await getJson(`${API}/searchplayers.php?p=${encodeURIComponent(name)}`);
-      return (Array.isArray(payload?.player) ? payload.player : []).map(playerRecord).filter(Boolean);
+      return (Array.isArray(payload?.player) ? payload.player : Array.isArray(payload?.players) ? payload.players : []).map(playerRecord).filter(Boolean);
     },
     async searchLeagues(country, sport = "Soccer") {
       const payload = await getJson(`${API}/search_all_leagues.php?c=${encodeURIComponent(country)}&s=${encodeURIComponent(sport)}`);
-      return (Array.isArray(payload?.countries) ? payload.countries : []).map(leagueRecord).filter(Boolean);
+      return (Array.isArray(payload?.leagues) ? payload.leagues : Array.isArray(payload?.countries) ? payload.countries : []).map(leagueRecord).filter(Boolean);
     },
     async teamsInLeague(leagueName) {
       const payload = await getJson(`${API}/search_all_teams.php?l=${encodeURIComponent(leagueName)}`);
@@ -172,9 +172,13 @@ export function createTheSportsDbClient(options = {}) {
       const payload = await getJson(`${API}/lookupteam.php?id=${encodeURIComponent(id)}`);
       return (Array.isArray(payload?.teams) ? payload.teams : []).map(teamRecord).filter(Boolean)[0] || null;
     },
+    async playersInTeam(id) {
+      const payload = await getJson(`${API}/lookup_all_players.php?id=${encodeURIComponent(id)}`);
+      return (Array.isArray(payload?.player) ? payload.player : Array.isArray(payload?.players) ? payload.players : []).map(playerRecord).filter(Boolean);
+    },
     async lookupPlayer(id) {
       const payload = await getJson(`${API}/lookupplayer.php?id=${encodeURIComponent(id)}`);
-      return (Array.isArray(payload?.players) ? payload.players : []).map(playerRecord).filter(Boolean)[0] || null;
+      return (Array.isArray(payload?.players) ? payload.players : Array.isArray(payload?.player) ? payload.player : []).map(playerRecord).filter(Boolean)[0] || null;
     },
     getStats: () => getJson.getStats(),
   };
