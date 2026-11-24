@@ -803,6 +803,18 @@ function canonicalEntityKind(type) {
   return ["club", "national", "player", "coach", "league", "tournament"].includes(type) ? type : "other";
 }
 
+function isDisplayableEntityAsset(asset) {
+  const license = String(asset?.license_code || "");
+  const allowedLicense = /cc0|public domain|cc[\\s-]?by(?:[\\s-]?sa)?/i.test(license);
+  const requiresAttribution = /cc[\\s-]?by/i.test(license);
+  const credit = String(asset?.attribution_text || asset?.creator || "").trim();
+  return asset?.license_status === "verified" &&
+    allowedLicense &&
+    /^https:\\/\\//i.test(String(asset?.asset_url || "")) &&
+    (!requiresAttribution || (credit && asset?.license_url && asset?.source_page_url)) &&
+    !asset?.metadata?.trademarkReviewRequired;
+}
+
 async function searchCanonicalEntities(query, types, limit) {
   const normalizedQuery = String(query || "").trim();
   if (normalizedQuery.length < 2) return [];
@@ -818,7 +830,7 @@ async function searchCanonicalEntities(query, types, limit) {
   if (ids.length) {
     try {
       assets = await dbRows(
-        "/rest/v1/korax_entity_assets?select=entity_id,asset_type,asset_url,is_primary,license_status,license_code" +
+        "/rest/v1/korax_entity_assets?select=entity_id,asset_type,asset_url,is_primary,license_status,license_code,license_url,creator,attribution_text,source_page_url,metadata" +
         "&entity_id=in.(" + ids.map(encodeURIComponent).join(",") + ")" +
         "&license_status=eq.verified&order=is_primary.desc&limit=500"
       );
@@ -828,10 +840,8 @@ async function searchCanonicalEntities(query, types, limit) {
   }
   const imageByEntity = new Map();
   for (const asset of Array.isArray(assets) ? assets : []) {
-    const noAttributionLicense = /cc0|public domain/i.test(String(asset.license_code || ""));
-    if (noAttributionLicense && !imageByEntity.has(asset.entity_id) &&
-        /^https:\/\//i.test(String(asset.asset_url || ""))) {
-      imageByEntity.set(asset.entity_id, asset.asset_url);
+    if (isDisplayableEntityAsset(asset) && !imageByEntity.has(asset.entity_id)) {
+      imageByEntity.set(asset.entity_id, asset);
     }
   }
   return entities.map(row => {
@@ -839,7 +849,8 @@ async function searchCanonicalEntities(query, types, limit) {
     const name = String(row.name_ar || row.canonical_name || row.name_en || "").trim();
     const id = String(row.id || "");
     if (!name || !/^[0-9a-f-]{36}$/i.test(id)) return null;
-    const imageUrl = imageByEntity.get(id) || "";
+    const imageAsset = imageByEntity.get(id) || null;
+    const imageUrl = imageAsset?.asset_url || "";
     const competition = type === "league" || type === "tournament";
     return {
       id,
@@ -854,6 +865,10 @@ async function searchCanonicalEntities(query, types, limit) {
       imageUrl,
       image_path: imageUrl,
       logoUrl: imageUrl,
+      imageAttribution: imageAsset?.attribution_text || imageAsset?.creator || "",
+      imageLicense: imageAsset?.license_code || "",
+      imageLicenseUrl: imageAsset?.license_url || "",
+      imageSourceUrl: imageAsset?.source_page_url || "",
       type: type === "club" || type === "national" ? "team" : type,
       koraxKind: type,
       kind: competition ? type : undefined,
@@ -881,9 +896,7 @@ async function getCanonicalEntityProfile(id) {
     if (!item || !item.field_key || facts[item.field_key] !== undefined) continue;
     facts[item.field_key] = item.value;
   }
-  const verifiedAssets = (Array.isArray(assetRows) ? assetRows : []).filter(asset =>
-    /cc0|public domain/i.test(String(asset.license_code || ""))
-  );
+  const verifiedAssets = (Array.isArray(assetRows) ? assetRows : []).filter(isDisplayableEntityAsset);
   const preferredImage = verifiedAssets.find(asset => asset.is_primary) || verifiedAssets[0] || null;
   const metadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata : {};
   const root = {
@@ -898,6 +911,10 @@ async function getCanonicalEntityProfile(id) {
     imageUrl: preferredImage?.asset_url || "",
     image_path: preferredImage?.asset_url || "",
     logoUrl: preferredImage?.asset_url || "",
+    imageAttribution: preferredImage?.attribution_text || preferredImage?.creator || "",
+    imageLicense: preferredImage?.license_code || "",
+    imageLicenseUrl: preferredImage?.license_url || "",
+    imageSourceUrl: preferredImage?.source_page_url || "",
     position: facts.playing_position || metadata.position || "",
     position_name: facts.playing_position || metadata.position || "",
     team_name: facts.current_team?.name || facts.current_team || metadata.teamName || "",
