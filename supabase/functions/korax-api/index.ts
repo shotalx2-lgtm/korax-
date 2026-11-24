@@ -28,6 +28,26 @@ async function dbRows(path) {
   return body ? JSON.parse(body) : [];
 }
 
+
+async function dbRpc(functionName, payload) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) throw new Error("Supabase database access is not configured");
+  if (!/^[a-z0-9_]+$/.test(functionName)) throw new Error("Invalid database RPC name");
+  const response = await fetch(SUPABASE_URL + "/rest/v1/rpc/" + functionName, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_SERVICE_KEY,
+      Authorization: "Bearer " + SUPABASE_SERVICE_KEY,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(12000),
+  });
+  const body = await response.text();
+  if (!response.ok) throw new Error("KORAX RPC HTTP " + response.status + ": " + body.slice(0, 500));
+  return body ? JSON.parse(body) : [];
+}
+
 function cachedMatchPayload(row) {
   const detail = row?.detail ? unwrap(row.detail) : null;
   const raw = detail || row?.raw_fixture || {};
@@ -776,6 +796,133 @@ async function searchCachedCompetitions(query, limit) {
   ).slice(0, limit);
 }
 
+
+function canonicalEntityKind(type) {
+  return ["club", "national", "player", "coach", "league", "tournament"].includes(type) ? type : "other";
+}
+
+async function searchCanonicalEntities(query, types, limit) {
+  const normalizedQuery = String(query || "").trim();
+  if (normalizedQuery.length < 2) return [];
+  const rows = await dbRpc("search_korax_entities", {
+    p_query: normalizedQuery,
+    p_types: types,
+    p_limit: Math.min(100, Math.max(1, Number(limit) || 30)),
+  });
+  const entities = Array.isArray(rows) ? rows : [];
+  if (!entities.length) return [];
+  const ids = entities.map(row => String(row.id || "")).filter(id => /^[0-9a-f-]{36}$/i.test(id));
+  let assets = [];
+  if (ids.length) {
+    try {
+      assets = await dbRows(
+        "/rest/v1/korax_entity_assets?select=entity_id,asset_type,asset_url,is_primary,license_status" +
+        "&entity_id=in.(" + ids.map(encodeURIComponent).join(",") + ")" +
+        "&license_status=eq.verified&order=is_primary.desc&limit=500"
+      );
+    } catch (error) {
+      console.error("[korax-world-search] verified asset lookup failed", String(error).slice(0, 200));
+    }
+  }
+  const imageByEntity = new Map();
+  for (const asset of Array.isArray(assets) ? assets : []) {
+    if (!imageByEntity.has(asset.entity_id) && /^https:\/\//i.test(String(asset.asset_url || ""))) {
+      imageByEntity.set(asset.entity_id, asset.asset_url);
+    }
+  }
+  return entities.map(row => {
+    const type = canonicalEntityKind(row.entity_type);
+    const name = String(row.name_ar || row.canonical_name || row.name_en || "").trim();
+    const id = String(row.id || "");
+    if (!name || !/^[0-9a-f-]{36}$/i.test(id)) return null;
+    const imageUrl = imageByEntity.get(id) || "";
+    const competition = type === "league" || type === "tournament";
+    return {
+      id,
+      slug: id,
+      name,
+      name_ar: row.name_ar || "",
+      name_en: row.name_en || row.canonical_name || "",
+      canonical_name: row.canonical_name || name,
+      aliases: Array.isArray(row.aliases) ? row.aliases : [],
+      country: row.country_name || row.country_code || "",
+      country_code: row.country_code || "",
+      imageUrl,
+      image_path: imageUrl,
+      logoUrl: imageUrl,
+      type: type === "club" || type === "national" ? "team" : type,
+      koraxKind: type,
+      kind: competition ? type : undefined,
+      source: "korax-canonical-entity-index",
+      score: Number(row.score || 0),
+      verification_status: row.verification_status || "unverified",
+    };
+  }).filter(Boolean);
+}
+
+async function getCanonicalEntityProfile(id) {
+  const safeId = String(id || "");
+  if (!/^[0-9a-f-]{36}$/i.test(safeId)) return null;
+  const filterId = encodeURIComponent(safeId);
+  const [entityRows, factRows, assetRows, sourceRows] = await Promise.all([
+    dbRows("/rest/v1/korax_entities?select=*&id=eq." + filterId + "&is_active=eq.true&limit=1"),
+    dbRows("/rest/v1/korax_entity_facts?select=field_key,value,source_key,confidence,observed_at&entity_id=eq." + filterId + "&is_current=eq.true&order=observed_at.desc&limit=100"),
+    dbRows("/rest/v1/korax_entity_assets?select=asset_type,asset_url,source_key,source_page_url,license_code,license_url,creator,attribution_text,license_status,is_primary&entity_id=eq." + filterId + "&license_status=eq.verified&order=is_primary.desc&limit=30"),
+    dbRows("/rest/v1/korax_entity_sources?select=source_key,external_id,external_url,confidence,is_primary&entity_id=eq." + filterId + "&limit=30"),
+  ]);
+  const entity = Array.isArray(entityRows) ? entityRows[0] : null;
+  if (!entity) return null;
+  const facts = {};
+  for (const item of Array.isArray(factRows) ? factRows : []) {
+    if (!item || !item.field_key || facts[item.field_key] !== undefined) continue;
+    facts[item.field_key] = item.value;
+  }
+  const verifiedAssets = Array.isArray(assetRows) ? assetRows : [];
+  const preferredImage = verifiedAssets.find(asset => asset.is_primary) || verifiedAssets[0] || null;
+  const metadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata : {};
+  const root = {
+    id: entity.id,
+    slug: entity.id,
+    name: entity.name_ar || entity.canonical_name || entity.name_en || "",
+    name_ar: entity.name_ar || "",
+    name_en: entity.name_en || entity.canonical_name || "",
+    country: entity.country_name || entity.country_code || "",
+    country_name: entity.country_name || "",
+    country_code: entity.country_code || "",
+    imageUrl: preferredImage?.asset_url || "",
+    image_path: preferredImage?.asset_url || "",
+    logoUrl: preferredImage?.asset_url || "",
+    position: facts.playing_position || metadata.position || "",
+    position_name: facts.playing_position || metadata.position || "",
+    team_name: facts.current_team?.name || facts.current_team || metadata.teamName || "",
+    date_of_birth: entity.birth_date || facts.birth_date || "",
+    birthdate: entity.birth_date || facts.birth_date || "",
+    founded: entity.founded_on || facts.founded_on || "",
+    venue: metadata.stadiumName || facts.stadium?.name || "",
+    capacity: metadata.stadiumCapacity || "",
+    height: metadata.height || facts.height || "",
+    weight: metadata.weight || facts.weight || "",
+    facts,
+    assets: verifiedAssets,
+    sources: Array.isArray(sourceRows) ? sourceRows : [],
+    source: "korax-canonical-entity-index",
+    verification_status: entity.verification_status || "unverified",
+    completeness: entity.completeness || 0,
+  };
+  for (const key of ["formedYear", "shirtNumber", "stadiumName", "leagueName", "officialWebsite"]) {
+    if (metadata[key] !== undefined && metadata[key] !== null && metadata[key] !== "") {
+      const mapped = key === "formedYear" ? "founded" : key === "shirtNumber" ? "shirt_number" :
+        key === "stadiumName" ? "venue" : key === "leagueName" ? "league" : "website";
+      root[mapped] = metadata[key];
+    }
+  }
+  const type = canonicalEntityKind(entity.entity_type);
+  if (type === "club" || type === "national") return { team: root };
+  if (type === "player" || type === "coach") return { player: root };
+  if (type === "league" || type === "tournament") return { competition: root };
+  return { entity: root };
+}
+
 async function getCachedTeamProfile(slug) {
   const rows = await getCachedEntityMatchRows();
   const entries = [];
@@ -1208,32 +1355,40 @@ async function route(request, env) {
       httpsImage(row.standings?.competition_logo, row.standings?.competition_image,
         row.standings?.imageUrl, row.standings?.logoUrl),
     ]));
-    const data = KORAX_COMPETITIONS.map((item) => {
+    const index = KORAX_COMPETITIONS.map((item) => {
       const imageUrl = badges.get(item.slug) || "";
-      return {
-        ...item,
-        kind: item.slug === "uefa-champions-league" ? "tournament" : "league",
-        imageUrl,
-        logoUrl: imageUrl,
-      };
+      return { ...item, kind: item.slug === "uefa-champions-league" ? "tournament" : "league", imageUrl, logoUrl: imageUrl };
     });
     if (search.length >= 2) {
-      const matches = await searchCachedCompetitions(search, perPage);
+      const [canonical, cached] = await Promise.all([
+        searchCanonicalEntities(search, ["league", "tournament"], perPage),
+        searchCachedCompetitions(search, perPage),
+      ]);
+      const merged = [...canonical, ...cached];
+      const seen = new Set();
+      const data = merged.filter(item => {
+        const key = normalizeSearchText(item.name || item.providerName);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, perPage);
       return json({
-        data: matches,
-        source: "sportscore-search",
-        meta: {
-          count: matches.length,
-          query: search,
-          catalogueScope: "competitions recorded in the KORAX match cache",
-        },
+        data,
+        source: canonical.length ? "korax-canonical-and-sportscore-search" : "sportscore-search",
+        meta: { count: data.length, query: search, canonicalCount: canonical.length,
+          catalogueScope: canonical.length ? "canonical provider catalog plus cached SportScore competitions" :
+            "competitions recorded in the KORAX match cache" },
       });
     }
-    return json({ data, source: "sportscore-competition-index" });
+    return json({ data: index, source: "sportscore-competition-index" });
   }
-
   const competition = path.match(/^\/api\/competitions\/([A-Za-z0-9_-]+)$/);
   if (competition) {
+    if (/^[0-9a-f-]{36}$/i.test(competition[1])) {
+      const data = await getCanonicalEntityProfile(competition[1]);
+      return data ? json({ data, source: "korax-canonical-entity-index" })
+        : json({ error: "Competition is not in the canonical catalog", retryable: true }, 404);
+    }
     const slug = encodeURIComponent(competition[1]);
     const rows = await dbRows("/rest/v1/korax_sportscore_competitions?select=slug,name,country,standings,updated_at&slug=eq." + slug + "&limit=1");
     const row = Array.isArray(rows) ? rows[0] : null;
@@ -1257,33 +1412,56 @@ async function route(request, env) {
 
   if (path === "/api/teams" || path === "/api/players") {
     const search = (url.searchParams.get("search") || "").trim();
-    const kind = path === "/api/teams" ? "team" : "player";
+    const isTeamSearch = path === "/api/teams";
+    const requestedTypes = (url.searchParams.get("types") || "").split(",").map(value => value.trim()).filter(Boolean);
     if (search.length < 2) {
       return json({
         data: [],
-        meta: { requiresSearch: true, catalogueScope: kind === "team" ? "cached match participants" : "players in cached match lineups and incidents" },
-        source: "sportscore-search",
+        meta: { requiresSearch: true, catalogueScope: isTeamSearch
+          ? "canonical clubs/national teams plus cached match participants"
+          : "canonical players/coaches plus players in cached lineups" },
+        source: "korax-canonical-entity-index",
       });
     }
-    const data = kind === "team"
-      ? searchCachedTeamEntities(await getCachedEntityMatchRows(), search, perPage)
-      : await searchCachedPlayers(search, perPage);
+    const types = isTeamSearch ? ["club", "national"] :
+      requestedTypes.length ? requestedTypes.filter(value => ["player", "coach"].includes(value)) : ["player"];
+    const canonicalPromise = searchCanonicalEntities(search, types, perPage);
+    const cachedPromise = isTeamSearch
+      ? getCachedEntityMatchRows().then(rows => searchCachedTeamEntities(rows, search, perPage))
+      : (types.includes("player") ? searchCachedPlayers(search, perPage) : Promise.resolve([]));
+    const [canonical, cached] = await Promise.all([canonicalPromise, cachedPromise]);
+    const merged = [...canonical, ...cached];
+    const seen = new Set();
+    const data = merged.filter(item => {
+      const kind = item.koraxKind || (isTeamSearch ? "club" : "player");
+      const key = kind + "|" + normalizeSearchText(item.name);
+      if (!normalizeSearchText(item.name) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, perPage);
     return json({
       data,
-      source: "sportscore-search",
+      source: canonical.length ? "korax-canonical-and-sportscore-search" : "sportscore-search",
       meta: {
         count: data.length,
         query: search,
-        catalogueScope: kind === "team"
-          ? "teams appearing in the cached SportScore fixtures"
-          : "players present in cached SportScore lineups, substitutes and incidents; not a complete world-player catalogue",
-        providerSearchUnavailable: true,
+        canonicalCount: canonical.length,
+        entityTypes: types,
+        catalogueScope: canonical.length
+          ? "canonical entities imported from active providers plus the current SportScore cache"
+          : isTeamSearch
+            ? "teams appearing in cached SportScore fixtures"
+            : "players present in cached SportScore lineups, substitutes and incidents",
       },
     });
   }
-
   const team = path.match(/^\/api\/teams\/([A-Za-z0-9_-]+)$/);
   if (team) {
+    if (/^[0-9a-f-]{36}$/i.test(team[1])) {
+      const data = await getCanonicalEntityProfile(team[1]);
+      return data ? json({ data, source: "korax-canonical-entity-index" })
+        : json({ error: "Entity is not in the canonical catalog", retryable: true }, 404);
+    }
     if (team[1].startsWith("cached-team-")) {
       const data = await getCachedTeamProfile(team[1]);
       return data
@@ -1296,6 +1474,11 @@ async function route(request, env) {
 
   const player = path.match(/^\/api\/players\/([A-Za-z0-9_-]+)$/);
   if (player) {
+    if (/^[0-9a-f-]{36}$/i.test(player[1])) {
+      const data = await getCanonicalEntityProfile(player[1]);
+      return data ? json({ data, source: "korax-canonical-entity-index" })
+        : json({ error: "Entity is not in the canonical catalog", retryable: true }, 404);
+    }
     if (player[1].startsWith("cached-player-")) {
       const data = await getCachedPlayerProfile(player[1]);
       return data
