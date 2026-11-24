@@ -288,7 +288,8 @@ internal object KoraxSmartAlerts {
         send(
             context, "kickoff", "⏰ مباراة تتابعها تبدأ خلال 30 دقيقة",
             message.ifBlank { "موعد المباراة اقترب" }, logo, "",
-            key
+            key,
+            matchId = matchId
         )
         preferences.edit().putBoolean(key, true).apply()
     }
