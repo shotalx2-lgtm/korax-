@@ -195,7 +195,8 @@ jobs:
                   "german bundesliga", "saudi professional league", "saudi pro league",
                   "uefa champions league", "egyptian premier league", "caf champions league",
                   "caf confederation cup", "afc champions league elite", "uefa europa league",
-                  "uefa europa conference league", "fifa world cup", "africa cup of nations"
+                  "uefa europa conference league", "fifa world cup", "africa cup of nations",
+                  "english championship 2026/27", "brasileiro série a 2026"
                 ]);
                 const unexpected = value.data.filter(item => {
                   const name = String(item.competitionName || item.competition?.name || "").toLowerCase();
