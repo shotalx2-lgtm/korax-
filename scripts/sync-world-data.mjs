@@ -12,7 +12,9 @@ const RUN_ID = String(process.env.GITHUB_RUN_ID || ("manual-" + Date.now()));
 const RUN_ATTEMPT = String(process.env.GITHUB_RUN_ATTEMPT || "1");
 const RUN_KEY = RUN_ID + ":" + RUN_ATTEMPT;
 const NOW = new Date().toISOString();
-const SOURCE_KEYS = ["thesportsdb", "openligadb", "openfootball", "wikidata", "wikimedia_commons"];
+const ALL_SOURCE_KEYS = ["thesportsdb", "openligadb", "openfootball", "wikidata", "wikimedia_commons"];
+const OPENLIGA_ONLY = process.env.KORAX_SYNC_SCOPE === "openligadb";
+const SOURCE_KEYS = OPENLIGA_ONLY ? ["openligadb"] : ALL_SOURCE_KEYS;
 const LEAGUES = [
   { country: "England", countryCode: "GB", league: "English Premier League" },
   { country: "Spain", countryCode: "ES", league: "Spanish La Liga" },
@@ -409,6 +411,8 @@ async function runOpenLigaDb(previousCoverage) {
     } catch (error) { errors.push(league.leagueName + ": " + String(error).slice(0, 180)); }
   }
   const stats = source.getStats();
+  const noCoverage = list.length === 0 || checked === 0;
+  if (noCoverage && !errors.length) errors.push("No eligible football leagues were discovered or checked.");
   report("openligadb", errors.length ? (checked ? "partial" : "failed") : "success",
     stats.requestCount, recordCount, { errors, startedAt, leaguesChecked: checked, leaguesDiscovered: list.length });
 }
@@ -504,14 +508,16 @@ async function main() {
   const state = await callSync(token, { action: "state", sourceKeys: ["openligadb"] });
   const previousCoverage = Array.isArray(state.coverage) ? state.coverage : [];
 
-  await runTheSportsDb();
+  if (!OPENLIGA_ONLY) await runTheSportsDb();
   try { await runOpenLigaDb(previousCoverage); }
   catch (error) { report("openligadb", "failed", 0, 0, { errors: [String(error)] }); }
-  await runOpenFootball();
-  const wikidataRecords = await runWikidata();
-  await runCommons(wikidataRecords);
-  linkTheSportsDbRecordsToWikidata();
-  addMergeCandidates();
+  if (!OPENLIGA_ONLY) {
+    await runOpenFootball();
+    const wikidataRecords = await runWikidata();
+    await runCommons(wikidataRecords);
+    linkTheSportsDbRecordsToWikidata();
+    addMergeCandidates();
+  }
 
   for (const sourceKey of SOURCE_KEYS) {
     const item = sourceOutcomes.get(sourceKey) || {
