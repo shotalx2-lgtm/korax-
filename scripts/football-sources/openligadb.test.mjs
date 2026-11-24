@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterCurrentFootballLeagues, normalizeOpenLigaMatch } from "./openligadb.mjs";
+import { filterCurrentFootballLeagues, normalizeOpenLigaMatch, openLigaDbNormalizers } from "./openligadb.mjs";
 
 test("filters out old seasons, test leagues and non-football sports", () => {
   const leagues = [
@@ -47,4 +47,17 @@ test("normalizes OpenLigaDB scores, goals and a stable match fingerprint", () =>
   assert.equal(match.isFinished, true);
   assert.equal(match.isLive, false);
   assert.equal(match.rawPayload.goals.length, 1);
+});
+
+test("normalizes league source IDs and keeps ODbL provenance", () => {
+  const league = openLigaDbNormalizers.leagueRecord({
+    leagueId: 101,
+    leagueName: "UEFA Champions League 2026/27",
+    leagueShortcut: "ucl",
+    leagueSeason: "2026",
+    sport: { sportId: 1, sportName: "Fußball" },
+  });
+  assert.equal(league.entityType, "tournament");
+  assert.equal(league.externalId, "101");
+  assert.equal(league.metadata.license, "ODbL-1.0");
 });
