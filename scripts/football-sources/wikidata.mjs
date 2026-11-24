@@ -53,6 +53,8 @@ export function normalizeWikidataBinding(binding) {
   const organizerQid = qidFromUri(bindingValue(binding, "organizer"));
   const imageUrl = bindingValue(binding, "image");
   const logoUrl = bindingValue(binding, "logo");
+  const flagUrl = bindingValue(binding, "flag");
+  const stadiumImageUrl = bindingValue(binding, "stadiumImage");
   const externalIds = {
     uefaTeamId: bindingValue(binding, "uefaTeamId"),
     transfermarktTeamId: bindingValue(binding, "transfermarktTeamId"),
@@ -69,6 +71,8 @@ export function normalizeWikidataBinding(binding) {
   const assetCandidates = [
     imageUrl ? { assetType: entityType === "player" ? "portrait" : "other", fileName: commonsFileName(imageUrl), specialFileUrl: imageUrl } : null,
     logoUrl ? { assetType: "logo", fileName: commonsFileName(logoUrl), specialFileUrl: logoUrl } : null,
+    flagUrl ? { assetType: "flag", fileName: commonsFileName(flagUrl), specialFileUrl: flagUrl } : null,
+    stadiumImageUrl ? { assetType: "stadium", fileName: commonsFileName(stadiumImageUrl), specialFileUrl: stadiumImageUrl } : null,
   ].filter(Boolean);
 
   const foundedOn = toIsoDate(bindingValue(binding, "inception"));
@@ -93,6 +97,7 @@ export function normalizeWikidataBinding(binding) {
       countryQid,
       stadiumQid,
       stadiumName: bindingValue(binding, "stadiumLabel"),
+      stadiumCapacity: bindingValue(binding, "stadiumCapacity"),
       leagueQid,
       leagueName: bindingValue(binding, "leagueLabel"),
       organizerQid,
@@ -117,7 +122,7 @@ export function buildFootballEntitiesQuery({ countryQids = COUNTRY_QIDS, limit =
 SELECT DISTINCT ?item ?class ?itemLabel ?itemAltLabel ?nameAr ?nameEn
        ?country ?countryLabel ?countryCode ?inception
        ?stadium ?stadiumLabel ?league ?leagueLabel ?organizer ?organizerLabel
-       ?image ?logo ?officialWebsite ?competitionClass ?leagueLevel
+       ?image ?logo ?flag ?stadiumImage ?stadiumCapacity ?officialWebsite ?competitionClass ?leagueLevel
        ?uefaTeamId ?transfermarktTeamId ?espnTeamId ?scorebarId ?soccerbaseId
        ?footballDatabaseId ?transfermarktCompetitionId ?fbrefCompetitionId ?worldFootballId
 WHERE {
@@ -128,6 +133,9 @@ WHERE {
   OPTIONAL { ?country wdt:P297 ?countryCode. }
   OPTIONAL { ?item wdt:P571 ?inception. }
   OPTIONAL { ?item wdt:P115 ?stadium. }
+  OPTIONAL { ?stadium wdt:P18 ?stadiumImage. }
+  OPTIONAL { ?stadium wdt:P1083 ?stadiumCapacity. }
+  OPTIONAL { ?item wdt:P41 ?flag. }
   OPTIONAL { ?item wdt:P118 ?league. }
   OPTIONAL { ?item wdt:P664 ?organizer. }
   OPTIONAL { ?item wdt:P18 ?image. }
