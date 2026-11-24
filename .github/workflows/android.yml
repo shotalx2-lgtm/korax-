@@ -28,8 +28,10 @@ jobs:
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Type-check the new world-data Edge Function
-        run: deno check supabase/functions/korax-world-data-sync/index.ts
+      - name: Type-check Supabase Edge Functions
+        run: |
+          deno check supabase/functions/korax-api/index.ts
+          deno check supabase/functions/korax-world-data-sync/index.ts
 
       - name: Test football data worker
         working-directory: worker
