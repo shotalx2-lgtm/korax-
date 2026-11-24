@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -16,6 +17,23 @@ val hasReleaseSigning = listOf(
     releaseKeyAlias,
     releaseKeyPassword
 ).all { !it.isNullOrBlank() }
+
+val notificationSoundSourceDir = layout.projectDirectory.dir("notification-sounds")
+val notificationSoundGeneratedResDir = layout.buildDirectory.dir("generated/res/koraxNotificationSounds")
+val generateNotificationSounds by tasks.registering {
+    inputs.dir(notificationSoundSourceDir)
+    outputs.dir(notificationSoundGeneratedResDir)
+    doLast {
+        val rawDirectory = notificationSoundGeneratedResDir.get().asFile.resolve("raw")
+        rawDirectory.mkdirs()
+        notificationSoundSourceDir.asFile.listFiles { file -> file.isFile && file.name.endsWith(".wav.b64") }
+            ?.forEach { source ->
+                val resourceName = source.name.removeSuffix(".wav.b64").lowercase()
+                val decoded = Base64.getDecoder().decode(source.readText().trim())
+                rawDirectory.resolve("$resourceName.wav").writeBytes(decoded)
+            }
+    }
+}
 
 android {
     namespace = "com.koora.app"
@@ -66,6 +84,11 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+}
+
+android.sourceSets.getByName("main").res.srcDir(notificationSoundGeneratedResDir)
+tasks.named("preBuild").configure {
+    dependsOn(generateNotificationSounds)
 }
 
 kotlin {
