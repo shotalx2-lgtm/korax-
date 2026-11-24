@@ -72,7 +72,12 @@ test("deduplicates the same fixture across supplemental providers and prefers Op
 test("main scope includes supported top tiers and the newly added Championship and Brazil season", () => {
   const rows = [
     baseRow({ external_id: "championship" }),
-    baseRow({ external_id: "brazil", competition_name: "Brasileiro Série A 2026" }),
+    baseRow({
+      external_id: "brazil",
+      competition_name: "Brasileiro Série A 2026",
+      home_team_name: "São Paulo FC",
+      away_team_name: "CR Flamengo",
+    }),
     baseRow({ external_id: "random", competition_name: "Random Regional League" }),
   ];
   const result = mergeSupplementalMatchFeed([], rows, { mode: "finished", scope: "main" });
