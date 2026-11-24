@@ -515,22 +515,28 @@ internal object KoraxSmartAlerts {
             val source = item.optString("source")
             if (!FootballNewsFilter.isFootballNews(title, summary, source)) continue
             val key = item.optString("url").ifBlank { item.optString("id") }
-            if (key.isBlank()) continue
-            if (!seeded) seen.add(key) else if (seen.add(key) && newsMatchesFavorite(context, item)) fresh.add(item)
+            if (key.isBlank() || key in seen) continue
+            if (!seeded) {
+                seen.add(key)
+            } else if (newsMatchesFavorite(context, item) && isEnabled(context, "news")) {
+                fresh.add(item)
+            } else {
+                seen.add(key)
+            }
         }
         if (seeded && isEnabled(context, "news")) {
-            fresh.take(1).forEach { item ->
+            val item = fresh.firstOrNull()
+            if (item != null) {
                 val articleTitle = item.optString("title").ifBlank { "خبر كروي جديد" }
-                val source = item.optString("source")
                 val summary = item.optString("summary")
-                val age = relativeNewsAge(item.optString("publishedAt"))
-                val isBreaking = Regex("عاجل|رسميا|بشكل رسمي", RegexOption.IGNORE_CASE).containsMatchIn(articleTitle)
+                val isBreaking = Regex("عاجل|رسميا|رسميًا|بشكل رسمي", RegexOption.IGNORE_CASE).containsMatchIn(articleTitle)
                 val notificationTitle = if (isBreaking) "🚨 عاجل • ${articleTitle.take(58)}" else "📰 ${articleTitle.take(64)}"
                 val snippet = summary.replace(Regex("\\s+"), " ").trim().take(112)
                 val expandedBody = listOf(articleTitle, snippet).filter { it.isNotBlank() }.joinToString(" • ")
                     .ifBlank { "اضغط لقراءة تفاصيل الخبر" }
                 val image = item.optString("imageUrl").takeIf { it.startsWith("https://") }.orEmpty()
                 val key = item.optString("url").ifBlank { item.optString("id") }
+                seen.add(key)
                 send(context, "news", notificationTitle, snippet.ifBlank { "اضغط لقراءة تفاصيل الخبر" }, "", image, key, expandedBody)
             }
         }
