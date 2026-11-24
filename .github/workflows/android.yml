@@ -279,7 +279,8 @@ jobs:
                 const kind = process.env.PROFILE_ENDPOINT === "teams" ? "team"
                   : process.env.PROFILE_ENDPOINT === "players" ? "player" : "competition";
                 const entity = kind === "competition"
-                  ? (value.data?.competition || { name: value.name || value.data?.name })
+                  ? { name: value.name || (typeof value.data?.competition === "string"
+                    ? value.data.competition : value.data?.competition?.name) || value.data?.name }
                   : value.data?.[kind];
                 if (!entity?.name) throw new Error(kind + " profile did not open from cached entity search: " + raw);
                 console.log(kind + " cached profile passed:", entity.name);
