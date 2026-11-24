@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { mergeSupplementalMatchFeed } from "./external-match-feed.mjs";
 import { isFootballNewsArticle } from "./news-filter.mjs";
 
 /**
@@ -1357,6 +1358,8 @@ const MAIN_COMPETITION_NAMES = [
   "AFC Champions League Elite",
   "UEFA Europa League", "UEFA Europa Conference League",
   "FIFA World Cup", "Africa Cup of Nations",
+  "English Championship", "English Championship 2026/27", "EFL Championship", "English Football League Championship",
+  "Brasileiro Série A", "Brasileiro Série A 2026", "Brazilian Serie A", "Campeonato Brasileiro Série A",
 ];
 
 
@@ -1408,11 +1411,35 @@ async function route(request, env) {
     filters.push("limit=" + (mode === "live" ? "100" : "300"));
     const rows = await dbRows("/rest/v1/korax_sportscore_matches?" + filters.join("&"));
     const matches = (Array.isArray(rows) ? rows : []).map(cachedMatchPayload);
+    let supplementalRows = [];
+    let supplementalUnavailable = false;
+    if (mode !== "live") {
+      const extraFilters = [
+        "select=source_key,external_id,competition_name,season,match_date,kickoff_at,home_team_name,away_team_name,home_score,away_score,status,is_live,is_finished,canonical_match_slug,raw_payload",
+        "match_date=eq." + encodeURIComponent(date),
+      ];
+      if (mode === "upcoming") extraFilters.push("is_live=eq.false", "is_finished=eq.false");
+      if (mode === "finished") extraFilters.push("is_finished=eq.true");
+      extraFilters.push("order=kickoff_at.asc.nullslast", "limit=500");
+      try {
+        const external = await dbRows("/rest/v1/korax_external_matches?" + extraFilters.join("&"));
+        supplementalRows = Array.isArray(external) ? external : [];
+      } catch (error) {
+        supplementalUnavailable = true;
+        console.error("[KORAX supplemental match feed] unavailable; retaining SportScore results", String(error).slice(0, 240));
+      }
+    }
+    const merged = mergeSupplementalMatchFeed(matches, supplementalRows, { mode, scope });
+    const supplementalCount = Math.max(0, merged.length - matches.length);
     return json({
-      data: matches,
+      data: merged,
       meta: {
-        count: matches.length, date, mode, scope,
+        count: merged.length, date, mode, scope,
         live: mode === "live",
+        sportScoreCount: matches.length,
+        supplementalCount,
+        supplementalSources: [...new Set(merged.filter(item => item.sourceKey).map(item => item.sourceKey))],
+        supplementalUnavailable,
         cacheUpdatedAt: rows.reduce((latest, row) =>
           String(row.updated_at || "") > latest ? String(row.updated_at) : latest, ""),
       },
