@@ -1,74 +1,64 @@
-# KORAX implementation status — 23 November 2026
+# KORAX implementation status — 24 November 2026
 
-## Snapshot
+## Product decisions
 
-- Repository: `shotalx2-lgtm/korax-`
-- Branch: `main`
-- Reference commit: `20a4a92615c351d167049b3e5f63966020f0f93e`
-- Android package/version: `com.koora.app`, `0.6.2`, versionCode `9`
-- Current active Android API default: Supabase Edge Function `korax-api`
-- SportScore sync Edge Function: version 8, with GitHub OIDC restricted to the dedicated sync workflow on `main`
+- Android app: `com.koora.app`
+- Release target: `0.6.8`, versionCode `15`
+- Default branch: `main`
+- No login or account system by product decision.
+- No fantasy game or fantasy endpoints by product decision.
+- Favorites, article interactions, comments, notifications history, offline saves, settings and backup/restore remain device-local.
 
 ## Feature status
 
-| Area | Status | Verified state |
+| Area | Current state | Scope and limitation |
 |---|---|---|
-| News feed | Partial | Arabic and English publisher RSS aggregation, deduplication, cache, source/date/summary, image when the feed supplies one |
-| News details | Partial | Internal detail screen, share/save/comment controls; content is the available RSS summary, with publisher link for the full article |
-| Favorites | Partial | Team/player/competition favorites persist locally; not account-linked or synced across devices |
-| Match list/live/schedule | Implemented with source limits | Supabase-backed SportScore match cache; API checks passed |
-| Match details | Partial | Only rows with detail payloads have extra content; provider fields may be empty or unavailable |
-| Competitions/standings | Partial | Seven competition tables stored; freshness must be verified regularly |
-| Team/player data | Partial | Search/profile endpoints exist, but complete squads and consistent profile coverage are not guaranteed |
-| Local alerts | Partial | WorkManager polls in the background; Android may defer it, and it is not a remote real-time push service |
-| Accounts | Missing | No active email/password or Google sign-in flow in current Android main |
-| Shared comments/favorites | Missing | Backend groundwork exists, but Android uses local storage for these interactions |
-| FCM remote push | Missing | No Android FCM SDK, token registration, or Firebase messaging service in current main |
-| Fantasy | Missing | Experimental Worker catalogue only; no complete player market or live round scoring |
+| News | Football-only | Arabic and English publisher RSS; server filter excludes general politics and other sports; full articles remain at publisher links |
+| News details | Implemented with RSS scope | In-app title, excerpt, source, time, image when supplied, save/share and local comments |
+| Match feed | Implemented with provider/cache limits | Live, date fixtures and finished matches through SportScore cache |
+| Match details | Partial by source availability | Events, lineups, statistics and referee/venue only when supplied in the cached detail record |
+| Competitions | Seven curated standings | Other competitions may appear in search or fixture lists without an available standings table |
+| Team profiles | Partial, improved | Local cache history, competitions and players found in cached lineups; explicitly not a complete official squad |
+| Player profiles | Partial, improved | Player details, lineup presence and event counts only where detail payloads exist |
+| Favorites | Local and implemented | Club, national team, player and competition favorites; backup/restore is available |
+| Notifications | Local alerts | Favorite-aware news alerts; match event notifications; foreground polling and WorkManager background checks |
+| Login/accounts | Not included | Intentionally omitted; no account UI or user sessions |
+| Fantasy | Not included | Removed from API routes and worker; no fantasy market or scoring UI |
+| Cloud sync/comments | Not included | No shared cross-device data |
+| FCM server push | Not included | No device-token registration or remote push delivery; local Android notifications only |
 
-## Match-data snapshot
+## Data snapshot before the extended detail-sync rollout
 
-At the last database diagnostic on 23 November 2026:
+Supabase diagnostics on 24 November 2026 showed:
 
-- 1,631 match rows.
-- 44 rows with a non-null detail payload.
-- 9 live matches at that instant.
-- 7 competition standings records.
+- 1,888 rows in `korax_sportscore_matches`.
+- 66 rows with non-null `detail` payloads.
+- 7 stored competition standings records.
 
-After the successful push-triggered sync run #25, the match table's latest general update advanced to 14:17:26 UTC. That run collected and stored 50 matches, zero match details, and zero standings tables. Detail data was last updated at 12:16:02 UTC; standings were last updated at 12:08:39 UTC.
+These are a snapshot, not a promise of complete coverage. The new sync window is configured for seven days in the past and fourteen days ahead, with 20 details fetched per 15-minute cycle. New match records continue to refresh on the configured schedule. Recheck database counts and actual workflow cadence after the change has run for a full day.
 
-The workflow schedule is configured as `*/5 * * * *`, but the observed GitHub run history did not demonstrate uninterrupted five-minute execution. Do not label the full dataset as continuously fresh until scheduled runs are observed and audited.
+## CI and release requirements
 
-## CI and release verification
+The Android workflow must pass:
+- SportScore batching unit tests.
+- Worker API tests, including football-only RSS and the absent fantasy route.
+- Supabase API health, news, live/date fixtures, match details and standings checks.
+- Android unit tests.
+- Optimized Release APK build.
+- APK signature verification with `apksigner`.
 
-Android Build #264 completed successfully on the reference commit:
+A successful CI run verifies the built artifact and automated tests only. It does not prove installation, upgrade behavior, battery behavior, accessibility or network reliability on every physical device.
 
-- Worker checks passed.
-- Supabase API health, live matches, date fixtures, a detail response, and competition standings passed.
-- Android unit tests passed.
-- Release APK build passed.
-- `apksigner` verification passed.
-- Stable signing key was configured.
-- Artifact `KORAX-optimized-apk` was uploaded.
+## Known provider limitations
 
-The APK was compared with the previous successful build (#255). Both contain 140 ZIP entries; the only changed entry is `META-INF/version-control-info.textproto`, which records the new commit. The signing certificate SHA-256 fingerprint is unchanged. This is a pipeline-verified rebuild of the same application code, not a feature release.
+- SportScore does not provide full lineups/details for every fixture in the current cache.
+- Player appearance counts are not inferred from incomplete data; the profile reports matches where a player was present in a cached starting lineup and event statistics seen in supplied incidents.
+- Team rosters are the players observed in cached lineups, not an official complete squad list.
+- Standings, injuries, suspensions, transfer confirmations and images depend on what the configured source returns.
+- WorkManager is subject to Android scheduling and battery restrictions; this is not an FCM real-time push guarantee.
 
-R8 Kotlin Metadata warnings remain. No physical-device installation, upgrade test, or load test has been performed.
+## Security notes
 
-## Backend and security notes
-
-- Supabase public tables have RLS enabled and no broad public table policies; current app access is through Edge Functions.
-- The two legacy SECURITY DEFINER functions `join_korax_contest` and `submit_korax_prediction` remain executable by `authenticated` although the contest tables they reference are absent. Review/revoke obsolete grants through a migration after checking dependencies.
-- `korax_push_devices` had zero registered devices; `korax_push_outbox` had 21 pending rows and zero sent rows at the diagnostic snapshot.
-- The existing push sender expects an old `korax-sync.yml` workflow that is not present in current `main`. The Android app also lacks FCM registration/receive code.
-- Cloudflare's `korax` Worker build succeeded on the snapshot commit; the separate `korax-sports-proxy` build failed. The Android app's default API remains Supabase. `CLOUDFLARE_API_TOKEN` is used only by the separate Cloudflare Worker deploy workflow.
-
-## Safe next implementation order
-
-1. Confirm scheduled sync cadence and detail/standings refresh behavior.
-2. Resolve the legacy security-definer RPC grants and reconcile the documentation/configuration.
-3. Select and live-test a provider that supplies full squads, match-level player stats, and availability data before coding fantasy.
-4. Implement one account system (prefer evaluate Supabase Auth before adding Firebase Auth) and then account-linked favorites/comments.
-5. Add FCM only after device-token registration and end-to-end delivery can be tested.
-6. Implement fantasy scoring/price history on the server after the source contract is proven.
-7. Run physical-device, upgrade, offline, and load tests before calling any APK a final release.
+- App clients do not contain Supabase service-role credentials.
+- GitHub OIDC is restricted to the dedicated SportScore sync workflow on `main`.
+- Legacy contest RPC permissions are being removed because the product has no contest/fantasy flow.
