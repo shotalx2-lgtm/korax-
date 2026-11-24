@@ -1,46 +1,40 @@
-# KORAX release readiness — 23 November 2026
+# KORAX 0.6.8 release readiness
 
-Current reference: `main` at `20a4a92615c351d167049b3e5f63966020f0f93e`.
+## Product scope confirmed
 
-## Confirmed in the current codebase
+- [x] Football-only news; generic news feeds are excluded from the active Supabase news pipeline.
+- [x] No login, accounts or user sessions in the Android product.
+- [x] No fantasy game in the Android product or API.
+- [x] Local favorites, local article interactions, offline saved summaries, and local backup/restore remain available.
 
-- [x] Arabic and international RSS news is served through the backend with source metadata, excerpts, and publisher links.
-- [x] The app has an internal news detail screen, sharing, and device-local save/like/comment interactions.
-- [x] Favorites for teams, players, and competitions are saved locally and are optional at first launch.
-- [x] Match, live-match, date-schedule, and competition API checks pass in CI.
-- [x] Match detail responses distinguish available details from missing detail records.
-- [x] The GitHub SportScore sync uses OIDC and writes through the dedicated Edge Function.
-- [x] Android Worker/API integration checks and Android unit tests pass in CI.
-- [x] Android Release APK build and `apksigner` verification passed in run #264. The stable release signing key was configured in that run.
+## Data and app behavior
 
-## Incomplete product features
+- [x] Live, scheduled and finished match endpoints use the Supabase/SportScore cache.
+- [x] Match details are shown only when a non-null provider detail payload exists.
+- [x] Local news notifications are filtered against selected favorites.
+- [x] Team profiles are enriched with players observed in cached lineups.
+- [x] Player profiles expose cached lineup presence and event counts only when supplied by SportScore.
+- [x] Sync detail window expanded to 7 days back / 14 days forward, rotating 20 detail records per 15-minute cycle.
+- [ ] Allow the expanded sync to run for a full day, then inspect coverage and freshness counts.
+- [ ] Verify the seven current standings are refreshed on the scheduled cycle and add more only where the provider returns a valid table.
+- [ ] Install and update-test the APK on physical Android devices.
 
-- [ ] Email/password authentication and Google sign-in.
-- [ ] Shared user profiles and account-linked favorites.
-- [ ] Shared comments, likes, and saved articles.
-- [ ] Full fantasy game with verified complete player catalogue, real prices, round scoring, deadlines, and leaderboards.
-- [ ] FCM device registration, remote delivery, and notification preferences.
-- [ ] Full article reader; current in-app article view shows available RSS summary and links to the publisher.
-- [ ] Complete team/player profiles, transfer history, injuries, and suspensions where a reliable provider exposes them.
+## Explicit limitations
 
-## Data coverage and freshness
+- Team roster data is only players observed in detail records; it is not a complete provider squad endpoint.
+- Match lineups/events/stats may legitimately be missing.
+- Background local alerts can be delayed by Android battery/network policy.
+- No FCM server push, no shared accounts, no cross-device favorites/comments.
+- Full protected publisher articles remain at the original publisher; KORAX presents available RSS summaries.
+- No guarantee of every global league's standings, images or full statistics.
 
-- [x] Supabase contains match and competition cache tables.
-- [x] Seven competition standings are stored.
-- [ ] Match details are not available for every match; the last diagnostic had details for only 44 of 1,631 stored matches.
-- [ ] Standings and detailed match records need recurring freshness checks.
-- [ ] The cron is configured for every five minutes, but the observed run history did not prove continuous five-minute execution. Run #24 was the latest scheduled run observed at 13:38 UTC; run #25 at 14:17 UTC was a push-triggered lightweight sync (50 matches, no details or standings).
-- [ ] Verify RSS feed uptime, per-source image availability, provider terms, and stale-data states.
-- [ ] Add or verify provider fallbacks without inventing scores, injuries, transfers, or statistics.
+## Automated verification
 
-## Release, device, and security checks
+The GitHub Actions Android workflow must report success for:
+1. Sync batching tests and football-news worker tests.
+2. Supabase API integration checks.
+3. Android unit tests.
+4. Release APK assembly.
+5. APK signature verification.
 
-- [x] Android Release build, unit tests, and signature verification passed in CI run #264.
-- [ ] Install and test on physical Android devices, including an update from the existing installation.
-- [ ] Resolve the R8 Kotlin Metadata compatibility warnings.
-- [ ] Review current Node.js/Gradle GitHub Action deprecation warnings.
-- [ ] Run accessibility, privacy, security, and backend load tests.
-- [ ] Review the two legacy SECURITY DEFINER contest RPCs that remain executable by `authenticated` although their dependent contest tables were removed.
-- [ ] Publish privacy policy, terms, and Play Data Safety declarations before a public store release.
-
-A successful CI artifact is not the same as a final product release. It does not prove device installation, million-user capacity, complete data coverage, or Play Store readiness.
+A successful CI workflow is not a substitute for device testing.
