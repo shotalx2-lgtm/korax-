@@ -10,7 +10,6 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioAttributes
-import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -157,22 +156,22 @@ internal object KoraxSmartAlerts {
             .build()
 
         val configs = listOf(
-            "goal" to "هدف جديد",
-            "assist" to "تمريرة حاسمة",
-            "var" to "مراجعة VAR",
-            "cancel" to "إلغاء هدف",
-            "red_card" to "البطاقات الحمراء",
-            "yellow_card" to "البطاقات الصفراء",
-            "penalty" to "ركلات الجزاء",
-            "kickoff" to "بداية المباراة",
-            "halftime" to "نهاية الشوط الأول",
-            "fulltime" to "نهاية المباراة",
-            "substitution" to "التبديلات",
-            "injury" to "الإصابات",
-            "news" to "الأخبار العاجلة"
+            Triple("goal", "هدف جديد", R.raw.korax_goal),
+            Triple("assist", "تمريرة حاسمة", R.raw.korax_assist),
+            Triple("var", "مراجعة VAR", R.raw.korax_news),
+            Triple("cancel", "إلغاء هدف", R.raw.korax_news),
+            Triple("red_card", "البطاقات الحمراء", R.raw.korax_red_card),
+            Triple("yellow_card", "البطاقات الصفراء", R.raw.korax_yellow_card),
+            Triple("penalty", "ركلات الجزاء", R.raw.korax_goal),
+            Triple("kickoff", "بداية المباراة", R.raw.korax_news),
+            Triple("halftime", "نهاية الشوط الأول", R.raw.korax_fulltime),
+            Triple("fulltime", "نهاية المباراة", R.raw.korax_fulltime),
+            Triple("substitution", "التبديلات", R.raw.korax_assist),
+            Triple("injury", "الإصابات", R.raw.korax_red_card),
+            Triple("news", "الأخبار العاجلة", R.raw.korax_news)
         )
 
-        configs.forEach { (key, label) ->
+        configs.forEach { (key, label, soundResource) ->
             listOf(true, false).forEach { withSound ->
                 val channel = NotificationChannel(
                     channelId(key, withSound),
@@ -186,7 +185,7 @@ internal object KoraxSmartAlerts {
                 channel.setShowBadge(true)
                 if (withSound) {
                     channel.setSound(
-                        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
+                        Uri.parse("android.resource://${context.packageName}/$soundResource"),
                         audio
                     )
                 } else {
