@@ -614,7 +614,7 @@ async function getCachedPlayerIndex() {
       const name = nestedName(nameValue) || (typeof nameValue === "string" ? nameValue : "") ||
         details?.player_name || details?.name || "";
       if (!name.trim()) return;
-      const teamName = details?.team_name || nestedName(details?.team) ||
+      const teamName = details?.team_name || nestedName(details?.team) || nestedName(details?.participant) ||
         (details?.side === "home" ? row.home_team : details?.side === "away" ? row.away_team : "");
       const key = normalizeSearchText(name) + "|" + normalizeSearchText(teamName);
       const current = found.get(key) || {
@@ -680,11 +680,15 @@ async function getCachedPlayerIndex() {
       if (event?.player && typeof event.player === "object") {
         addPlayer(event.player, {
           ...event.player, player_name: nestedName(event.player),
+          team: event?.team || event?.participant || event.player?.team,
+          team_name: nestedName(event?.team) || nestedName(event?.participant) || "",
           side: event?.side || event?.team_side || "", _event: event,
         }, "event");
       } else {
         addPlayer(event?.player || event?.player_name, {
           player_name: event?.player || event?.player_name,
+          team: event?.team || event?.participant,
+          team_name: nestedName(event?.team) || nestedName(event?.participant) || "",
           side: event?.side || event?.team_side || "",
           image_path: event?.player_image_url || "", _event: event,
         }, "event");
@@ -693,6 +697,8 @@ async function getCachedPlayerIndex() {
       if (assist) {
         addPlayer(assist, {
           player_name: nestedName(assist) || event?.assist_player_name || assist,
+          team: event?.team || event?.participant,
+          team_name: nestedName(event?.team) || nestedName(event?.participant) || "",
           side: event?.side || event?.team_side || "",
           image_path: event?.assist_player_image_url || "", _event: event,
         }, "assist");
