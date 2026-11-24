@@ -145,6 +145,7 @@ export function filterCurrentFootballLeagues(leagues, {
   currentYear = new Date().getUTCFullYear(),
   minSeason = currentYear - 1,
   allowedShortcuts = null,
+  footballSportIds = [1, 79],
 } = {}) {
   const allowed = allowedShortcuts ? new Set(allowedShortcuts.map(value => String(value).toLowerCase())) : null;
   return (Array.isArray(leagues) ? leagues : []).filter(league => {
@@ -152,7 +153,10 @@ export function filterCurrentFootballLeagues(leagues, {
     const season = Number(league?.leagueSeason);
     const name = String(league?.leagueName || "");
     const shortcut = String(league?.leagueShortcut || "");
-    if (![1, 79].includes(sportId) || !Number.isFinite(season) || season < minSeason) return false;
+    const sportName = String(league?.sport?.sportName || "").toLowerCase();
+    const knownFootball = /fußball|fussball|football|soccer/.test(sportName);
+    const fallbackFootballId = new Set(footballSportIds.map(value => String(value))).has(String(sportId));
+    if (!(sportName ? knownFootball : fallbackFootballId) || !Number.isFinite(season) || season < minSeason) return false;
     if (!shortcut || EXCLUDED_NAME.test(name) || !POPULAR_FOOTBALL_NAME.test(name)) return false;
     return !allowed || allowed.has(shortcut.toLowerCase());
   });
@@ -171,8 +175,13 @@ export function createOpenLigaDbClient(options = {}) {
   const lastGroupPoll = new Map();
 
   return {
-    async availableLeagues() {
-      const payload = await getJson(`${API}/getavailableleagues`);
+    async availableSports() {
+      const payload = await getJson(`${API}/getavailablesports`);
+      return Array.isArray(payload) ? payload : [];
+    },
+    async availableLeagues(season = null) {
+      const suffix = season == null ? "" : `/${encodeURIComponent(season)}`;
+      const payload = await getJson(`${API}/getavailableleagues${suffix}`);
       return Array.isArray(payload) ? payload : [];
     },
     async currentGroup(shortcut) {
