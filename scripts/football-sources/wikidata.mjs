@@ -1,6 +1,7 @@
 import { createJsonClient } from "./http.mjs";
 
-const SPARQL_ENDPOINT = "https://query.wikidata.org/sparql";
+// Migrate to WDQS v2 before the v1 service degradation/deprecation window.
+export const WIKIDATA_SPARQL_ENDPOINT = "https://query-next.wikidata.org/sparql";
 const COUNTRY_QIDS = [
   "Q145", "Q29", "Q183", "Q38", "Q142", "Q851", "Q79", "Q155",
   "Q414", "Q45", "Q55", "Q31", "Q43", "Q1028", "Q17", "Q30",
