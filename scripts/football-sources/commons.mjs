@@ -75,7 +75,7 @@ export function createCommonsClient(options = {}) {
     maxRequests: 60,
     timeoutMs: 20_000,
     maxRetries: 1,
-    defaultHeaders: { "user-agent": "KORAX-World-Data-Engine/1.0 (Wikimedia Commons license verification)" },
+    defaultHeaders: { "user-agent": "KORAX-World-Data-Engine/1.0 (https://github.com/shotalx2-lgtm/korax-)" },
     ...options,
   });
 
