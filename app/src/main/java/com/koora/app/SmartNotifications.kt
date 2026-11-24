@@ -156,6 +156,17 @@ internal object KoraxSmartAlerts {
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
 
+        val legacyKinds = listOf(
+            "goal", "assist", "var", "cancel", "red_card", "yellow_card",
+            "penalty", "kickoff", "halftime", "fulltime", "substitution", "injury", "news"
+        )
+        legacyKinds.forEach { key ->
+            manager.deleteNotificationChannel("korax_${key}_v2_sound")
+            manager.deleteNotificationChannel("korax_${key}_v2_silent")
+            manager.deleteNotificationChannel("korax_${key}_v3_sound")
+            manager.deleteNotificationChannel("korax_${key}_v3_silent")
+        }
+
         val configs = listOf(
             Triple("goal", "هدف جديد", R.raw.korax_goal_v3),
             Triple("assist", "تمريرة حاسمة", R.raw.korax_assist_v3),
