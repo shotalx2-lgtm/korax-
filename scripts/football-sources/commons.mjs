@@ -81,12 +81,11 @@ export function createCommonsClient(options = {}) {
 
   return {
     async verifyAssets(candidates) {
-      const unique = [...new Map((Array.isArray(candidates) ? candidates : [])
-        .filter(item => item?.fileName)
-        .map(item => [item.fileName, item])).values()];
+      const allCandidates = (Array.isArray(candidates) ? candidates : []).filter(item => item?.fileName);
+      const uniqueFiles = [...new Set(allCandidates.map(item => item.fileName))];
       const verified = [];
-      for (let index = 0; index < unique.length; index += 20) {
-        const chunk = unique.slice(index, index + 20);
+      for (let index = 0; index < uniqueFiles.length; index += 20) {
+        const fileChunk = uniqueFiles.slice(index, index + 20);
         const params = new URLSearchParams({
           action: "query",
           format: "json",
@@ -94,13 +93,16 @@ export function createCommonsClient(options = {}) {
           prop: "imageinfo",
           iiprop: "url|extmetadata",
           iiextmetadatalanguage: "en",
-          titles: chunk.map(item => `File:${item.fileName}`).join("|"),
+          titles: fileChunk.map(fileName => `File:${fileName}`).join("|"),
         });
         const payload = await getJson(`${API}?${params.toString()}`);
         const pages = Array.isArray(payload?.query?.pages) ? payload.query.pages : [];
         for (const page of pages) {
-          const normalized = normalizeCommonsPage(page, chunk);
-          if (normalized) verified.push(normalized);
+          const fileName = String(page?.title || "").replace(/^File:/i, "");
+          for (const candidate of allCandidates.filter(item => item.fileName === fileName)) {
+            const normalized = normalizeCommonsPage(page, [candidate]);
+            if (normalized) verified.push(normalized);
+          }
         }
       }
       return verified;
