@@ -49,7 +49,7 @@ export function normalizeOpenFootballMatch(match, competition) {
     competitionName: competition.competitionName,
     season: competition.season,
     matchDate,
-    kickoffAt: /T\d{2}:\d{2}/.test(String(match.date)) ? new Date(match.date).toISOString() : null,
+    kickoffAt,
     homeTeamName: homeTeam,
     awayTeamName: awayTeam,
     homeScore,
