@@ -810,7 +810,7 @@ function isDisplayableEntityAsset(asset) {
   const credit = String(asset?.attribution_text || asset?.creator || "").trim();
   return asset?.license_status === "verified" &&
     allowedLicense &&
-    /^https:\\/\\//i.test(String(asset?.asset_url || "")) &&
+    String(asset?.asset_url || "").startsWith("https://") &&
     (!requiresAttribution || (credit && asset?.license_url && asset?.source_page_url)) &&
     !asset?.metadata?.trademarkReviewRequired;
 }
