@@ -281,6 +281,7 @@ internal fun KoraxFavoriteSelectionScreen(
                     "tournament" -> "🥇"
                     "club" -> "⚽"
                     "national" -> "🌍"
+                    "coach" -> "🧑‍🏫"
                     else -> "👤"
                 }
                 FilterChip(
@@ -319,6 +320,7 @@ internal fun KoraxFavoriteSelectionScreen(
                             "tournament" -> "ابحث عن بطولة مثل كأس العالم..."
                             "club" -> "ابحث عن نادٍ مثل الأهلي..."
                             "national" -> "ابحث عن منتخب مثل مصر..."
+                            "coach" -> "ابحث عن مدرب مثل جوارديولا..."
                             else -> "ابحث عن لاعب مثل محمد صلاح..."
                         },
                         color = DMuted,
@@ -761,7 +763,7 @@ internal fun KoraxEntityProfileScreen(
         error = ""
         val endpoint = when (favorite.kind) {
             "league", "tournament" -> "/api/competitions/${encodeQuery(favorite.slug)}"
-            "player" -> "/api/players/${encodeQuery(favorite.slug)}"
+            "player", "coach" -> "/api/players/${encodeQuery(favorite.slug)}"
             else -> "/api/teams/${encodeQuery(favorite.slug)}"
         }
         val result = runCatching { apiJson(endpoint) }
@@ -783,6 +785,7 @@ internal fun KoraxEntityProfileScreen(
                 "tournament" -> "ملف البطولة"
                 "club" -> "ملف النادي"
                 "national" -> "ملف المنتخب"
+                "coach" -> "ملف المدرب"
                 else -> "ملف اللاعب"
             },
             "معلومات وإحصائيات من مصدر البيانات",
