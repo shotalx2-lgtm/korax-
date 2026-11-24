@@ -551,7 +551,7 @@ private fun BrandToolbar(onSearch: () -> Unit, onLive: () -> Unit, onDate: () ->
         Spacer(Modifier.weight(1f))
         Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
             IconButton(onClick = onSearch) {
-                Icon(Icons.Filled.Search, contentDescription = "بحث في الأخبار", tint = KLime)
+                Icon(Icons.Filled.Search, contentDescription = "بحث شامل", tint = KLime)
             }
         }
         Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
