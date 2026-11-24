@@ -7,9 +7,19 @@ const value = value => ({ value });
 test("builds a bounded batched SPARQL query for football entities", () => {
   const query = buildFootballEntitiesQuery({ countryQids: ["Q79", "Q851"], limit: 2000 });
   assert.match(query, /wd:Q79 wd:Q851/);
-  assert.match(query, /LIMIT 1000/);
+  assert.match(query, /LIMIT 250/);
   assert.match(query, /wd:Q476028/);
   assert.match(query, /wd:Q6979593/);
+});
+
+test("keeps SPARQL requests narrow and avoids expensive external-ID fan-out joins", () => {
+  const entities = buildFootballEntitiesQuery({ countryQids: ["Q79"], limit: 120 });
+  const people = buildFootballPeopleQuery({ countryQids: ["Q79"], limit: 100 });
+  assert.doesNotMatch(entities, /SERVICE wikibase:label/);
+  assert.doesNotMatch(entities, /P12758|P13664|P14795|P7223/);
+  assert.doesNotMatch(people, /SERVICE wikibase:label/);
+  assert.match(entities, /LIMIT 120/);
+  assert.match(people, /LIMIT 100/);
 });
 
 test("normalizes Wikidata QIDs, Arabic/English names and structured facts", () => {
