@@ -59,9 +59,13 @@ function addCoverage(row) {
   add(data.coverage, row, key);
 }
 function report(sourceKey, status, requestCount, recordsSeen, extra) {
-  sourceOutcomes.set(sourceKey, Object.assign({
+  const outcome = Object.assign({
     sourceKey, status, requestCount: requestCount || 0, recordsSeen: recordsSeen || 0
-  }, extra || {}));
+  }, extra || {});
+  sourceOutcomes.set(sourceKey, outcome);
+  console.log("[KORAX source] " + sourceKey + " status=" + status +
+    " requests=" + outcome.requestCount + " records=" + outcome.recordsSeen +
+    " errors=" + ((outcome.errors || []).length));
 }
 function addRecord(sourceKey, record) {
   if (!record || !record.externalId || !record.canonicalName || !record.entityType) return null;
@@ -254,7 +258,9 @@ function linkTheSportsDbRecordsToWikidata() {
 function addMergeCandidates() {
   const groups = new Map();
   for (const item of providerRecords) {
-    if (!item.countryCode) continue;
+    // A source record can be moved to its Wikidata canonical entity during linking.
+    // Ignore stale pre-link IDs so no merge candidate can reference a deleted row.
+    if (!item.countryCode || !data.entities.has(item.entityId)) continue;
     const normalized = normalizeName(item.name);
     if (!normalized) continue;
     const key = item.entityType + "|" + item.countryCode + "|" + normalized;
