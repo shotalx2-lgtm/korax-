@@ -311,14 +311,17 @@ async function callSync(token, payload) {
   return parsed;
 }
 
-async function persistInBatches(token, payload) {
+async function persistInBatches(payload) {
   const totals = {};
   try {
     const batches = buildSyncBatches(payload);
     for (let index = 0; index < batches.length; index++) {
       const batch = batches[index];
       const table = Object.keys(batch)[0];
-      const response = await callSync(token, { action: "sync", ...batch });
+      // Provider collection can take longer than the five-minute GitHub OIDC token lifetime.
+      // Mint a fresh, narrowly scoped token for every persistence batch.
+      const batchToken = await oidcToken();
+      const response = await callSync(batchToken, { action: "sync", ...batch });
       const countKey = ({
         entities: "entities",
         entitySources: "entitySources",
@@ -343,7 +346,8 @@ async function persistInBatches(token, payload) {
       finished_at: new Date().toISOString()
     }));
     if (failedRuns.length) {
-      await callSync(token, { action: "sync", sourceRuns: failedRuns }).catch(markError => {
+      const failureToken = await oidcToken();
+      await callSync(failureToken, { action: "sync", sourceRuns: failedRuns }).catch(markError => {
         console.error("[korax-world-data-sync] could not record failed batch state:", markError);
       });
     }
@@ -627,7 +631,7 @@ async function main() {
     sourceRuns: data.sourceRuns
   };
   const bytes = Buffer.byteLength(JSON.stringify(payload));
-  const result = await persistInBatches(token, payload);
+  const result = await persistInBatches(payload);
 
   const summary = Array.from(sourceOutcomes.values()).map(item => ({
     sourceKey: item.sourceKey, status: item.status, requests: item.requestCount, records: item.recordsSeen
