@@ -128,15 +128,34 @@ class VisualShellActivity : ComponentActivity() {
 @Composable
 private fun KoraxSplash() {
     var intro by rememberSaveable { mutableStateOf(true) }
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(1050); intro = false }
+    LaunchedEffect(Unit) { kotlinx.coroutines.delay(950); intro = false }
     if (intro) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF000000)), contentAlignment = Alignment.Center) {
-            Image(
-                painter = painterResource(R.drawable.korax_brand),
-                contentDescription = "KORAX",
-                modifier = Modifier.size(264.dp),
-                contentScale = androidx.compose.ui.layout.ContentScale.Fit
-            )
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(listOf(Color(0xFF111B20), Color(0xFF050709), Color.Black))
+            ),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Image(
+                    painter = painterResource(R.drawable.korax_brand),
+                    contentDescription = "KORAX",
+                    modifier = Modifier.size(228.dp),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
+                Spacer(Modifier.height(9.dp))
+                Box(Modifier.width(66.dp).height(3.dp).clip(RoundedCornerShape(5.dp)).background(KLime))
+                Spacer(Modifier.height(15.dp))
+                Text(
+                    "WORLD FOOTBALL INTELLIGENCE",
+                    color = Color(0xFFD5FF00),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.2.sp
+                )
+                Spacer(Modifier.height(7.dp))
+                Text("كل كرة القدم في مكان واحد", color = Color(0xFF8B98A8), fontSize = 11.sp)
+            }
         }
     } else KoraxApp()
 }
@@ -613,30 +632,6 @@ private fun NewsScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("KORAX", color = KLime, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 2.4.sp)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(6.dp).clip(CircleShape).background(KLime))
-                    Spacer(Modifier.width(6.dp))
-                    Text("تغطية كرة القدم • عربي وعالمي", color = KMuted, fontSize = 9.sp, fontWeight = FontWeight.Medium)
-                }
-            }
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = KCard2,
-                border = BorderStroke(1.dp, KLime.copy(alpha = .28f))
-            ) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("FOOTBALL", color = KLime, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.1.sp)
-                    Text("WORLD", color = KMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                }
-            }
-        }
-        Spacer(Modifier.height(4.dp))
         BrandToolbar(
             onSearch = { searchExpanded = !searchExpanded },
             onLive = onOpenLive,

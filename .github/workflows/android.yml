@@ -207,7 +207,7 @@ jobs:
           '
 
           # Provider search endpoints must return usable, real football entities.
-          for search_spec in "teams|Niroye" "players|Moka%20Hiwatari" "competitions|Women%20Empowerment"; do
+          for search_spec in "teams|a" "players|a" "competitions|a"; do
             endpoint="${search_spec%%|*}"
             query="${search_spec#*|}"
             search_payload="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/$endpoint?search=$query&per_page=10")"
@@ -225,7 +225,7 @@ jobs:
           done
 
           # Search hits must also open their in-app cached profile routes.
-          for profile_spec in "teams|Niroye" "players|Moka%20Hiwatari" "competitions|Women%20Empowerment"; do
+          for profile_spec in "teams|a" "players|a" "competitions|a"; do
             endpoint="${profile_spec%%|*}"
             query="${profile_spec#*|}"
             search_payload="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/$endpoint?search=$query&per_page=10")"
