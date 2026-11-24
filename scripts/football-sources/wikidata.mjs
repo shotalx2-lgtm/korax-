@@ -17,6 +17,8 @@ const CLASS_TYPES = {
   Q34542757: "tournament",
   Q34542788: "tournament",
   Q34542827: "tournament",
+  Q937857: "player",
+  Q628099: "coach",
 };
 
 function bindingValue(binding, key) {
@@ -52,6 +54,9 @@ export function normalizeWikidataBinding(binding) {
   const leagueQid = qidFromUri(bindingValue(binding, "league"));
   const organizerQid = qidFromUri(bindingValue(binding, "organizer"));
   const imageUrl = bindingValue(binding, "image");
+  const birthDate = toIsoDate(bindingValue(binding, "birthDate"));
+  const teamQid = qidFromUri(bindingValue(binding, "team"));
+  const position = bindingValue(binding, "positionLabel");
   const logoUrl = bindingValue(binding, "logo");
   const flagUrl = bindingValue(binding, "flag");
   const stadiumImageUrl = bindingValue(binding, "stadiumImage");
@@ -78,6 +83,9 @@ export function normalizeWikidataBinding(binding) {
   const foundedOn = toIsoDate(bindingValue(binding, "inception"));
   const facts = [];
   if (foundedOn) facts.push({ fieldKey: "founded_on", value: foundedOn, confidence: 1 });
+  if (birthDate) facts.push({ fieldKey: "birth_date", value: birthDate, confidence: 1 });
+  if (teamQid) facts.push({ fieldKey: "current_team", value: { qid: teamQid, name: bindingValue(binding, "teamLabel") }, confidence: 0.9 });
+  if (position) facts.push({ fieldKey: "playing_position", value: position, confidence: 1 });
   if (stadiumQid) facts.push({ fieldKey: "stadium", value: { qid: stadiumQid, name: bindingValue(binding, "stadiumLabel") }, confidence: 1 });
   if (leagueQid) facts.push({ fieldKey: "league", value: { qid: leagueQid, name: bindingValue(binding, "leagueLabel") }, confidence: 1 });
   if (organizerQid) facts.push({ fieldKey: "organizer", value: { qid: organizerQid, name: bindingValue(binding, "organizerLabel") }, confidence: 1 });
@@ -93,8 +101,13 @@ export function normalizeWikidataBinding(binding) {
     countryCode: bindingValue(binding, "countryCode"),
     countryName: bindingValue(binding, "countryLabel"),
     foundedOn,
+    birthDate,
     metadata: {
       countryQid,
+      teamQid,
+      position,
+      height: bindingValue(binding, "height"),
+      weight: bindingValue(binding, "weight"),
       stadiumQid,
       stadiumName: bindingValue(binding, "stadiumLabel"),
       stadiumCapacity: bindingValue(binding, "stadiumCapacity"),
@@ -110,13 +123,13 @@ export function normalizeWikidataBinding(binding) {
     },
     assetCandidates,
     facts,
-    rawPayload: { qid, classQid, countryQid, foundedOn, externalIds },
+    rawPayload: { qid, classQid, countryQid, foundedOn, birthDate, teamQid, externalIds },
   };
 }
 
 export function buildFootballEntitiesQuery({ countryQids = COUNTRY_QIDS, limit = 600 } = {}) {
   const countries = countryQids.map(qid => `wd:${qid}`).join(" ");
-  const classes = Object.keys(CLASS_TYPES).map(qid => `wd:${qid}`).join(" ");
+  const classes = Object.entries(CLASS_TYPES).filter(([, type]) => !["player", "coach"].includes(type)).map(([qid]) => `wd:${qid}`).join(" ");
   const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 600));
   return `
 SELECT DISTINCT ?item ?class ?itemLabel ?itemAltLabel ?nameAr ?nameEn
@@ -161,6 +174,35 @@ LIMIT ${safeLimit}
 `.trim();
 }
 
+export function buildFootballPeopleQuery({ countryQids = COUNTRY_QIDS, limit = 200 } = {}) {
+  const countries = countryQids.map(qid => `wd:${qid}`).join(" ");
+  const safeLimit = Math.max(1, Math.min(500, Number(limit) || 200));
+  return `
+SELECT DISTINCT ?item ?class ?itemLabel ?itemAltLabel ?nameAr ?nameEn
+       ?country ?countryLabel ?countryCode ?birthDate ?image ?team ?teamLabel
+       ?position ?positionLabel ?height ?weight
+WHERE {
+  VALUES ?class { wd:Q937857 wd:Q628099 }
+  VALUES ?country { ${countries} }
+  ?item wdt:P106 ?class;
+        wdt:P27 ?country.
+  OPTIONAL { ?country wdt:P297 ?countryCode. }
+  OPTIONAL { ?item wdt:P569 ?birthDate. }
+  OPTIONAL { ?item wdt:P18 ?image. }
+  OPTIONAL { ?item wdt:P54 ?team. }
+  OPTIONAL { ?item wdt:P413 ?position. }
+  OPTIONAL { ?position rdfs:label ?positionLabel. FILTER(LANG(?positionLabel) = "en") }
+  OPTIONAL { ?item wdt:P2048 ?height. }
+  OPTIONAL { ?item wdt:P2067 ?weight. }
+  OPTIONAL { ?item rdfs:label ?nameAr. FILTER(LANG(?nameAr) = "ar") }
+  OPTIONAL { ?item rdfs:label ?nameEn. FILTER(LANG(?nameEn) = "en") }
+  OPTIONAL { ?item skos:altLabel ?itemAltLabel. FILTER(LANG(?itemAltLabel) = "en") }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+}
+LIMIT ${safeLimit}
+`.trim();
+}
+
 export function createWikidataClient(options = {}) {
   const getJson = createJsonClient({
     source: "wikidata",
@@ -170,7 +212,7 @@ export function createWikidataClient(options = {}) {
     maxRetries: 1,
     defaultHeaders: {
       accept: "application/sparql-results+json",
-      "user-agent": "KORAX-World-Data-Engine/1.0 (contact: korax-data-maintainer)",
+      "user-agent": "KORAX-World-Data-Engine/1.0 (https://github.com/shotalx2-lgtm/korax-)",
     },
     ...options,
   });
@@ -178,6 +220,13 @@ export function createWikidataClient(options = {}) {
   return {
     async fetchFootballEntities(queryOptions = {}) {
       const query = buildFootballEntitiesQuery(queryOptions);
+      const url = `${SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`;
+      const payload = await getJson(url, { timeoutMs: 60_000 });
+      const bindings = payload?.results?.bindings;
+      return Array.isArray(bindings) ? bindings.map(normalizeWikidataBinding).filter(Boolean) : [];
+    },
+    async fetchFootballPeople(queryOptions = {}) {
+      const query = buildFootballPeopleQuery(queryOptions);
       const url = `${SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`;
       const payload = await getJson(url, { timeoutMs: 60_000 });
       const bindings = payload?.results?.bindings;
