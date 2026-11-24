@@ -19,11 +19,11 @@ Last reviewed: 2026-11-24
 | Provider | Intended use | License / quota guardrail | Production status |
 |---|---|---|---|
 | SportScore | Live scores, fixtures, match details, incidents, lineups and supported standings | Published free tier: about 10,000 requests per IP per 24h; responses are cached for about 60 seconds; show a visible Powered by SportScore link on pages using its data | Active primary source |
-| TheSportsDB | Enrichment for team/player/league/venue metadata and stable provider IDs | Free V1 key `123`; observe the stated 30 requests/minute limit and free endpoint result limits (search often returns one item; list endpoints are capped). V2 is not assumed free. Team/player images are treated as unlicensed until the individual asset rights are verified | Connector planned; image assets blocked pending rights review |
-| OpenLigaDB | Supplemental fixtures/results/tables in leagues it actually covers | No API key; ODbL 1.0 obligations; use `getlastchangedate`; during live play do not poll a league more often than once every 30–60 seconds | Connector planned; keep imported data separately attributable |
-| OpenFootball / football.json | Historical fixtures and results for the season files that exist | CC0 dataset; latest season data is updated periodically/daily; never use it as a live-score source | Connector planned; season-file coverage is explicitly enumerated |
-| Wikidata | Entity identity, aliases, country, founding date, stadium links and external IDs | CC0 structured data; Query Service budget is limited (roughly 60 CPU seconds per minute and up to five concurrent queries); use batched queries and cache results | Connector planned |
-| Wikimedia Commons | Club crests, player portraits and stadium images | License is per file, not per website. Store file page, license, creator and attribution. Only verified compatible licenses may be displayed | Connector planned; assets remain hidden until verified |
+| TheSportsDB | Enrichment for team/player/league/venue metadata and stable provider IDs | Free V1 key `123`; observe the stated 30 requests/minute limit and free endpoint result limits (search often returns one item; list endpoints are capped). V2 is not assumed free. Team/player images are treated as unlicensed until the individual asset rights are verified | Connector implemented with quota guard and stable provider IDs; live ingestion result pending first production workflow run; images remain hidden until rights review |
+| OpenLigaDB | Supplemental fixtures/results/tables in leagues it actually covers | No API key; ODbL 1.0 obligations; use `getlastchangedate`; during live play do not poll a league more often than once every 30–60 seconds | Connector implemented with sport discovery and changed-date polling; first production league coverage pending |
+| OpenFootball / football.json | Historical fixtures and results for the season files that exist | CC0 dataset; latest season data is updated periodically/daily; never use it as a live-score source | Connector implemented for seven confirmed 2026–27 season files; historical-only, never live |
+| Wikidata | Entity identity, aliases, country, founding date, stadium links and external IDs | CC0 structured data; Query Service budget is limited (roughly 60 CPU seconds per minute and up to five concurrent queries); use batched queries and cache results | Connector implemented with batched queries and provider-specific throttle; production coverage pending first sync |
+| Wikimedia Commons | Club crests, player portraits and stadium images | License is per file, not per website. Store file page, license, creator and attribution. Only verified compatible licenses may be displayed | Connector implemented with file-level license checks; only verified assets can reach the app API |
 | StatsBomb Open Data | Selected historical research/analysis datasets | Research dataset; public/commercial app rights are not assumed. Attribution and logo requirements must be reviewed before use | Disabled pending explicit rights review |
 
 Official references:
@@ -56,11 +56,11 @@ The new tables have RLS enabled. `anon` and `authenticated` have no table privil
 
 ## Current status
 
-- Implemented and deployed: schema, provider registry, license/quota metadata, source-to-entity mapping, asset/fact provenance, external-match staging, merge-candidate queue and Arabic/English search RPC.
-- Tested: transactional schema creation, RLS/grants, PGroonga Arabic partial search (for example `مح` matches `محمد صلاح`), and trigram fallback setup.
-- Not yet connected: provider fetch connectors, sync workflows, entity seeding, global search API route and Android profile integration.
+- Implemented and deployed: schema, provider registry, license/quota metadata, source-to-entity mapping, asset/fact provenance, external-match staging, merge-candidate queue, Arabic/English search RPC and stable provider-fact upsert key.
+- Tested: transactional schema creation, RLS/grants, PGroonga Arabic partial search (for example `مح` matches `محمد صلاح`), trigram fallback, provider normalization, rate-limit handling, license blocking and source-specific fixtures.
+- Implemented in PR #26: provider fetch connectors, daily metadata/catalog sync, 15-minute OpenLigaDB fixture refresh, OIDC-protected sync endpoint, canonical search API and Android global search/coach profile integration. Live provider ingestion and first database counts still need post-merge verification.
 - Not yet enabled: StatsBomb production ingestion, unverified TheSportsDB images, FCM push delivery.
-- Current app data remains limited by the active SportScore cache until the next connector phase populates the new catalog.
+- SportScore remains the canonical live-match source. OpenLigaDB and OpenFootball results are stored separately until an explicit match mapping is verified; no supplemental provider overwrites a live SportScore match.
 
 ## Merge policy
 
