@@ -84,7 +84,7 @@ class VisualShellActivity : ComponentActivity() {
         KoraxSmartAlerts.ensureChannels(this)
         KoraxSmartAlerts.setBackgroundUpdates(this, KoraxSettingsStore.getBoolean(this, "background_updates", true))
         window.statusBarColor = android.graphics.Color.rgb(0, 0, 0)
-        window.navigationBarColor = android.graphics.Color.rgb(7, 9, 13)
+        window.navigationBarColor = android.graphics.Color.rgb(0, 0, 0)
         @Suppress("DEPRECATION") window.decorView.systemUiVisibility = 0
         setContent {
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
