@@ -84,7 +84,8 @@ private val favoriteTypes = listOf(
     "tournament" to "بطولة",
     "club" to "نادي",
     "national" to "منتخب",
-    "player" to "لاعب"
+    "player" to "لاعب",
+    "coach" to "مدرب"
 )
 
 private fun encodeQuery(value: String) = URLEncoder.encode(value, StandardCharsets.UTF_8.name())
@@ -137,15 +138,28 @@ private fun JSONObject.asFavorite(kind: String): KoraxFavorite? {
 private suspend fun searchFavoriteItems(kind: String, query: String): List<KoraxFavorite> {
     if (kind == "all") {
         if (query.length < 2) return emptyList()
-        return listOf("league", "tournament", "club", "national", "player")
-            .flatMap { searchFavoriteItems(it, query) }
-            .distinctBy { it.kind + ":" + it.id }
-            .take(60)
+        val payload = apiJson("/api/entities/search?search=" + encodeQuery(query))
+        val rows = payload.optJSONArray("data") ?: JSONArray()
+        return (0 until rows.length()).mapNotNull { index ->
+            val row = rows.optJSONObject(index) ?: return@mapNotNull null
+            val actualKind = row.optString("koraxKind").ifBlank {
+                row.optString("kind").ifBlank {
+                    when (row.optString("type")) {
+                        "player" -> "player"
+                        "coach" -> "coach"
+                        else -> "club"
+                    }
+                }
+            }
+            if (actualKind !in setOf("league", "tournament", "club", "national", "player", "coach")) return@mapNotNull null
+            row.asFavorite(actualKind)
+        }.distinctBy { it.kind + ":" + it.id }.take(60)
     }
     val encoded = encodeQuery(query)
     val path = when (kind) {
         "league", "tournament" -> if (query.length >= 2) "/api/competitions?search=$encoded" else "/api/competitions"
-        "player" -> if (query.length >= 2) "/api/players?search=$encoded" else return emptyList()
+        "player" -> if (query.length >= 2) "/api/players?search=$encoded&types=player" else return emptyList()
+        "coach" -> if (query.length >= 2) "/api/players?search=$encoded&types=coach" else return emptyList()
         else -> if (query.length >= 2) "/api/teams?search=$encoded" else return emptyList()
     }
     val payload = apiJson(path)
@@ -279,6 +293,7 @@ internal fun KoraxFavoriteSelectionScreen(
                     "tournament" -> "🥇"
                     "club" -> "⚽"
                     "national" -> "🌍"
+                    "coach" -> "🧑‍🏫"
                     else -> "👤"
                 }
                 FilterChip(
@@ -317,6 +332,7 @@ internal fun KoraxFavoriteSelectionScreen(
                             "tournament" -> "ابحث عن بطولة مثل كأس العالم..."
                             "club" -> "ابحث عن نادٍ مثل الأهلي..."
                             "national" -> "ابحث عن منتخب مثل مصر..."
+                            "coach" -> "ابحث عن مدرب مثل جوارديولا..."
                             else -> "ابحث عن لاعب مثل محمد صلاح..."
                         },
                         color = DMuted,
@@ -657,7 +673,7 @@ private val profileLabels = mapOf(
     "venue" to "الملعب", "stadium" to "الملعب", "capacity" to "السعة",
     "coach" to "المدرب", "manager" to "المدرب", "position" to "المركز",
     "height" to "الطول", "weight" to "الوزن", "date_of_birth" to "تاريخ الميلاد",
-    "birthdate" to "تاريخ الميلاد", "age" to "العمر", "shirt_number" to "رقم القميص",
+    "birthdate" to "تاريخ الميلاد", "birth_date" to "تاريخ الميلاد", "website" to "الموقع الرسمي", "age" to "العمر", "shirt_number" to "رقم القميص",
     "market_value" to "القيمة السوقية", "price" to "القيمة السوقية",
     "appearances" to "المشاركات", "goals" to "الأهداف", "assists" to "التمريرات الحاسمة",
     "yellow_cards" to "البطاقات الصفراء", "red_cards" to "البطاقات الحمراء",
@@ -759,7 +775,7 @@ internal fun KoraxEntityProfileScreen(
         error = ""
         val endpoint = when (favorite.kind) {
             "league", "tournament" -> "/api/competitions/${encodeQuery(favorite.slug)}"
-            "player" -> "/api/players/${encodeQuery(favorite.slug)}"
+            "player", "coach" -> "/api/players/${encodeQuery(favorite.slug)}"
             else -> "/api/teams/${encodeQuery(favorite.slug)}"
         }
         val result = runCatching { apiJson(endpoint) }
@@ -781,6 +797,7 @@ internal fun KoraxEntityProfileScreen(
                 "tournament" -> "ملف البطولة"
                 "club" -> "ملف النادي"
                 "national" -> "ملف المنتخب"
+                "coach" -> "ملف المدرب"
                 else -> "ملف اللاعب"
             },
             "معلومات وإحصائيات من مصدر البيانات",

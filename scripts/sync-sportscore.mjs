@@ -2,11 +2,19 @@ const SPORTScore_BASE = "https://sportscore.com";
 const SPORTScore_UA = "sportscore-mcp/0.3 (+https://sportscore.com/developers/)";
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
+const MAX_REQUESTS_PER_RUN = 70;
+let sportScoreRequestCount = 0;
 import { selectDetailBatch } from "./sync-sportscore-batching.mjs";
 
 function assert(value, message) { if (!value) throw new Error(message); }
 
 async function sportJson(url) {
+  if (sportScoreRequestCount >= MAX_REQUESTS_PER_RUN) {
+    const error = new Error("SportScore per-run request budget reached; stopping safely.");
+    error.status = 429;
+    throw error;
+  }
+  sportScoreRequestCount += 1;
   const response = await fetch(url, {
     headers: { "user-agent": SPORTScore_UA, accept: "application/json" },
     signal: AbortSignal.timeout(20_000),
@@ -71,14 +79,15 @@ async function main() {
   assert(SUPABASE_URL && PUBLISHABLE_KEY, "Supabase sync configuration missing");
   assert(process.env.ACTIONS_ID_TOKEN_REQUEST_URL, "GitHub Actions OIDC is not enabled for this workflow");
 
+  const syncStartedAt = new Date().toISOString();
   const now = new Date();
-  const today = now.toISOString().slice(0, 10);
   const minute = now.getUTCMinutes();
-  const triggeredByReleaseChange = process.env.GITHUB_EVENT_NAME === "push";
-  const fullSync = process.env.KORAX_FORCE_FULL_SYNC === "true" ||
-    process.env.GITHUB_EVENT_NAME === "workflow_dispatch" || triggeredByReleaseChange || minute % 15 === 0;
-  const standingsSync = process.env.KORAX_FORCE_FULL_SYNC === "true" ||
-    process.env.GITHUB_EVENT_NAME === "workflow_dispatch" || triggeredByReleaseChange || minute === 0;
+  const forcedSync = process.env.KORAX_FORCE_FULL_SYNC === "true" ||
+    process.env.GITHUB_EVENT_NAME === "workflow_dispatch" ||
+    process.env.GITHUB_EVENT_NAME === "push";
+  const scheduleSync = forcedSync || minute % 15 === 0;
+  const regularDetailSync = forcedSync || minute % 15 === 0;
+  const standingsSync = forcedSync || minute === 0;
 
   const matchMap = new Map();
   const livePayload = await sportJson(SPORTScore_BASE + "/api/widget/matches/?sport=football&limit=50");
@@ -88,7 +97,7 @@ async function main() {
   }
 
   const competitions = [];
-  if (fullSync) {
+  if (scheduleSync) {
     const dates = [];
     for (let offset = -7; offset <= 14; offset++) {
       const date = new Date(now);
@@ -112,67 +121,91 @@ async function main() {
   }
 
   const matches = [...matchMap.values()];
-  let details = [];
-  if (fullSync) {
-    const nowMs = now.getTime();
-    const oldestDetailMs = nowMs - 7 * 24 * 60 * 60 * 1000;
-    const newestDetailMs = nowMs + 14 * 24 * 60 * 60 * 1000;
-    const fixtureTime = match => Date.parse(match.time || match.start_time || "");
-    const fixtureStatus = match => String(match.status || match.status_text || match.state || "");
-    const priority = match => {
-      const status = fixtureStatus(match);
-      if (/live|in.?play|in_progress|1st.?half|2nd.?half|half.?time|extra.?time|penalt|مباشر|الشوط|استراحة/i.test(status)) return 0;
-      return fixtureTime(match) >= nowMs ? 1 : 2;
-    };
-    const candidates = matches
-      .filter(match => {
-        const time = fixtureTime(match);
-        if (!Number.isFinite(time) || time < oldestDetailMs || time > newestDetailMs) return false;
-        return !/cancel|postpon|abandon/i.test(fixtureStatus(match));
-      })
-      .sort((a, b) => {
-        const tier = priority(a) - priority(b);
-        if (tier !== 0) return tier;
-        const aTime = fixtureTime(a);
-        const bTime = fixtureTime(b);
-        // Refresh live and upcoming fixtures first; walk completed fixtures newest-first.
-        return priority(a) === 2 ? bTime - aTime : aTime - bTime;
-      });
-    const cycleIndex = Math.floor(nowMs / (15 * 60 * 1000));
-    const batch = selectDetailBatch(candidates, minute, 20, cycleIndex);
-    console.log(
-      "SportScore rolling detail batch:",
-      batch.batchIndex + 1,
-      "of",
-      batch.batchCount,
-      "; window: 7 days past / 14 days ahead",
-      "; candidates:",
-      candidates.length,
-      "; selected:",
-      batch.items.length,
-    );
+  const nowMs = now.getTime();
+  const oldestDetailMs = nowMs - 7 * 24 * 60 * 60 * 1000;
+  const newestDetailMs = nowMs + 14 * 24 * 60 * 60 * 1000;
+  const fixtureTime = match => Date.parse(match.time || match.start_time || match.date || "");
+  const fixtureStatus = match => String(match.status || match.status_text || match.state || "");
+  const isLive = match => /live|in.?play|in_progress|1st.?half|2nd.?half|half.?time|extra.?time|penalt|مباشر|الشوط|استراحة/i.test(fixtureStatus(match));
+  const isExcluded = match => /cancel|postpon|abandon/i.test(fixtureStatus(match));
+  const candidates = matches.filter(match => {
+    const time = fixtureTime(match);
+    return !isExcluded(match) && (isLive(match) || (Number.isFinite(time) && time >= oldestDetailMs && time <= newestDetailMs));
+  });
+  const liveCandidates = candidates.filter(isLive).sort((a, b) => fixtureTime(a) - fixtureTime(b));
+  const nearUpcomingCandidates = candidates
+    .filter(match => !isLive(match) && fixtureTime(match) >= nowMs && fixtureTime(match) <= nowMs + 3 * 60 * 60 * 1000)
+    .sort((a, b) => fixtureTime(a) - fixtureTime(b));
+  const nearUpcomingSlugs = new Set(nearUpcomingCandidates.map(slugOf));
+  const liveSlugs = new Set(liveCandidates.map(slugOf));
+  const regularCandidates = candidates
+    .filter(match => !isLive(match) && !nearUpcomingSlugs.has(slugOf(match)))
+    .sort((a, b) => {
+      const aTime = fixtureTime(a);
+      const bTime = fixtureTime(b);
+      return aTime < nowMs ? bTime - aTime : aTime - bTime;
+    });
 
-    const detailResults = [];
-    for (const match of batch.items) {
+  // The live list is refreshed on every five-minute workflow run.
+  // Live details rotate in a separate priority queue; upcoming fixtures fill unused slots.
+  const liveCycleIndex = Math.floor(nowMs / (5 * 60 * 1000));
+  const liveBatch = selectDetailBatch(liveCandidates, minute, 12, liveCycleIndex);
+  const remainingLiveSlots = Math.max(0, 12 - liveBatch.items.length);
+  const upcomingBatch = remainingLiveSlots > 0
+    ? selectDetailBatch(nearUpcomingCandidates, minute, remainingLiveSlots, liveCycleIndex)
+    : { items: [], batchIndex: 0, batchCount: 0 };
+  const primaryBatch = [...liveBatch.items, ...upcomingBatch.items];
+  console.log(
+    "SportScore live-priority detail batch:",
+    liveBatch.items.length, "live;",
+    upcomingBatch.items.length, "near-upcoming;",
+    "; live candidates:", liveCandidates.length,
+    "; upcoming candidates:", nearUpcomingCandidates.length
+  );
+
+  const fetchDetailBatch = async (items, label) => {
+    const results = [];
+    let stopped = false;
+    for (const match of items) {
       const slug = slugOf(match);
       try {
         const detail = await sportJson(
           SPORTScore_BASE + "/api/widget/match/?sport=football&slug=" + encodeURIComponent(detailSlugOf(match)),
         );
-        detailResults.push({ slug, detail });
+        results.push({ slug, detail });
       } catch (error) {
-        console.error("Detail fetch warning:", String(error));
+        console.error(label + " detail fetch warning:", String(error));
         if (error?.status === 429) {
-          console.error("SportScore rate limit reached; stopping this detail batch early to avoid further requests.");
+          console.error("SportScore request guard/rate limit reached; stopping further detail calls in this run.");
+          stopped = true;
           break;
         }
       }
-      await new Promise(resolve => setTimeout(resolve, 750));
+      await new Promise(resolve => setTimeout(resolve, 650));
     }
+    return { results, stopped };
+  };
 
-    details = detailResults.filter(result => result && result.slug && result.detail);
-    console.log("SportScore detail fetch results:", details.length, "of", batch.items.length, "selected from", candidates.length);
+  const primaryResults = await fetchDetailBatch(primaryBatch, "live-priority");
+  let regularResults = { results: [], stopped: false };
+  if (regularDetailSync && !primaryResults.stopped) {
+    const cycleIndex = Math.floor(nowMs / (15 * 60 * 1000));
+    const batch = selectDetailBatch(regularCandidates, minute, 8, cycleIndex);
+    console.log(
+      "SportScore rolling archive detail batch:",
+      batch.batchIndex + 1, "of", batch.batchCount,
+      "; candidates:", regularCandidates.length,
+      "; selected:", batch.items.length
+    );
+    regularResults = await fetchDetailBatch(batch.items, "archive");
   }
+
+  const detailsBySlug = new Map();
+  for (const result of [...primaryResults.results, ...regularResults.results]) {
+    if (result?.slug && result.detail) detailsBySlug.set(result.slug, result);
+  }
+  const details = [...detailsBySlug.values()];
+  console.log("SportScore detail fetch results:", details.length, "total; live-priority:", primaryResults.results.length, "; archive:", regularResults.results.length);
 
   if (standingsSync) {
     const targets = [
@@ -229,7 +262,16 @@ async function main() {
   }
 
   const token = await getGitHubOidc();
-  const payload = { matches, details, competitions, syncedAt: new Date().toISOString() };
+  const payload = {
+    matches,
+    details,
+    competitions,
+    requestCount: sportScoreRequestCount,
+    workflowRunId: process.env.GITHUB_RUN_ID || "",
+    workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT || "1",
+    startedAt: syncStartedAt,
+    syncedAt: new Date().toISOString(),
+  };
   const response = await fetch(SUPABASE_URL + "/functions/v1/korax-sportscore-sync", {
     method: "POST",
     headers: {
@@ -243,6 +285,7 @@ async function main() {
   const body = await response.text();
   if (!response.ok) throw new Error("Supabase sync failed: HTTP " + response.status + " " + body.slice(0, 600));
   console.log("SportScore -> Supabase sync:", body);
+  console.log("SportScore requests this run:", sportScoreRequestCount, "/", MAX_REQUESTS_PER_RUN);
   console.log("Collected " + matches.length + " matches, " + details.length + " details, " + competitions.length + " standings tables.");
 }
 

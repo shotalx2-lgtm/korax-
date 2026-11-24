@@ -21,7 +21,16 @@ jobs:
         with:
           node-version: "22"
       - name: Test SportScore detail batching
-        run: node --test scripts/sync-sportscore-batching.test.mjs scripts/football-news-filter.test.mjs
+        run: |
+          node --check scripts/sync-world-data.mjs
+          node --test scripts/sync-sportscore-batching.test.mjs scripts/football-news-filter.test.mjs scripts/football-sources/*.test.mjs
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check the new world-data Edge Function
+        run: deno check supabase/functions/korax-world-data-sync/index.ts
+
       - name: Test football data worker
         working-directory: worker
         run: |
@@ -62,6 +71,23 @@ jobs:
                 throw new Error("Competition API returned no usable data: " + raw);
               }
               console.log("Competitions endpoint passed:", value.data.length, "items");
+            });
+          '
+
+          global_search="$(api_curl --silent --show-error --fail --max-time 35 "$base/api/entities/search?search=Arsenal")"
+          printf '%s' "$global_search" | node -e '
+            let raw = "";
+            process.stdin.on("data", chunk => raw += chunk);
+            process.stdin.on("end", () => {
+              const value = JSON.parse(raw);
+              if (!Array.isArray(value.data) || !value.meta || value.meta.query !== "Arsenal") {
+                throw new Error("Global football entity search contract failed: " + raw);
+              }
+              const invalid = value.data.filter(item =>
+                !item.id || !item.name || !["club","national","player","coach","league","tournament"].includes(item.koraxKind || item.kind || item.type)
+              );
+              if (invalid.length) throw new Error("Global entity search returned records without normalized identity/type.");
+              console.log("Global entity search endpoint passed:", value.data.length, "items; source:", value.source);
             });
           '
 
