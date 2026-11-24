@@ -83,7 +83,7 @@ class VisualShellActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         KoraxSmartAlerts.ensureChannels(this)
         KoraxSmartAlerts.setBackgroundUpdates(this, KoraxSettingsStore.getBoolean(this, "background_updates", true))
-        window.statusBarColor = android.graphics.Color.rgb(7, 9, 13)
+        window.statusBarColor = android.graphics.Color.rgb(0, 0, 0)
         window.navigationBarColor = android.graphics.Color.rgb(7, 9, 13)
         @Suppress("DEPRECATION") window.decorView.systemUiVisibility = 0
         setContent {
@@ -130,7 +130,7 @@ private fun KoraxSplash() {
     var intro by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(1050); intro = false }
     if (intro) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF07090D)), contentAlignment = Alignment.Center) {
+        Box(Modifier.fillMaxSize().background(Color(0xFF000000)), contentAlignment = Alignment.Center) {
             Image(
                 painter = painterResource(R.drawable.korax_brand),
                 contentDescription = "KORAX",
