@@ -131,7 +131,11 @@ private fun JSONObject.asFavorite(kind: String): KoraxFavorite? {
         kind = kind,
         imageUrl = nested.firstImage(),
         country = country,
-        notify = true
+        notify = true,
+        imageAttribution = nested.optString("imageAttribution"),
+        imageLicense = nested.optString("imageLicense"),
+        imageLicenseUrl = nested.optString("imageLicenseUrl"),
+        imageSourceUrl = nested.optString("imageSourceUrl")
     )
 }
 
@@ -481,6 +485,7 @@ private fun FavoriteSearchResultCard(
     onOpen: () -> Unit,
     onToggle: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -520,6 +525,23 @@ private fun FavoriteSearchResultCard(
                     ).filter { it.isNotBlank() }.joinToString(" • "),
                     color = DMuted, fontSize = 9.sp
                 )
+                if (item.imageUrl.isNotBlank() && item.imageAttribution.isNotBlank()) {
+                    Text(
+                        "الصورة: ${item.imageAttribution} · ${item.imageLicense}",
+                        color = DMuted,
+                        fontSize = 8.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.clickable {
+                            val target = item.imageSourceUrl.ifBlank { item.imageLicenseUrl }
+                            if (target.startsWith("https://")) runCatching {
+                                context.startActivity(
+                                    android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(target))
+                                )
+                            }
+                        }
+                    )
+                }
             }
             IconButton(onClick = onToggle) {
                 Icon(
@@ -856,6 +878,28 @@ internal fun KoraxEntityProfileScreen(
                                 if (profileSubtitle.isNotBlank()) {
                                     Spacer(Modifier.height(5.dp))
                                     Text(profileSubtitle, color = DMuted, fontSize = 9.sp, lineHeight = 14.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                }
+                                val attribution = root.firstString("imageAttribution").ifBlank { favorite.imageAttribution }
+                                val license = root.firstString("imageLicense").ifBlank { favorite.imageLicense }
+                                val sourcePage = root.firstString("imageSourceUrl").ifBlank { favorite.imageSourceUrl }
+                                val licensePage = root.firstString("imageLicenseUrl").ifBlank { favorite.imageLicenseUrl }
+                                if (image.isNotBlank() && attribution.isNotBlank()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(
+                                        "الصورة: $attribution · $license",
+                                        color = DMuted,
+                                        fontSize = 8.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.clickable {
+                                            val target = sourcePage.ifBlank { licensePage }
+                                            if (target.startsWith("https://")) runCatching {
+                                                context.startActivity(
+                                                    android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(target))
+                                                )
+                                            }
+                                        }
+                                    )
                                 }
                                 Spacer(Modifier.height(10.dp))
                                 Button(
