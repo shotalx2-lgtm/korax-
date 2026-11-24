@@ -50,6 +50,12 @@ function teamRecord(team) {
       stadiumName: text(team.strStadium),
       stadiumCapacity: integer(team.intStadiumCapacity),
       website: text(team.strWebsite),
+      wikidataId: text(team.idWikidata),
+      externalIds: {
+        espn: text(team.idESPN),
+        apiFootball: text(team.idAPIfootball),
+        wikidata: text(team.idWikidata),
+      },
       provider: "thesportsdb",
     },
     assets,
@@ -64,6 +70,9 @@ function teamRecord(team) {
       strStadium: text(team.strStadium),
       intStadiumCapacity: integer(team.intStadiumCapacity),
       strWebsite: text(team.strWebsite),
+      idWikidata: text(team.idWikidata),
+      idESPN: text(team.idESPN),
+      idAPIfootball: text(team.idAPIfootball),
     },
   };
 }
@@ -74,8 +83,11 @@ function playerRecord(player) {
   if (!id || !name) return null;
   const externalUrl = `https://www.thesportsdb.com/player/${encodeURIComponent(id)}`;
   const portrait = safeAsset(player.strThumb, "portrait", externalUrl);
+  const position = text(player.strPosition);
+  const status = text(player.strStatus);
+  const entityType = /coach|manager|staff/i.test([position, status].filter(Boolean).join(" ")) ? "coach" : "player";
   return {
-    entityType: "player",
+    entityType,
     externalId: id,
     externalUrl,
     canonicalName: name,
@@ -89,6 +101,13 @@ function playerRecord(player) {
       weight: text(player.strWeight),
       shirtNumber: text(player.strNumber),
       teamName: text(player.strTeam),
+      wikidataId: text(player.idWikidata),
+      externalIds: {
+        espn: text(player.idESPN),
+        apiFootball: text(player.idAPIfootball),
+        transfermarkt: text(player.idTransferMkt),
+        wikidata: text(player.idWikidata),
+      },
       provider: "thesportsdb",
     },
     assets: portrait ? [portrait] : [],
@@ -103,6 +122,11 @@ function playerRecord(player) {
       strWeight: text(player.strWeight),
       strNumber: text(player.strNumber),
       strTeam: text(player.strTeam),
+      idTeam: text(player.idTeam),
+      idWikidata: text(player.idWikidata),
+      idESPN: text(player.idESPN),
+      idAPIfootball: text(player.idAPIfootball),
+      idTransferMkt: text(player.idTransferMkt),
     },
   };
 }
