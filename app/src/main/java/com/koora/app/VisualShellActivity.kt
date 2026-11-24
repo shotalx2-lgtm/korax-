@@ -609,6 +609,30 @@ private fun NewsScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("KORAX", color = KLime, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 2.4.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(6.dp).clip(CircleShape).background(KLime))
+                    Spacer(Modifier.width(6.dp))
+                    Text("تغطية كرة القدم • عربي وعالمي", color = KMuted, fontSize = 9.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = KCard2,
+                border = BorderStroke(1.dp, KLime.copy(alpha = .28f))
+            ) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("FOOTBALL", color = KLime, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.1.sp)
+                    Text("WORLD", color = KMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                }
+            }
+        }
+        Spacer(Modifier.height(4.dp))
         BrandToolbar(
             onSearch = { searchExpanded = !searchExpanded },
             onLive = onOpenLive,
@@ -705,7 +729,7 @@ private fun NewsCard(article: NewsItem, onOpen: () -> Unit, onComment: () -> Uni
                 coil.compose.AsyncImage(model = article.image, contentDescription = article.title,
                     modifier = Modifier.fillMaxWidth().height(172.dp).clickable(onClick = onOpen), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
             } else Box(Modifier.fillMaxWidth().height(102.dp).background(Brush.horizontalGradient(listOf(Color(0xFF1B2508), Color(0xFF151B24)))).clickable(onClick = onOpen), contentAlignment = Alignment.Center) {
-                Text("KORAX X", color = KLime, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Text("KORAX", color = KLime, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
             }
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
