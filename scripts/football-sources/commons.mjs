@@ -44,6 +44,8 @@ export function normalizeCommonsPage(page, candidates = []) {
   const isLogo = candidate.assetType === "logo";
 
   return {
+    entityId: candidate.entityId || null,
+    fileName,
     assetType: candidate.assetType,
     assetUrl: info.url || candidate.specialFileUrl,
     sourceKey: "wikimedia_commons",
