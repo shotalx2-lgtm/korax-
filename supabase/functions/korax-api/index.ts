@@ -1,4 +1,5 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { isFootballNewsArticle } from "./news-filter.mjs";
 
 /**
  * KOORA API edge adapter.
@@ -820,11 +821,8 @@ const NEWS_FEEDS = [
   { id: "btolat-juventus", source: "بطولات - يوفنتوس", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=11922" },
   { id: "btolat-psg", source: "بطولات - باريس سان جيرمان", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=10061" },
   { id: "btolat-pyramids", source: "بطولات - بيراميدز", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=23165" },
-  { id: "youm7", source: "الإخبارية – تغطية اليوم السابع", language: "ar", url: "https://www.youm7.com/rss/SectionRss?SectionID=298", fallbackUrl: "https://alikhbariya.net/feeds/sources/f903fc12-4e08-4331-b249-81551c16f840.xml" },
   { id: "hesport", source: "هسبورت", language: "ar", url: "https://www.hesport.com/feed" },
   { id: "kooora", source: "كووورة", language: "ar", url: "https://feeds.footballco.com/kooora/feed/6p5bsxot7te8yick" },
-  { id: "aljazeera", source: "الجزيرة", language: "ar", url: "https://www.aljazeera.net/rss" },
-  { id: "sky-arabia", source: "سكاي نيوز عربية", language: "ar", url: "https://www.skynewsarabia.com/rss" },
   { id: "bbc-football", source: "BBC Sport", language: "en", url: "https://feeds.bbci.co.uk/sport/football/rss.xml" },
   { id: "bbc-premier", source: "BBC Sport - Premier League", language: "en", url: "https://feeds.bbci.co.uk/sport/football/premier-league/rss.xml" },
   { id: "bbc-champions", source: "BBC Sport - Champions League", language: "en", url: "https://feeds.bbci.co.uk/sport/football/champions-league/rss.xml" },
@@ -833,8 +831,6 @@ const NEWS_FEEDS = [
   { id: "sky-premier", source: "Sky Sports - Premier League", language: "en", url: "https://www.skysports.com/rss/11661" },
   { id: "guardian-football", source: "The Guardian - Football", language: "en", url: "https://www.theguardian.com/football/rss" },
 ];
-
-const FOOTBALL_WORDS = /football|soccer|premier league|champions league|la liga|serie a|bundesliga|ligue 1|saudi pro league|transfer|arsenal|chelsea|liverpool|manchester|real madrid|barcelona|bayern|psg|كرة القدم|كورة|الدوري|الأهلي|الزمالك|ريال مدريد|برشلونة|ليفربول|مانشستر|الهلال|النصر|الاتحاد|محمد صلاح|عمر مرموش|انتقال|ميركاتو|مدرب|مباراة|هدف|أهداف|لاعب|منتخب/i;
 
 function decodeXml(value) {
   return String(value || "")
@@ -982,11 +978,9 @@ function parseRssFeed(xml, feed) {
     const timestamp = Date.parse(rawDate);
     const imageUrl = extractFeedImage(block, feed.url);
     if (!title || !url) return null;
-    if (feed.id === "aljazeera" || feed.id === "sky-arabia" || feed.id === "hesport") {
-      if (!FOOTBALL_WORDS.test(title + " " + summary)) return null;
-    }
+    if (!isFootballNewsArticle(title, summary, feed.id)) return null;
     return {
-      id: url, title, summary, url, source: feed.source,
+      id: url, feedId: feed.id, title, summary, url, source: feed.source,
       publishedAt: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : rawDate,
       imageUrl: imageUrl || null, language: feed.language,
       category: classifyNewsCategory(title, summary, feed),
@@ -1044,7 +1038,7 @@ async function loadPublisherNews() {
 }
 
 async function getCachedArabicNews() {
-  const cacheKey = "news:multi-publisher-rss-4";
+  const cacheKey = "news:football-only-rss-5";
   const cached = cacheRead(cacheKey);
   if (cached !== null) return cached;
   const payload = await loadPublisherNews();

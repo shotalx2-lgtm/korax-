@@ -21,7 +21,7 @@ jobs:
         with:
           node-version: "22"
       - name: Test SportScore detail batching
-        run: node --test scripts/sync-sportscore-batching.test.mjs
+        run: node --test scripts/sync-sportscore-batching.test.mjs scripts/football-news-filter.test.mjs
       - name: Test football data worker
         working-directory: worker
         run: |
