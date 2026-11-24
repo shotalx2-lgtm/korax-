@@ -1,0 +1,42 @@
+name: KORAX World Data Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "40 3 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/korax-world-data-sync.yml"
+      - "scripts/sync-world-data.mjs"
+      - "scripts/football-sources/**"
+      - "supabase/functions/korax-world-data-sync/**"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: korax-world-data-sync-main
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run provider adapter tests
+        run: node --test scripts/football-sources/*.test.mjs
+
+      - name: Fetch and persist source data
+        run: node scripts/sync-world-data.mjs
