@@ -22,6 +22,39 @@ function finalResult(match) {
     || results.slice().sort((a, b) => Number(b?.resultID || 0) - Number(a?.resultID || 0))[0]
     || null;
 }
+function leagueRecord(league) {
+  const id = number(league?.leagueId);
+  const name = text(league?.leagueName);
+  if (!id || !name) return null;
+  const sportId = number(league?.sport?.sportId);
+  const isTournament = /cup|pokal|champions|europa|conference|world cup|weltmeisterschaft|nations league/i.test(name);
+  return {
+    entityType: isTournament ? "tournament" : "league",
+    externalId: String(id),
+    externalUrl: `https://api.openligadb.de/getmatchdata/${encodeURIComponent(league.leagueShortcut)}/${encodeURIComponent(league.leagueSeason)}`,
+    canonicalName: name,
+    nameEn: name,
+    aliases: [],
+    countryName: text(league?.leagueCountry),
+    metadata: {
+      leagueShortcut: text(league?.leagueShortcut),
+      season: String(league?.leagueSeason || ""),
+      sportId,
+      sportName: text(league?.sport?.sportName),
+      provider: "openligadb",
+      license: "ODbL-1.0",
+    },
+    assets: [],
+    rawPayload: {
+      leagueId: id,
+      leagueName: name,
+      leagueShortcut: text(league?.leagueShortcut),
+      leagueSeason: String(league?.leagueSeason || ""),
+      sport: league?.sport || null,
+    },
+  };
+}
+
 function teamRecord(team, league) {
   const id = number(team?.teamId);
   const name = text(team?.teamName);
@@ -169,6 +202,7 @@ export function createOpenLigaDbClient(options = {}) {
       return {
         changed: true,
         group,
+        league: leagueRecord(league),
         lastChangedAt: String(changedAt),
         matches: rawMatches.map(match => normalizeOpenLigaMatch(match, league)).filter(Boolean),
         teams: rawMatches.flatMap(match => [
@@ -181,4 +215,4 @@ export function createOpenLigaDbClient(options = {}) {
   };
 }
 
-export const openLigaDbNormalizers = { teamRecord, finalResult };
+export const openLigaDbNormalizers = { teamRecord, leagueRecord, finalResult };
