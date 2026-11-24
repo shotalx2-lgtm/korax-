@@ -659,7 +659,7 @@ private val profileLabels = mapOf(
     "venue" to "الملعب", "stadium" to "الملعب", "capacity" to "السعة",
     "coach" to "المدرب", "manager" to "المدرب", "position" to "المركز",
     "height" to "الطول", "weight" to "الوزن", "date_of_birth" to "تاريخ الميلاد",
-    "birthdate" to "تاريخ الميلاد", "age" to "العمر", "shirt_number" to "رقم القميص",
+    "birthdate" to "تاريخ الميلاد", "birth_date" to "تاريخ الميلاد", "website" to "الموقع الرسمي", "age" to "العمر", "shirt_number" to "رقم القميص",
     "market_value" to "القيمة السوقية", "price" to "القيمة السوقية",
     "appearances" to "المشاركات", "goals" to "الأهداف", "assists" to "التمريرات الحاسمة",
     "yellow_cards" to "البطاقات الصفراء", "red_cards" to "البطاقات الحمراء",
