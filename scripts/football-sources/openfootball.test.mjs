@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeOpenFootballMatch, parseOpenFootballSeason } from "./openfootball.mjs";
+import { OPENFOOTBALL_SEASON_FILES, normalizeOpenFootballMatch, parseOpenFootballSeason } from "./openfootball.mjs";
 
 test("normalizes finished OpenFootball fixtures without inventing live events", () => {
   const match = normalizeOpenFootballMatch({
@@ -46,4 +46,10 @@ test("parses season files and rejects incomplete rows", () => {
   }, { competitionName: "Premier League", season: "2026-27", countryCode: "GB" });
   assert.equal(result.length, 1);
   assert.equal(result[0].competitionName, "Premier League 2026/27");
+});
+
+test("includes current open CC0 English Championship and Brazilian Serie A files", () => {
+  const paths = new Set(OPENFOOTBALL_SEASON_FILES.map(file => file.path));
+  assert.equal(paths.has("2026-27/en.2.json"), true);
+  assert.equal(paths.has("2026/br.1.json"), true);
 });
