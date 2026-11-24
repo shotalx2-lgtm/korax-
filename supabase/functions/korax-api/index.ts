@@ -980,7 +980,7 @@ function parseRssFeed(xml, feed) {
     if (!title || !url) return null;
     if (!isFootballNewsArticle(title, summary, feed.id)) return null;
     return {
-      id: url, title, summary, url, source: feed.source,
+      id: url, feedId: feed.id, title, summary, url, source: feed.source,
       publishedAt: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : rawDate,
       imageUrl: imageUrl || null, language: feed.language,
       category: classifyNewsCategory(title, summary, feed),
