@@ -234,13 +234,13 @@ jobs:
 
           # Search tests must use entities that are actually present in the current
           # SportScore cache, not stale fixture names from an older provider snapshot.
-          team_search_query="$(printf '%s' "$schedule" | node -e '
+          team_search_query="$(printf '%s' "$full_detail" | node -e '
             let raw = "";
             process.stdin.on("data", chunk => raw += chunk);
             process.stdin.on("end", () => {
-              const rows = JSON.parse(raw).data || [];
-              const name = rows.map(row => row.homeTeam?.name || row.home || "").find(Boolean);
-              if (!name) throw new Error("No cached home team is available for search smoke test.");
+              const item = JSON.parse(raw).data || {};
+              const name = item.homeTeam?.name || item.home || "";
+              if (!name) throw new Error("Known detailed fixture has no cached home team for search smoke test.");
               process.stdout.write(name);
             });
           ')"
