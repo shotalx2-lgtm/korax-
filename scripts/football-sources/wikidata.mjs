@@ -154,7 +154,7 @@ export function buildFootballEntitiesQuery({ countryQids = COUNTRY_QIDS, limit =
     "  OPTIONAL { ?item wdt:P856 ?officialWebsite. }",
     "}",
     "LIMIT " + safeLimit
-  ].join("\\n");
+  ].join("\n");
 }
 
 export function buildFootballPeopleQuery({ countryQids = COUNTRY_QIDS, limit = 100 } = {}) {
@@ -181,7 +181,7 @@ export function buildFootballPeopleQuery({ countryQids = COUNTRY_QIDS, limit = 1
     "  OPTIONAL { ?position rdfs:label ?positionLabel. FILTER(LANG(?positionLabel) = \"en\") }",
     "}",
     "LIMIT " + safeLimit
-  ].join("\\n");
+  ].join("\n");
 }
 
 export function createWikidataClient(options = {}) {
