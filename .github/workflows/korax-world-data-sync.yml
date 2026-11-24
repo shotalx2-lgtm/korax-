@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   sync:
-    if: github.ref == 'refs/heads/main' && (github.event_name != 'schedule' || github.event.schedule == '40 3 * * *')
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event.schedule == '40 3 * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
