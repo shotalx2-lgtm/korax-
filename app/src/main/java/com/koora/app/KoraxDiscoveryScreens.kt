@@ -590,7 +590,8 @@ private val profileLabels = mapOf(
     "appearances" to "المشاركات", "goals" to "الأهداف", "assists" to "التمريرات الحاسمة",
     "yellow_cards" to "البطاقات الصفراء", "red_cards" to "البطاقات الحمراء",
     "wins" to "الانتصارات", "draws" to "التعادلات", "losses" to "الهزائم",
-    "points" to "النقاط", "played" to "لعب", "goal_difference" to "فارق الأهداف"
+    "points" to "النقاط", "played" to "لعب", "goal_difference" to "فارق الأهداف",
+    "matches_with_lineup" to "مباريات ظهر في تشكيلتها", "matches_in_cache" to "مباريات ضمن البيانات المحفوظة"
 )
 
 private fun collectProfileFacts(value: JSONObject, depth: Int = 0): List<ProfileFact> {
@@ -836,7 +837,7 @@ internal fun KoraxEntityProfileScreen(
                     }
                 }
                 if (roster.isNotEmpty()) {
-                    Text("قائمة اللاعبين", color = DText, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+                    Text(if (favorite.kind == "club" || favorite.kind == "national") "لاعبون ظهروا في التشكيلات المتاحة" else "اللاعبون", color = DText, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
                     roster.take(35).forEach { player ->
                         Row(
                             Modifier.fillMaxWidth().clickable { onOpenPlayer(player) }.padding(vertical = 6.dp),

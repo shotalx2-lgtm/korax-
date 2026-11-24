@@ -264,10 +264,10 @@ private fun ToolHome(
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Column(Modifier.padding(13.dp)) {
-                        Text("حدود النسخة التجريبية", color = XAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("مصادر البيانات والميزات المتاحة", color = XAccent, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         Spacer(Modifier.height(5.dp))
                         Text(
-                            "المساعد هنا أداة بحث وليست نموذج محادثة توليديًا. لا توجد خدمة ترجمة أو فيديوهات Highlights ضمن المصدرين الحاليين، ولا يعرض التطبيق توقعات احتمالية من غير بيانات تاريخية موثوقة. التعليقات والمفضلة محلية على الجهاز.",
+                            "KORAX يعمل دون تسجيل دخول ودون لعبة فانتازيا. المفضلة والتعليقات والحفظ والنسخ الاحتياطي محلية على جهازك. تنبيهات الخلفية يستخدم لها Android WorkManager وقد تتأخر بسبب إعدادات البطارية والاتصال. التشكيلات والإحصائيات والتفاصيل تظهر فقط عندما يوفرها SportScore؛ ولا ينشئ التطبيق بيانات غير متاحة.",
                             color = XMuted, fontSize = 10.sp, lineHeight = 17.sp
                         )
                     }

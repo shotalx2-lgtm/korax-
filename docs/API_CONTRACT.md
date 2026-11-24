@@ -1,37 +1,46 @@
 # KORAX backend API contract
 
-The Android client talks only to the KORAX HTTPS backend. The current public-source integration requires no third-party API keys. Set `KOORA_API_BASE_URL` to the deployed Worker origin; this is an endpoint address, not an API key.
+The Android client talks to the KORAX HTTPS backend. The active default is the Supabase Edge Function `korax-api`. SportScore is fetched and normalized server-side; the app does not contain a provider service credential.
 
 ## News
 
 - `GET /api/news?per_page=40`
 - Optional filters: `language=ar|en`, `category=transfers|premier-league|la-liga|serie-a|bundesliga|ligue-1|saudi|egypt|football`
 
-Returns a mixed Arabic/English football-news feed with `id`, `title`, `summary`, `url`, `source`, `publishedAt`, `language`, `category`, and optional `imageUrl`. It aggregates publisher RSS feeds and caches at the edge for five minutes. Feed markup/entities are sanitized into plain text, image URLs are read from supported RSS media tags, and category classification avoids broad ambiguous keywords. Images may legitimately be absent when a publisher feed provides none. The original Youm7 sports RSS endpoint is retained; if it fails or returns no parseable items because of redirect loops, KORAX retries through the publisher-indexed alikhbariya.net Youm7 source feed and labels it as an aggregator mirror. Images are only included when supplied by the publisher feed; image availability and reuse rights are not guaranteed.
+Returns Arabic and English football news only. General news RSS feeds are not included; mixed-sports feeds pass a football-specific allowlist. Non-football sport markers reject basketball, tennis, handball and other sports. Each item retains publisher name, date, summary and original link; image is included only if the feed supplies one. The in-app article page displays the available RSS excerpt and links to the publisher's full article.
 
-## Football data
+## Matches
 
-SportScore public REST endpoints are used without an API key on the attribution tier. See https://sportscore.com/developers/api/ for current endpoint schemas and terms.
-
-- `GET /api/matches?date=YYYY-MM-DD`
-- `GET /api/matches?live=1` (SportScore current match-summary widget; only active statuses are returned)
+- `GET /api/matches?mode=live`
+- `GET /api/matches?mode=upcoming&date=YYYY-MM-DD`
+- `GET /api/matches?mode=finished&date=YYYY-MM-DD`
+- `GET /api/matches?mode=all&date=YYYY-MM-DD`
 - `GET /api/matches/{slug}`
-- `GET /api/competitions`\n- `GET /api/competitions?search=name` (provider-backed league, cup and tournament search for discovery/favorites)
-- `GET /api/competitions/{slug}` (standings)
-- `GET /api/teams?search=name`, `GET /api/teams/{slug}`
-- `GET /api/players?search=name`, `GET /api/players/{slug}`
 
-The Android matches screen displays the required clickable “Powered by SportScore” attribution. The app also offers in-app news summaries with an optional publisher link; it does not republish full protected articles. Favorites, article likes, bookmarks and comments are stored locally on the device until a shared account/community backend is introduced. The documented anonymous tier is approximately 10,000 requests per 24 hours per IP, subject to provider fair-use terms; KORAX caches upstream responses to reduce usage.
+Optional `scope=main` restricts the response to the curated main competitions. Detail records may be absent for a fixture; an empty detail must remain unavailable rather than being generated.
 
-## Fantasy limitations
+## Competitions, teams and players
 
-- `GET /api/fantasy/players` collects the players returned by the league top-scorer and assist leaderboards for the English, Spanish, French, Italian, German and Saudi leagues.
-- SportScore does not document a full squad catalogue endpoint. This is therefore not a complete player market; some players or leagues may be missing.
-- The current returned points are a limited season aggregate derived from leaderboard statistics, not matchweek points.
-- No confirmed transfers endpoint is documented by SportScore. `GET /api/transfers` returns an empty data list with `meta.available=false`, rather than fabricated transfers.
+- `GET /api/competitions`
+- `GET /api/competitions?search=name`
+- `GET /api/competitions/{slug}` — standings where cached.
+- `GET /api/teams?search=name`
+- `GET /api/teams/{slug}`
+- `GET /api/players?search=name`
+- `GET /api/players/{slug}`
 
-A complete 15-player market, locked gameweeks, live match-event scoring, automatic substitutions and official rankings require a provider/source with full squad and event-stat coverage plus a backend round engine. Do not advertise these as live features until implemented and verified.
+Search/profile coverage is limited by teams and players seen in cached fixtures and detailed lineups/events. Team profile rosters are the players observed in cached lineups, not an official complete squad. Player statistics reflect supplied events and cached lineups only. Missing fields remain unavailable.
 
-## Response integrity
+## Transfers
 
-The app does not fabricate match scores, player positions, images, or transfer details. Missing fields remain empty or unavailable. All article items retain the publisher name and original link. Do not republish full protected articles or assume that a feed image is licensed for redistribution.
+- `GET /api/transfers`
+
+The configured SportScore integration has no confirmed transfers endpoint. It returns an empty list with `meta.available=false`; the app may surface transfer-related publisher news, but must not invent official transfer records.
+
+## No-login product contract
+
+There is no login, fantasy, user session, public player market, or cross-device account data in this product. Favorites, article likes/bookmarks/comments, notification history, offline summaries and backup/restore are device-local. Background notifications are local Android notifications scheduled with WorkManager and can be delayed by system policy; there is no FCM remote-push guarantee.
+
+## Provider attribution and rights
+
+SportScore source attribution is displayed in the Android app. Publisher articles remain at their original source; KORAX displays only the feed's available excerpt and link. Images and statistics may legitimately be missing.

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { DETAIL_BATCH_SIZE, selectDetailBatch } from "./sync-sportscore-batching.mjs";
 
-test("uses four non-overlapping 20-item batches per hour", () => {
+test("uses four non-overlapping 20-item batches per hour for the standard 80 fixtures", () => {
   const fixtures = Array.from({ length: 80 }, (_, index) => `fixture-${index}`);
   const batches = [0, 15, 30, 45].map(minute => selectDetailBatch(fixtures, minute));
   assert.equal(DETAIL_BATCH_SIZE, 20);
@@ -11,17 +11,25 @@ test("uses four non-overlapping 20-item batches per hour", () => {
   assert.equal(new Set(batches.flatMap(batch => batch.items)).size, 80);
 });
 
+test("rotates beyond the first four batches across consecutive 15-minute sync cycles", () => {
+  const fixtures = Array.from({ length: 95 }, (_, index) => `fixture-${index}`);
+  const batches = Array.from({ length: 5 }, (_, cycle) => selectDetailBatch(fixtures, cycle * 15, 20, cycle));
+  assert.deepEqual(batches.map(batch => batch.batchIndex), [0, 1, 2, 3, 4]);
+  assert.deepEqual(batches.map(batch => batch.items.length), [20, 20, 20, 20, 15]);
+  assert.equal(new Set(batches.flatMap(batch => batch.items)).size, 95);
+});
+
+test("normalizes negative and out-of-range cycle indices", () => {
+  const fixtures = Array.from({ length: 80 }, (_, index) => index);
+  assert.deepEqual(selectDetailBatch(fixtures, 0, 20, 75).items, selectDetailBatch(fixtures, 0, 20, 3).items);
+  assert.deepEqual(selectDetailBatch(fixtures, 0, 20, -1).items, selectDetailBatch(fixtures, 0, 20, 3).items);
+});
+
 test("returns the final partial batch without duplicates", () => {
   const fixtures = Array.from({ length: 45 }, (_, index) => index);
   const batch = selectDetailBatch(fixtures, 30, 20);
   assert.equal(batch.batchIndex, 2);
   assert.deepEqual(batch.items, [40, 41, 42, 43, 44]);
-});
-
-test("normalizes out-of-range minute values", () => {
-  const fixtures = Array.from({ length: 80 }, (_, index) => index);
-  assert.deepEqual(selectDetailBatch(fixtures, 75).items, selectDetailBatch(fixtures, 15).items);
-  assert.deepEqual(selectDetailBatch(fixtures, -45).items, selectDetailBatch(fixtures, 15).items);
 });
 
 test("handles empty and non-array inputs safely", () => {
