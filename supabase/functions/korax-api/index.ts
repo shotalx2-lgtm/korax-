@@ -805,7 +805,7 @@ function canonicalEntityKind(type) {
 
 function isDisplayableEntityAsset(asset) {
   const license = String(asset?.license_code || "");
-  const allowedLicense = /cc0|public domain|cc[\s-]?by(?:[\\s-]?sa)?/i.test(license);
+  const allowedLicense = /cc0|public domain|cc[\s-]?by(?:[\s-]?sa)?/i.test(license);
   const requiresAttribution = /cc[\s-]?by/i.test(license);
   const credit = String(asset?.attribution_text || asset?.creator || "").trim();
   return asset?.license_status === "verified" &&
