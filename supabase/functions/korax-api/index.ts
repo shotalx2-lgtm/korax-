@@ -879,6 +879,66 @@ async function searchCanonicalEntities(query, types, limit) {
   }).filter(Boolean);
 }
 
+async function listCanonicalEntities(types, limit, offset) {
+  const allowed = new Set(["club", "national", "player", "coach", "league", "tournament"]);
+  const safeTypes = [...new Set((Array.isArray(types) ? types : []).filter(type => allowed.has(type)))];
+  if (!safeTypes.length) return [];
+  const requested = Math.min(51, Math.max(1, Number(limit) || 31));
+  const start = Math.min(5_000, Math.max(0, Number(offset) || 0));
+  const typeFilter = encodeURIComponent("in.(" + safeTypes.join(",") + ")");
+  const rows = await dbRows(
+    "/rest/v1/korax_entities?select=id,entity_type,canonical_name,name_ar,name_en,aliases,country_code,country_name,metadata,completeness,verification_status" +
+    "&is_active=eq.true&entity_type=" + typeFilter +
+    "&order=completeness.desc,canonical_name.asc&limit=" + requested + "&offset=" + start
+  );
+  const entities = Array.isArray(rows) ? rows : [];
+  const ids = entities.map(row => String(row.id || "")).filter(id => /^[0-9a-f-]{36}$/i.test(id));
+  let assets = [];
+  if (ids.length) {
+    try {
+      assets = await dbRows(
+        "/rest/v1/korax_entity_assets?select=entity_id,asset_type,asset_url,is_primary,license_status,license_code,license_url,creator,attribution_text,source_page_url,metadata" +
+        "&entity_id=in.(" + ids.map(encodeURIComponent).join(",") + ")" +
+        "&license_status=eq.verified&order=is_primary.desc&limit=500"
+      );
+    } catch (error) {
+      console.error("[korax-world-catalogue] verified asset lookup failed", String(error).slice(0, 200));
+    }
+  }
+  const imageByEntity = new Map();
+  for (const asset of Array.isArray(assets) ? assets : []) {
+    if (isDisplayableEntityAsset(asset) && !imageByEntity.has(asset.entity_id)) {
+      imageByEntity.set(asset.entity_id, asset);
+    }
+  }
+  return entities.map(row => {
+    const type = canonicalEntityKind(row.entity_type);
+    const name = String(row.name_ar || row.canonical_name || row.name_en || "").trim();
+    const id = String(row.id || "");
+    if (!name || !/^[0-9a-f-]{36}$/i.test(id)) return null;
+    const asset = imageByEntity.get(id) || null;
+    const imageUrl = asset?.asset_url || "";
+    return {
+      id, slug: id, name,
+      name_ar: row.name_ar || "",
+      name_en: row.name_en || row.canonical_name || "",
+      country: row.country_name || row.country_code || "",
+      country_code: row.country_code || "",
+      imageUrl, image_path: imageUrl, logoUrl: imageUrl,
+      imageAttribution: asset?.attribution_text || asset?.creator || "",
+      imageLicense: asset?.license_code || "",
+      imageLicenseUrl: asset?.license_url || "",
+      imageSourceUrl: asset?.source_page_url || "",
+      type: type === "club" || type === "national" ? "team" : type,
+      koraxKind: type,
+      kind: type === "league" || type === "tournament" ? type : undefined,
+      source: "korax-canonical-entity-index",
+      verification_status: row.verification_status || "unverified",
+      completeness: Number(row.completeness || 0),
+    };
+  }).filter(Boolean);
+}
+
 async function getCanonicalEntityProfile(id) {
   const safeId = String(id || "");
   if (!/^[0-9a-f-]{36}$/i.test(safeId)) return null;
@@ -1462,6 +1522,32 @@ async function route(request, env) {
         catalogueScope: canonical.length
           ? "canonical players, coaches, clubs, national teams and competitions plus cached SportScore data"
           : "current KORAX SportScore match, lineup and competition cache",
+      },
+    });
+  }
+
+  if (path === "/api/entities/catalogue") {
+    const requestedTypes = (url.searchParams.get("types") || "")
+      .split(",").map(value => value.trim()).filter(Boolean);
+    const allowedTypes = ["club", "national", "player", "coach", "league", "tournament"];
+    const types = [...new Set(requestedTypes.filter(value => allowedTypes.includes(value)))];
+    const offsetRaw = Number(url.searchParams.get("offset") || 0);
+    if (!Number.isSafeInteger(offsetRaw) || offsetRaw < 0 || offsetRaw > 5_000) {
+      return json({ error: "offset must be an integer between 0 and 5000" }, 400);
+    }
+    if (!types.length) return json({ error: "At least one valid entity type is required" }, 400);
+    const rows = await listCanonicalEntities(types, perPage + 1, offsetRaw);
+    const hasMore = rows.length > perPage;
+    const data = rows.slice(0, perPage);
+    return json({
+      data,
+      source: "korax-canonical-entity-index",
+      meta: {
+        count: data.length,
+        offset: offsetRaw,
+        hasMore,
+        entityTypes: types,
+        catalogueScope: "provider-imported canonical records only; partial records remain labelled by verification status",
       },
     });
   }
