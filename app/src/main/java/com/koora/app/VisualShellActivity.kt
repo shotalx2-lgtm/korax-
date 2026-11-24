@@ -862,6 +862,7 @@ private fun MatchesScreen(
     onChooseDate: (String) -> Unit,
     onSearchEntities: () -> Unit
 ) {
+    val context = LocalContext.current
     var statusTab by rememberSaveable(selectedDate, initialLive) {
         mutableStateOf(if (initialLive) "live" else "upcoming")
     }
