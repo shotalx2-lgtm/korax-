@@ -22,9 +22,9 @@ function normalizeFileName(value) {
 function normalizeSearchText(value) {
   return String(value || "")
     .normalize("NFD")
-    .replace(/[\\u0300-\\u036f]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase()
-    .replace(/[^\\p{L}\\p{N}]+/gu, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 }
 export function normalizeCommonsSearchResult(page, entity) {
@@ -33,10 +33,10 @@ export function normalizeCommonsSearchResult(page, entity) {
   const entityType = String(entity?.entity_type || entity?.entityType || "");
   const name = String(entity?.name || entity?.canonical_name || entity?.name_en || "");
   if (!fileName || !entityId || !["club", "national", "player"].includes(entityType)) return null;
-  if (!/\\.(?:svg|png|jpe?g|webp)$/i.test(fileName)) return null;
-  const titleKey = normalizeSearchText(fileName.replace(/\\.[^.]+$/, ""));
+  if (!/\.(?:svg|png|jpe?g|webp)$/i.test(fileName)) return null;
+  const titleKey = normalizeSearchText(fileName.replace(/\.[^.]+$/, ""));
   const nameKey = normalizeSearchText(name);
-  const tokens = nameKey.split(/\\s+/).filter(token => token.length > 2 && !["football", "club", "team", "fc", "afc", "cf", "sc"].includes(token));
+  const tokens = nameKey.split(/\s+/).filter(token => token.length > 2 && !["football", "club", "team", "fc", "afc", "cf", "sc"].includes(token));
   if (!tokens.length || !tokens.every(token => titleKey.includes(token))) return null;
   const isPlayer = entityType === "player";
   const extension = fileName.split(".").pop().toLowerCase();
