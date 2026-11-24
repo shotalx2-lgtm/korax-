@@ -17,8 +17,8 @@ function metadataValue(metadata, key) {
 }
 function normalizeLicense(shortName, usageTerms) {
   const value = `${shortName || ""} ${usageTerms || ""}`.trim();
-  if (/non.?commercial|\\bNC\\b|no commercial/i.test(value)) return { allowed: false, code: shortName || "non-commercial" };
-  if (/no.?derivatives|\\bND\\b|fair use|non.?free|all rights reserved/i.test(value)) return { allowed: false, code: shortName || "restricted" };
+  if (/non.?commercial|\bNC\b|no commercial/i.test(value)) return { allowed: false, code: shortName || "non-commercial" };
+  if (/no.?derivatives|\bND\b|fair use|non.?free|all rights reserved/i.test(value)) return { allowed: false, code: shortName || "restricted" };
   if (/CC0|CC BY|CC-BY|Creative Commons Attribution|Public domain/i.test(value)) {
     return { allowed: true, code: shortName || "Creative Commons" };
   }
