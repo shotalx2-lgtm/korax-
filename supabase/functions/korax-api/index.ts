@@ -1358,6 +1358,8 @@ const MAIN_COMPETITION_NAMES = [
   "AFC Champions League Elite",
   "UEFA Europa League", "UEFA Europa Conference League",
   "FIFA World Cup", "Africa Cup of Nations",
+  "English Championship", "EFL Championship", "English Football League Championship",
+  "Brasileiro Série A", "Brazilian Serie A", "Campeonato Brasileiro Série A",
 ];
 
 
