@@ -368,18 +368,26 @@ async function runOpenLigaDb(previousCoverage) {
     const old = latest.get(league.leagueShortcut);
     if (!old || Number(league.leagueSeason) > Number(old.leagueSeason)) latest.set(league.leagueShortcut, league);
   }
-  const list = Array.from(latest.values()).sort((a, b) => {
-    function rank(name) {
-      if (/bundesliga/i.test(name)) return 1;
-      if (/premier league/i.test(name)) return 2;
-      if (/la liga|primera division/i.test(name)) return 3;
-      if (/serie a/i.test(name)) return 4;
-      if (/ligue 1/i.test(name)) return 5;
-      if (/champions league/i.test(name)) return 6;
-      return 20;
-    }
-    return rank(a.leagueName) - rank(b.leagueName);
-  }).slice(0, 8);
+  const preferredOrder = [
+    /^(1\\.\\s*)?(fußball-)?bundesliga/i,
+    /premier league/i,
+    /la liga|primera division/i,
+    /^serie a/i,
+    /^ligue 1/i,
+    /saudi.*(professional|pro).*league/i,
+    /champions league/i,
+    /eredivisie/i,
+    /primeira liga/i,
+    /super lig/i,
+    /egyptian premier league/i,
+    /dfb.?pokal/i
+  ];
+  const list = Array.from(latest.values()).map(league => ({
+    league,
+    rank: preferredOrder.findIndex(pattern => pattern.test(String(league.leagueName || "")))
+  })).filter(item => item.rank >= 0)
+    .sort((a, b) => a.rank - b.rank || String(a.league.leagueName).localeCompare(String(b.league.leagueName)))
+    .map(item => item.league).slice(0, 8);
   for (const league of list) {
     try {
       const previous = previousCoverage.find(row =>
