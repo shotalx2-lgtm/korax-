@@ -515,21 +515,22 @@ async function runWikidata() {
   const records = [];
   const countryQids = wikidataConstants.COUNTRY_QIDS;
   const groups = [];
-  for (let i = 0; i < countryQids.length; i += 7) groups.push(countryQids.slice(i, i + 7));
+  // Small country batches keep WDQS query plans bounded; every request is paced.
+  for (let i = 0; i < countryQids.length; i += 2) groups.push(countryQids.slice(i, i + 2));
   let stopAfterError = false;
   for (const group of groups) {
     if (stopAfterError) break;
     try {
-      records.push.apply(records, await source.fetchFootballEntities({ countryQids: group, limit: 120 }));
+      records.push.apply(records, await source.fetchFootballEntities({ countryQids: group, limit: 60 }));
     } catch (error) {
       errors.push("club/competition metadata for countries " + group.join(",") + ": " + String(error).slice(0, 180));
-      if (Number(error?.status) === 429 || /timeout|deadline|request budget/i.test(String(error))) stopAfterError = true;
+      if (Number(error?.status) === 429 || /request budget/i.test(String(error))) stopAfterError = true;
     }
   }
   for (const group of groups) {
     if (stopAfterError) break;
     try {
-      records.push.apply(records, await source.fetchFootballPeople({ countryQids: group, limit: 100 }));
+      records.push.apply(records, await source.fetchFootballPeople({ countryQids: group, limit: 60 }));
     } catch (error) {
       errors.push("players/coaches for countries " + group.join(",") + ": " + String(error).slice(0, 180));
       if (Number(error?.status) === 429 || /timeout|deadline|request budget/i.test(String(error))) stopAfterError = true;
