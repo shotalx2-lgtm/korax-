@@ -229,7 +229,7 @@ internal fun KoraxFavoriteSelectionScreen(
     val selected = remember {
         mutableStateListOf<KoraxFavorite>().apply { addAll(KoraxFavoriteStore.all(context)) }
     }
-    var kind by rememberSaveable { mutableStateOf("league") }
+    var kind by rememberSaveable { mutableStateOf(if (isFirstRun) "league" else "all") }
     var query by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<KoraxFavorite>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
