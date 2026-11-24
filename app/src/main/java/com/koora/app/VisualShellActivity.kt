@@ -362,7 +362,11 @@ private fun KoraxApp() {
 
     Scaffold(containerColor = KBg, bottomBar = {
         if (selectedArticle == null && selectedProfile == null && selectedMatchId == null && tab != "settings" && tab != "notifications") {
-            NavigationBar(containerColor = KCard) {
+            NavigationBar(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)),
+                containerColor = KCard,
+                tonalElevation = 10.dp
+            ) {
                 val tabs = listOf(
                     Triple("matches", "المباريات", Icons.Filled.CalendarMonth),
                     Triple("news", "الأخبار", Icons.Filled.Search),
