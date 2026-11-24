@@ -59,7 +59,8 @@ function fixtureKey(value) {
 
 function isMainCompetition(value) {
   const normalized = normalizeText(value)
-    .replace(/\b20\d{2}(?:\s*[-/]\s*\d{2,4})?\b/g, " ")
+    .replace(/\b20\d{2}\s+\d{2,4}\b/g, " ")
+    .replace(/\b20\d{2}\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   return MAIN_COMPETITIONS.has(normalized);
