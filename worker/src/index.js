@@ -395,11 +395,8 @@ const NEWS_FEEDS = [
   { id: "btolat-juventus", source: "بطولات - يوفنتوس", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=11922" },
   { id: "btolat-psg", source: "بطولات - باريس سان جيرمان", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=10061" },
   { id: "btolat-pyramids", source: "بطولات - بيراميدز", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=23165" },
-  { id: "youm7", source: "الإخبارية – تغطية اليوم السابع", language: "ar", url: "https://www.youm7.com/rss/SectionRss?SectionID=298", fallbackUrl: "https://alikhbariya.net/feeds/sources/f903fc12-4e08-4331-b249-81551c16f840.xml" },
   { id: "hesport", source: "هسبورت", language: "ar", url: "https://www.hesport.com/feed" },
   { id: "kooora", source: "كووورة", language: "ar", url: "https://feeds.footballco.com/kooora/feed/6p5bsxot7te8yick" },
-  { id: "aljazeera", source: "الجزيرة", language: "ar", url: "https://www.aljazeera.net/rss" },
-  { id: "sky-arabia", source: "سكاي نيوز عربية", language: "ar", url: "https://www.skynewsarabia.com/rss" },
   { id: "bbc-football", source: "BBC Sport", language: "en", url: "https://feeds.bbci.co.uk/sport/football/rss.xml" },
   { id: "bbc-premier", source: "BBC Sport - Premier League", language: "en", url: "https://feeds.bbci.co.uk/sport/football/premier-league/rss.xml" },
   { id: "bbc-champions", source: "BBC Sport - Champions League", language: "en", url: "https://feeds.bbci.co.uk/sport/football/champions-league/rss.xml" },
@@ -409,7 +406,20 @@ const NEWS_FEEDS = [
   { id: "guardian-football", source: "The Guardian - Football", language: "en", url: "https://www.theguardian.com/football/rss" },
 ];
 
-const FOOTBALL_WORDS = /football|soccer|premier league|champions league|la liga|serie a|bundesliga|ligue 1|saudi pro league|transfer|arsenal|chelsea|liverpool|manchester|real madrid|barcelona|bayern|psg|كرة القدم|كورة|الدوري|الأهلي|الزمالك|ريال مدريد|برشلونة|ليفربول|مانشستر|الهلال|النصر|الاتحاد|محمد صلاح|عمر مرموش|انتقال|ميركاتو|مدرب|مباراة|هدف|أهداف|لاعب|منتخب/i;
+const NON_FOOTBALL_SPORTS = /basketball|handball|volleyball|tennis|futsal|formula\\s?1|formula one|motorsport|cricket|boxing|\\bufc\\b|\\bmma\\b|wrestling|swimming|athletics|cycling|table tennis|rugby|squash|badminton|كرة السلة|كرة اليد|الكرة الطائرة|التنس|كرة الصالات|فورمولا 1|سباقات السيارات|كريكيت|ملاكمة|مصارعة|سباحة|ألعاب القوى|العاب القوي|دراجات هوائية|كرة الطاولة|الاسكواش|الريشة الطائرة/i;
+const FOOTBALL_SIGNALS = /\\bfootball\\b|\\bsoccer\\b|\\bfifa\\b|\\buefa\\b|\\bcaf\\b|\\bafc\\b|premier league|la liga|serie a|bundesliga|ligue 1|saudi pro league|egyptian premier league|champions league|europa league|conference league|club world cup|world cup|africa cup of nations|كرة القدم|كره القدم|كرة قدم|كره قدم|كروي|الكروية|دوري أبطال أوروبا|دوري ابطال اوروبا|دوري أبطال أفريقيا|دوري ابطال افريقيا|الدوري الإنجليزي|الدوري الاسباني|الدوري الإسباني|الدوري الإيطالي|الدوري الالماني|الدوري الألماني|الدوري الفرنسي|الدوري السعودي|دوري روشن|الدوري المصري|كأس العالم للأندية|كاس العالم للانديه|الأهلي المصري|الاهلي المصري|الزمالك|بيراميدز|الهلال السعودي|النصر السعودي|الاتحاد السعودي|ليفربول|مانشستر سيتي|مانشستر يونايتد|أرسنال|ارسنال|تشيلسي|ريال مدريد|برشلونة|بايرن ميونخ|باريس سان جيرمان|يوفنتوس|انتر ميلان|ميلان الإيطالي|محمد صلاح|عمر مرموش|مبابي|ميسي|كريستيانو رونالدو|هالاند|لامين يامال|رياض محرز|أشرف حكيمي|\\breal madrid\\b|\\bbarcelona\\b|\\bliverpool\\b|\\bmanchester city\\b|\\bmanchester united\\b|\\barsenal\\b|\\bchelsea\\b|\\bbayern munich\\b|\\bparis saint.germain\\b|\\bjuventus\\b|\\binter milan\\b|\\bmohamed salah\\b|\\bomar marmoush\\b|\\bkylian mbappe\\b|\\blionel messi\\b|\\berling haaland\\b/i;
+const DEDICATED_FOOTBALL_FEEDS = new Set([
+  "btolat", "kooora", "bbc-football", "bbc-premier", "bbc-champions",
+  "bbc-europe", "sky-football", "sky-premier", "guardian-football",
+]);
+
+function isFootballNewsArticle(title, summary = "", feedId = "") {
+  const content = `${String(title || "")} ${String(summary || "")}`.trim();
+  if (!content || NON_FOOTBALL_SPORTS.test(content)) return false;
+  const id = String(feedId || "").toLowerCase();
+  if (DEDICATED_FOOTBALL_FEEDS.has(id) || /^btolat-[a-z0-9-]+$/.test(id)) return true;
+  return FOOTBALL_SIGNALS.test(content);
+}
 
 function decodeXml(value) {
   return String(value || "")
@@ -557,9 +567,7 @@ function parseRssFeed(xml, feed) {
     const timestamp = Date.parse(rawDate);
     const imageUrl = extractFeedImage(block, feed.url);
     if (!title || !url) return null;
-    if (feed.id === "aljazeera" || feed.id === "sky-arabia" || feed.id === "hesport") {
-      if (!FOOTBALL_WORDS.test(title + " " + summary)) return null;
-    }
+    if (!isFootballNewsArticle(title, summary, feed.id)) return null;
     return {
       id: url, title, summary, url, source: feed.source,
       publishedAt: Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : rawDate,
@@ -630,174 +638,20 @@ async function getCachedArabicNews() {
   return payload;
 }
 
-const FANTASY_LEAGUE_TARGETS = [
-  { key: "england", slug: "jednm9whz0ryox8", label: "الدوري الإنجليزي", search: "English Premier League" },
-  { key: "spain", slug: "vl7oqdehlyr510j", label: "الدوري الإسباني", search: "Spanish La Liga" },
-  { key: "france", slug: "yl5ergphnzr8k0o", label: "الدوري الفرنسي", search: "French Ligue 1" },
-  { key: "italy", slug: "4zp5rzghp5q82w1", label: "الدوري الإيطالي", search: "Italian Serie A" },
-  { key: "germany", slug: "gy0or5jhg6qwzv3", label: "الدوري الألماني", search: "Bundesliga" },
-  { key: "saudi", slug: "", label: "الدوري السعودي", search: "Saudi Pro League" },
-];
-
-function fantasyPosition(value) {
-  const name = nestedName(value).toLowerCase();
-  if (name.includes("goal") || name.includes("keeper") || name === "gk") return "GK";
-  if (name.includes("defen") || name === "def") return "DEF";
-  if (name.includes("mid")) return "MID";
-  if (name.includes("attack") || name.includes("forward") || name.includes("strik") || name === "fwd") return "FWD";
-  return "";
-}
-
-function numericStat(details, ...names) {
-  const wanted = names.map((name) => name.toLowerCase().replace(/[^a-z]/g, ""));
-  const item = Array.isArray(details) ? details.find((entry) =>
-    wanted.includes(nestedName(entry?.type).toLowerCase().replace(/[^a-z]/g, ""))) : null;
-  const raw = item?.value ?? item?.total ?? 0;
-  if (typeof raw === "number") return raw;
-  if (typeof raw === "string") return Number(raw) || 0;
-  if (raw && typeof raw === "object") return Number(raw.total ?? raw.all?.count ?? raw.count ?? raw.value) || 0;
-  return 0;
-}
-
-function calculateSeasonFantasyPoints(position, details) {
-  const appearances = numericStat(details, "Appearances", "Appearences");
-  const goals = numericStat(details, "Goals");
-  const assists = numericStat(details, "Assists");
-  const cleanSheets = numericStat(details, "Clean Sheets", "Cleansheets");
-  const saves = numericStat(details, "Saves");
-  const penaltySaves = numericStat(details, "Penalty Saves", "Penalties Saved");
-  const penaltyMisses = numericStat(details, "Penalties Missed", "Penalty Misses");
-  const yellowCards = numericStat(details, "Yellow Cards");
-  const redCards = numericStat(details, "Red Cards");
-  const ownGoals = numericStat(details, "Own Goals");
-  const goalsConceded = numericStat(details, "Goals Conceded");
-  const goalValue = position === "GK" || position === "DEF" ? 6 : position === "MID" ? 5 : 4;
-  const cleanSheetValue = position === "GK" || position === "DEF" ? 4 : position === "MID" ? 1 : 0;
-  const concededPenalty = position === "GK" || position === "DEF" ? Math.floor(goalsConceded / 2) : 0;
-  return Math.round(appearances * 2 + goals * goalValue + assists * 3 + cleanSheets * cleanSheetValue
-    + Math.floor(saves / 3) + penaltySaves * 5 - penaltyMisses * 2 - yellowCards - redCards * 3 - ownGoals * 2 - concededPenalty);
-}
-
-function scoreValue(row, ...keys) {
-  for (const key of keys) {
-    const value = row?.[key] ?? row?.stats?.[key] ?? row?.statistics?.[key];
-    if (value !== undefined && value !== null && value !== "") {
-      const number = Number(typeof value === "object" ? value.total ?? value.value ?? value.count : value);
-      if (Number.isFinite(number)) return number;
-    }
-  }
-  return 0;
-}
-
-function normalizeFantasyPlayer(row, league) {
-  const player = row?.player && typeof row.player === "object" ? row.player : row;
-  const team = row?.team || row?.club || player?.team || player?.club || {};
-  const name = nestedName(player) || row?.player_name || row?.name || "";
-  const id = String(player?.slug || player?.id || row?.player_slug || row?.player_id || row?.slug || "");
-  const position = fantasyPosition(player?.position || row?.position || player?.role || row?.role ||
-    row?.player_position || row?.position_name || player?.position_name || row?.role_name || "");
-  if (!id || !name || !position) return null;
-  const goals = scoreValue(row, "goals", "goal", "total_goals");
-  const assists = scoreValue(row, "assists", "total_assists");
-  const appearances = scoreValue(row, "appearances", "apps", "matches");
-  const details = [
-    { type: { name: "Goals" }, value: goals }, { type: { name: "Assists" }, value: assists },
-    { type: { name: "Appearances" }, value: appearances },
-    { type: { name: "Clean Sheets" }, value: scoreValue(row, "clean_sheets", "cleanSheets") },
-    { type: { name: "Saves" }, value: scoreValue(row, "saves") },
-    { type: { name: "Yellow Cards" }, value: scoreValue(row, "yellow_cards", "yellowCards") },
-    { type: { name: "Red Cards" }, value: scoreValue(row, "red_cards", "redCards") },
-  ];
-  const image = player?.image || player?.image_url || player?.photo || player?.photo_url ||
-    row?.player_image || row?.player_image_url || row?.image || row?.image_url || "";
-  const club = nestedName(team) || row?.team_name || row?.club_name || "";
-  const price = position === "GK" ? 4.5 : position === "DEF" ? 5.0 : position === "MID" ? 6.0 : 6.5;
-  return {
-    id: "sportscore-" + id, providerId: id, name, club, teamId: String(team?.id || team?.slug || ""),
-    position, price, points: calculateSeasonFantasyPoints(position, details),
-    imageUrl: typeof image === "string" && image.startsWith("https://") ? image : null,
-    league: league.label, leagueId: league.slug,
-    stats: { appearances, goals, assists, cleanSheets: scoreValue(row, "clean_sheets", "cleanSheets"), saves: scoreValue(row, "saves") },
-  };
-}
-
-async function resolveFantasyCompetition(target, env) {
-  if (target.slug) return target.slug;
+async function resolveSaudiCompetitionSlug(env) {
   const payload = await cachedProviderRequest("/api/v1/search/", {
-    q: target.search, sport: "football", limit: 20,
+    q: "Saudi Pro League", sport: "football", limit: 20,
   }, env, 21600);
   const root = unwrap(payload);
   const rows = Array.isArray(root?.competitions) ? root.competitions
     : Array.isArray(root?.leagues) ? root.leagues
     : Array.isArray(root?.tournaments) ? root.tournaments
-    : Array.isArray(root?.results) ? root.results.filter((item) => String(item.type || "").toLowerCase().includes("competition")) : [];
-  const matchName = (item) => (nestedName(item) || item?.title || item?.competition_name || item?.league_name || "").toLowerCase();
-  const match = rows.find((item) => {
-    const name = matchName(item);
-    return name.includes("saudi") && (name.includes("pro") || name.includes("professional"));
-  }) || rows.find((item) => matchName(item).includes("saudi"));
+    : Array.isArray(root?.results) ? root.results : [];
+  const nameOf = item => (nestedName(item) || item?.title || item?.competition_name || item?.league_name || "").toLowerCase();
+  const match = rows.find(item => nameOf(item).includes("saudi") &&
+    (nameOf(item).includes("pro") || nameOf(item).includes("professional")));
   const urlSlug = String(match?.url || match?.href || "").match(/\/([a-z0-9]{8,})\/?$/i)?.[1] || "";
   return match?.slug || match?.competition_slug || match?.url_slug || urlSlug;
-}
-
-async function loadFantasyLeaguePlayers(target, env) {
-  const slug = await resolveFantasyCompetition(target, env);
-  if (!slug) return {
-    key: target.key, name: target.label, leagueId: "", available: false,
-    reason: "competition_not_found", players: [],
-  };
-  const [goalsPayload, assistsPayload] = await Promise.all([
-    cachedProviderRequest("/api/v1/topscorers/", { sport: "football", slug, limit: 50, stat: "goals" }, env, 3600),
-    cachedProviderRequest("/api/v1/topscorers/", { sport: "football", slug, limit: 50, stat: "assists" }, env, 3600),
-  ]);
-  const rowsFor = (payload) => {
-    const root = unwrap(payload);
-    if (Array.isArray(root)) return root;
-    for (const key of ["players", "topscorers", "top_scorers", "scorers", "assists", "data"]) {
-      if (Array.isArray(root?.[key])) return root[key];
-    }
-    return [];
-  };
-  const unique = new Map();
-  for (const payload of [goalsPayload, assistsPayload]) {
-    for (const row of rowsFor(payload)) {
-      const player = normalizeFantasyPlayer(row, { ...target, slug });
-      if (player && !unique.has(player.id)) unique.set(player.id, player);
-    }
-  }
-  const players = Array.from(unique.values());
-  return {
-    key: target.key, name: target.label, leagueId: slug, available: players.length > 0,
-    reason: players.length ? "leaderboards_only" : "no_leaderboard_data", players,
-  };
-}
-
-async function getCachedFantasyPlayers(env) {
-  const cache = caches.default;
-  const cacheKey = new Request("https://korax-cache.invalid/api/fantasy/players?version=sportscore-1");
-  const cached = await cache.match(cacheKey);
-  if (cached) return cached.json();
-  const results = await Promise.allSettled(FANTASY_LEAGUE_TARGETS.map((target) => loadFantasyLeaguePlayers(target, env)));
-  const leagues = results.map((result, index) => result.status === "fulfilled" ? result.value : ({
-    key: FANTASY_LEAGUE_TARGETS[index].key, name: FANTASY_LEAGUE_TARGETS[index].label,
-    leagueId: FANTASY_LEAGUE_TARGETS[index].slug, available: false, reason: "provider_unavailable", players: [],
-  }));
-  const unique = new Map();
-  for (const league of leagues) for (const player of league.players || []) if (!unique.has(player.id)) unique.set(player.id, player);
-  const payload = {
-    data: Array.from(unique.values()),
-    leagues: leagues.map(({ players, ...summary }) => ({ ...summary, playerCount: players.length })),
-    meta: {
-      playerCount: unique.size, scoringVersion: "KORAX-SEASON-1", updatedAt: new Date().toISOString(),
-      catalogueScope: "top_scorers_and_assists_only", roundScoringAvailable: false,
-      limitation: "SportScore does not expose a complete squad endpoint. This is a leaderboard-only player catalogue, not a full 15-player market or live gameweek scoring source.",
-    },
-    source: "sportscore",
-  };
-  await cache.put(cacheKey, new Response(JSON.stringify(payload), {
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=3600" },
-  }));
-  return payload;
 }
 
 const KORAX_COMPETITIONS = [
@@ -831,8 +685,6 @@ async function route(request, env) {
     if (category) data = data.filter((item) => item.category === category);
     return json({ ...payload, data: data.slice(0, requested), source: "publisher-rss" });
   }
-
-  if (path === "/api/fantasy/players") return json(await getCachedFantasyPlayers(env));
 
   if (path === "/api/matches") {
     const live = url.searchParams.get("live") === "1";
@@ -912,8 +764,7 @@ async function route(request, env) {
   if (competition) {
     let slug = competition[1];
     if (slug === "saudi-pro-league") {
-      const target = FANTASY_LEAGUE_TARGETS.find((item) => item.key === "saudi");
-      slug = await resolveFantasyCompetition(target, env);
+      slug = await resolveSaudiCompetitionSlug(env);
     }
     if (!slug) return json({ error: "Competition not found" }, 404);
     const payload = await cachedProviderRequest("/api/widget/standings/", { sport: "football", slug }, env, 600);
@@ -987,4 +838,4 @@ export default {
   },
 };
 
-export { fantasyPosition, numericStat, calculateSeasonFantasyPoints, htmlText, classifyNewsCategory, parseRssFeed, normalizeEvent, normalizeFixture, isLiveFixture };
+export { htmlText, classifyNewsCategory, parseRssFeed, normalizeEvent, normalizeFixture, isLiveFixture, isFootballNewsArticle };
