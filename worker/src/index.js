@@ -462,13 +462,13 @@ function htmlText(value) {
 }
 
 function xmlField(block, name) {
-  const re = new RegExp("<(?:[\\w.-]+:)?" + name + "\b([^>]*)>([\s\\S]*?)<\\/(?:[\\w.-]+:)?" + name + "\s*>", "i");
+  const re = new RegExp("<(?:[\\w.-]+:)?" + name + "\\b([^>]*)>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?" + name + "\\s*>", "i");
   const match = String(block || "").match(re);
   return match ? { attrs: match[1] || "", value: match[2] || "" } : { attrs: "", value: "" };
 }
 
 function xmlAttribute(attributes, name) {
-  const re = new RegExp("\b" + name + "\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([^\s>]+))", "i");
+  const re = new RegExp("\\b" + name + "\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s>]+))", "i");
   const match = String(attributes || "").match(re);
   return decodeHtml(match ? (match[1] ?? match[2] ?? match[3] ?? "") : "");
 }
