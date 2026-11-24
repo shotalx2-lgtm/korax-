@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "40 3 * * *"
+    - cron: "*/15 * * * *"
   push:
     branches:
       - main
@@ -23,7 +24,7 @@ concurrency:
 
 jobs:
   sync:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'schedule' || github.event.schedule == '40 3 * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -39,4 +40,25 @@ jobs:
         run: node --test scripts/football-sources/*.test.mjs
 
       - name: Fetch and persist source data
+        run: node scripts/sync-world-data.mjs
+
+  openligadb:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '*/15 * * * *')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run provider adapter tests
+        run: node --test scripts/football-sources/*.test.mjs
+
+      - name: Refresh OpenLigaDB fixture cache
+        env:
+          KORAX_SYNC_SCOPE: openligadb
         run: node scripts/sync-world-data.mjs
