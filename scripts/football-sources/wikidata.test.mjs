@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildFootballEntitiesQuery, normalizeWikidataBinding, wikidataConstants } from "./wikidata.mjs";
+import { buildFootballEntitiesQuery, buildFootballPeopleQuery, normalizeWikidataBinding, wikidataConstants } from "./wikidata.mjs";
 
 const value = value => ({ value });
 
@@ -57,4 +57,12 @@ test("does not treat a QID as a club when the class is unknown", () => {
 test("exposes the curated country and entity class lists for controlled coverage", () => {
   assert.ok(wikidataConstants.COUNTRY_QIDS.includes("Q79"));
   assert.equal(wikidataConstants.CLASS_TYPES.Q6979593, "national");
+});
+
+test("builds a separate football people query for players and coaches", () => {
+  const query = buildFootballPeopleQuery({ countryQids: ["Q79"], limit: 200 });
+  assert.match(query, /wd:Q937857/);
+  assert.match(query, /wd:Q628099/);
+  assert.match(query, /wdt:P569/);
+  assert.match(query, /LIMIT 200/);
 });
