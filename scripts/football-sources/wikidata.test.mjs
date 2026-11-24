@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildFootballEntitiesQuery, buildFootballPeopleQuery, normalizeWikidataBinding, wikidataConstants } from "./wikidata.mjs";
+import { buildFootballEntitiesQuery, buildFootballPeopleQuery, normalizeWikidataBinding, wikidataConstants, WIKIDATA_SPARQL_ENDPOINT } from "./wikidata.mjs";
 
 const value = value => ({ value });
 
@@ -75,4 +75,8 @@ test("builds a separate football people query for players and coaches", () => {
   assert.match(query, /wd:Q628099/);
   assert.match(query, /wdt:P569/);
   assert.match(query, /LIMIT 200/);
+});
+
+test("uses the supported Wikidata Query Service v2 endpoint", () => {
+  assert.equal(WIKIDATA_SPARQL_ENDPOINT, "https://query-next.wikidata.org/sparql");
 });
