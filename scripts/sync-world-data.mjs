@@ -567,27 +567,41 @@ async function runCommons(records) {
       if (asset.fileName) candidates.push(Object.assign({}, asset, { entityId }));
     }
   }
-  if (!candidates.length) {
-    report("wikimedia_commons", "partial", 0, 0, { startedAt, errors: ["No file candidates were returned by Wikidata."] });
-    return;
-  }
   try {
-    const verified = await source.verifyAssets(candidates.slice(0, 800));
+    // Wikidata is not the only path to Commons: search the already imported,
+    // provider-backed KORAX entity catalogue when Wikidata has no image links.
+    const linkedEntityIds = new Set(candidates.map(item => item.entityId));
+    const searchableEntities = Array.from(data.entities.values())
+      .filter(entity =>
+        ["club", "national", "player"].includes(entity.entity_type) &&
+        !linkedEntityIds.has(entity.id)
+      )
+      .sort((a, b) => Number(b.completeness || 0) - Number(a.completeness || 0))
+      .slice(0, 20);
+    const searchedCandidates = await source.searchEntityFiles(searchableEntities);
+    candidates.push(...searchedCandidates);
+
+    const verified = candidates.length
+      ? await source.verifyAssets(candidates.slice(0, 500))
+      : [];
     for (const asset of verified) addCommonsAsset(asset);
     const stats = source.getStats();
     const displayable = verified.filter(asset => asset.licenseStatus === "verified").length;
-    report("wikimedia_commons", verified.length ? "success" : "partial", stats.requestCount, verified.length, {
-      startedAt,
-      candidates: candidates.length,
-      displayableAssets: displayable,
-      blockedAssets: verified.filter(asset => asset.licenseStatus === "blocked").length,
-      logosPendingTrademarkReview: verified.filter(asset => asset.metadata && asset.metadata.trademarkReviewRequired).length,
-      errors: verified.length ? [] : ["No matching file metadata was returned."]
-    });
+    report("wikimedia_commons", stats.requestCount > 0 ? "success" : "partial",
+      stats.requestCount, verified.length, {
+        startedAt,
+        candidates: candidates.length,
+        searchedEntities: searchableEntities.length,
+        displayableAssets: displayable,
+        blockedAssets: verified.filter(asset => asset.licenseStatus === "blocked").length,
+        logosPendingTrademarkReview: verified.filter(asset => asset.metadata && asset.metadata.trademarkReviewRequired).length,
+        errors: stats.requestCount > 0 ? [] : ["No Commons API requests were completed."]
+      });
     addCoverage({
       source_key: "wikimedia_commons", entity_type: "asset", country_code: "", competition_name: "", season: "",
-      coverage_status: "available", record_count: verified.length, last_checked_at: NOW,
-      metadata: { candidates: candidates.length, verifiedForDisplay: displayable }
+      coverage_status: verified.length ? "available" : "unavailable",
+      record_count: verified.length, last_checked_at: NOW,
+      metadata: { candidates: candidates.length, searchedEntities: searchableEntities.length, verifiedForDisplay: displayable }
     });
   } catch (error) {
     report("wikimedia_commons", "failed", source.getStats().requestCount, 0,
