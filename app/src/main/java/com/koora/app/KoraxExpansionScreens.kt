@@ -873,6 +873,15 @@ private fun MatchDetailContent(match: JSONObject) {
         } else {
             Text("تُعرض فقط البيانات التي أعادها مزوّد البيانات لهذا اللقاء.", color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(vertical = 12.dp))
         }
+        Text(
+            "Powered by SportScore",
+            color = XMuted,
+            fontSize = 9.sp,
+            modifier = Modifier.fillMaxWidth().clickable {
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://sportscore.com/"))) }
+            }.padding(vertical = 8.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
 }
 
