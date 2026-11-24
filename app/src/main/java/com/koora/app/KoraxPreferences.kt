@@ -123,12 +123,12 @@ internal object KoraxThemePalette {
         light = value
     }
 
-    val background: Color get() = if (light) Color(0xFFF4F6F8) else Color(0xFF000000)
-    val card: Color get() = if (light) Color.White else Color(0xFF11161E)
-    val card2: Color get() = if (light) Color(0xFFE8ECF1) else Color(0xFF1A202A)
-    val text: Color get() = if (light) Color(0xFF151A21) else Color(0xFFF4F6F8)
-    val muted: Color get() = if (light) Color(0xFF66717E) else Color(0xFF929AA6)
-    val border: Color get() = if (light) Color(0xFFD8DEE6) else Color(0xFF27303B)
+    val background: Color get() = if (light) Color.White else Color(0xFF030609)
+    val card: Color get() = if (light) Color.White else Color(0xFF0B1016)
+    val card2: Color get() = if (light) Color(0xFFE8ECF1) else Color(0xFF131C26)
+    val text: Color get() = if (light) Color(0xFF151A21) else Color(0xFFF6F8FB)
+    val muted: Color get() = if (light) Color(0xFF66717E) else Color(0xFF8B98A8)
+    val border: Color get() = if (light) Color(0xFFD8DEE6) else Color(0xFF202C38)
     val accent: Color get() = if (light) Color(0xFF6B7F00) else Color(0xFFD5FF00)
 }
 
