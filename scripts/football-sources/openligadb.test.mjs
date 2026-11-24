@@ -61,3 +61,14 @@ test("normalizes league source IDs and keeps ODbL provenance", () => {
   assert.equal(league.externalId, "101");
   assert.equal(league.metadata.license, "ODbL-1.0");
 });
+
+test("uses provider-reported sport names instead of trusting an unrelated numeric ID", () => {
+  const leagues = [
+    { leagueId: 1, leagueName: "Premier League", leagueShortcut: "pl", leagueSeason: "2026", sport: { sportId: 1, sportName: "Basketball" } },
+    { leagueId: 2, leagueName: "Premier League", leagueShortcut: "pl2", leagueSeason: "2026", sport: { sportId: 9, sportName: "Football" } },
+  ];
+  assert.deepEqual(
+    filterCurrentFootballLeagues(leagues, { currentYear: 2026 }).map(item => item.leagueId),
+    [2],
+  );
+});
