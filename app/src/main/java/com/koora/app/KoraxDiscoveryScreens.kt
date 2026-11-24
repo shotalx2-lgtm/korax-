@@ -930,6 +930,15 @@ internal fun KoraxEntityProfileScreen(
                     "المعلومات المعروضة هي الحقول التي أعادها مزوّد البيانات لهذا العنصر. قد لا تتوفر بعض الإحصائيات أو الصور لكل موسم أو بطولة.",
                     color = DMuted, fontSize = 9.sp, modifier = Modifier.padding(vertical = 15.dp)
                 )
+                Text(
+                    "Powered by SportScore",
+                    color = DMuted,
+                    fontSize = 9.sp,
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://sportscore.com/"))) }
+                    }.padding(vertical = 8.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
             }
         }
     }
