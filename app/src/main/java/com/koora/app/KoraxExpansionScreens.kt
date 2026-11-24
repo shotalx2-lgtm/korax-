@@ -873,6 +873,15 @@ private fun MatchDetailContent(match: JSONObject) {
         } else {
             Text("تُعرض فقط البيانات التي أعادها مزوّد البيانات لهذا اللقاء.", color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(vertical = 12.dp))
         }
+        Text(
+            "Powered by SportScore",
+            color = XMuted,
+            fontSize = 9.sp,
+            modifier = Modifier.fillMaxWidth().clickable {
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://sportscore.com/"))) }
+            }.padding(vertical = 8.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
 }
 
@@ -1362,6 +1371,7 @@ internal fun KoraxCompetitionsHubPage(
     onBack: () -> Unit,
     onOpenProfile: (KoraxFavorite) -> Unit
 ) {
+    val context = LocalContext.current
     var query by rememberSaveable { mutableStateOf("") }
     var competitions by remember { mutableStateOf<List<KoraxFavorite>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
@@ -1471,5 +1481,14 @@ internal fun KoraxCompetitionsHubPage(
                 }
             }
         }
+        Text(
+            "Powered by SportScore",
+            color = XMuted,
+            fontSize = 9.sp,
+            modifier = Modifier.fillMaxWidth().clickable {
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://sportscore.com/"))) }
+            }.padding(vertical = 8.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
     }
 }

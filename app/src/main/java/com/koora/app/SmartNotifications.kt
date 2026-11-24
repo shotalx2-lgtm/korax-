@@ -37,6 +37,7 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
@@ -155,49 +156,65 @@ internal object KoraxSmartAlerts {
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
 
+        val legacyKinds = listOf(
+            "goal", "assist", "var", "cancel", "red_card", "yellow_card",
+            "penalty", "kickoff", "halftime", "fulltime", "substitution", "injury", "news"
+        )
+        legacyKinds.forEach { key ->
+            manager.deleteNotificationChannel("korax_${key}_v2_sound")
+            manager.deleteNotificationChannel("korax_${key}_v2_silent")
+            manager.deleteNotificationChannel("korax_${key}_v3_sound")
+            manager.deleteNotificationChannel("korax_${key}_v3_silent")
+        }
+
         val configs = listOf(
-            Triple("goal", "هدف جديد", R.raw.korax_goal),
-            Triple("assist", "تمريرة حاسمة", R.raw.korax_assist),
-            Triple("var", "مراجعة VAR", R.raw.korax_var),
-            Triple("cancel", "إلغاء هدف", R.raw.korax_cancel),
-            Triple("red_card", "البطاقات الحمراء", R.raw.korax_red_card),
-            Triple("yellow_card", "البطاقات الصفراء", R.raw.korax_yellow_card),
-            Triple("penalty", "ركلات الجزاء", R.raw.korax_penalty),
-            Triple("kickoff", "بداية المباراة", R.raw.korax_kickoff),
-            Triple("halftime", "نهاية الشوط الأول", R.raw.korax_halftime),
-            Triple("fulltime", "نهاية المباراة", R.raw.korax_fulltime),
-            Triple("substitution", "التبديلات", R.raw.korax_substitution),
-            Triple("injury", "الإصابات", R.raw.korax_injury),
-            Triple("news", "الأخبار العاجلة", R.raw.korax_news)
+            Triple("goal", "هدف جديد", R.raw.korax_goal_v3),
+            Triple("assist", "تمريرة حاسمة", R.raw.korax_assist_v3),
+            Triple("var", "مراجعة VAR", R.raw.korax_news_v3),
+            Triple("cancel", "إلغاء هدف", R.raw.korax_news_v3),
+            Triple("red_card", "البطاقات الحمراء", R.raw.korax_red_card_v3),
+            Triple("yellow_card", "البطاقات الصفراء", R.raw.korax_yellow_card_v3),
+            Triple("penalty", "ركلات الجزاء", R.raw.korax_goal_v3),
+            Triple("kickoff", "بداية المباراة", R.raw.korax_news_v3),
+            Triple("halftime", "نهاية الشوط الأول", R.raw.korax_fulltime_v3),
+            Triple("fulltime", "نهاية المباراة", R.raw.korax_fulltime_v3),
+            Triple("substitution", "التبديلات", R.raw.korax_assist_v3),
+            Triple("injury", "الإصابات", R.raw.korax_red_card_v3),
+            Triple("news", "الأخبار العاجلة", R.raw.korax_news_v3)
         )
 
         configs.forEach { (key, label, soundResource) ->
-            listOf(true, false).forEach { withSound ->
-                val channel = NotificationChannel(
-                    channelId(key, withSound),
-                    if (withSound) label else "$label - بدون صوت",
-                    if (key == "news" || key == "yellow_card") NotificationManager.IMPORTANCE_DEFAULT
-                    else NotificationManager.IMPORTANCE_HIGH
-                )
-                channel.description = "تنبيهات KORAX الخاصة بـ $label"
-                channel.enableVibration(true)
-                channel.vibrationPattern = longArrayOf(0, 180, 90, 180)
-                channel.setShowBadge(true)
-                if (withSound) {
-                    channel.setSound(
-                        Uri.parse("android.resource://${context.packageName}/$soundResource"),
-                        audio
-                    )
-                } else {
-                    channel.setSound(null, null)
-                }
-                manager.createNotificationChannel(channel)
-            }
+            val channel = NotificationChannel(
+                channelId(key, true),
+                label,
+                if (key == "news" || key == "yellow_card") NotificationManager.IMPORTANCE_DEFAULT
+                else NotificationManager.IMPORTANCE_HIGH
+            )
+            channel.description = "تنبيهات KORAX الخاصة بـ $label"
+            channel.enableVibration(true)
+            channel.vibrationPattern = if (key == "goal") longArrayOf(0, 110, 65, 110) else longArrayOf(0, 75)
+            channel.setShowBadge(true)
+            channel.setSound(
+                Uri.parse("android.resource://${context.packageName}/$soundResource"),
+                audio
+            )
+            manager.createNotificationChannel(channel)
         }
+
+        val silentChannel = NotificationChannel(
+            channelId("all", false),
+            "كل إشعارات KORAX - بدون صوت",
+            NotificationManager.IMPORTANCE_HIGH
+        )
+        silentChannel.description = "قناة صامتة عند إيقاف أصوات KORAX من إعدادات التطبيق"
+        silentChannel.enableVibration(true)
+        silentChannel.vibrationPattern = longArrayOf(0, 65)
+        silentChannel.setSound(null, null)
+        manager.createNotificationChannel(silentChannel)
     }
 
     private fun channelId(kind: String, withSound: Boolean): String =
-        "korax_${kind}_v2_" + if (withSound) "sound" else "silent"
+        if (withSound) "korax_${kind}_v4" else "korax_alerts_v4_silent"
 
     suspend fun poll(context: Context) = withContext(Dispatchers.IO) {
         val base = BuildConfig.KOORA_API_BASE_URL.trim().trimEnd('/')
@@ -282,7 +299,8 @@ internal object KoraxSmartAlerts {
         send(
             context, "kickoff", "⏰ مباراة تتابعها تبدأ خلال 30 دقيقة",
             message.ifBlank { "موعد المباراة اقترب" }, logo, "",
-            key
+            key,
+            matchId = matchId
         )
         preferences.edit().putBoolean(key, true).apply()
     }
@@ -417,7 +435,7 @@ internal object KoraxSmartAlerts {
         val matchLabel = listOf(home?.optString("name").orEmpty(), score, away?.optString("name").orEmpty())
             .filter { it.isNotBlank() }.joinToString("  ")
         val title = when (kind) {
-            "goal" -> "⚽ هدف جديد!"
+            "goal" -> if (teamName.isNotBlank()) "⚽ هــــدف لــــ$teamName" else "⚽ هــــدف!"
             "assist" -> "🎯 تمريرة حاسمة!"
             "var" -> "📺 مراجعة VAR"
             "cancel" -> "🚫 تم إلغاء الهدف"
@@ -434,10 +452,9 @@ internal object KoraxSmartAlerts {
         val person = if (kind == "assist" && assist.isNotBlank()) assist else player
         val message = listOf(
             person.takeUnless { it == "لاعب غير محدد" },
-            teamName,
             minute,
-            competitionName,
-            matchLabel
+            matchLabel,
+            competitionName.takeIf { kind != "goal" }
         ).filterNotNull().filter { it.isNotBlank() }.joinToString(" • ")
         val playerImage = event.optString("player_image_url")
             .takeIf { it.startsWith("https://") }.orEmpty()
@@ -447,7 +464,7 @@ internal object KoraxSmartAlerts {
         val key = listOf(match.optString("id"), kind, event.optString("minute"), player, event.optString("detail"))
             .joinToString("|")
         if (isEnabled(context, kind)) {
-            send(context, kind, title, message.ifBlank { matchLabel }, iconImage, playerImage, key)
+            send(context, kind, title, message.ifBlank { matchLabel }, iconImage, playerImage, key, matchId = match.optString("id"))
         }
 
         if (kind == "goal" && assist.isNotBlank() && isEnabled(context, "assist")) {
@@ -456,7 +473,8 @@ internal object KoraxSmartAlerts {
                 "$assist • ${teamName.ifBlank { matchLabel }} • ${minute.orEmpty()}",
                 iconImage,
                 event.optString("assist_player_image_url").takeIf { it.startsWith("https://") }.orEmpty(),
-                "$key|assist"
+                "$key|assist",
+                matchId = match.optString("id")
             )
         }
     }
@@ -478,7 +496,7 @@ internal object KoraxSmartAlerts {
             competition?.optString("name").orEmpty()
         ).filter { it.isNotBlank() }.joinToString(" • ")
         val logo = home?.optString("crest").orEmpty().ifBlank { away?.optString("crest").orEmpty() }
-        send(context, kind, title, message.ifBlank { "تحديث حالة المباراة" }, logo, "", "${match.optString("id")}|$kind|${match.optString("status")}")
+        send(context, kind, title, message.ifBlank { "تحديث حالة المباراة" }, logo, "", "${match.optString("id")}|$kind|${match.optString("status")}", matchId = match.optString("id"))
     }
 
     private fun notifyGenericGoal(context: Context, match: JSONObject) {
@@ -497,7 +515,8 @@ internal object KoraxSmartAlerts {
             context, "goal", "⚽ تغيّرت النتيجة!",
             line.ifBlank { "تم تسجيل هدف في مباراة مباشرة" },
             logo, "",
-            "${match.optString("id")}|score|${scoreLabel(match)}"
+            "${match.optString("id")}|score|${scoreLabel(match)}",
+            matchId = match.optString("id")
         )
     }
 
@@ -515,22 +534,37 @@ internal object KoraxSmartAlerts {
             val source = item.optString("source")
             if (!FootballNewsFilter.isFootballNews(title, summary, source)) continue
             val key = item.optString("url").ifBlank { item.optString("id") }
-            if (key.isBlank()) continue
-            if (!seeded) seen.add(key) else if (seen.add(key) && newsMatchesFavorite(context, item)) fresh.add(item)
+            if (key.isBlank() || key in seen) continue
+            if (!seeded) {
+                seen.add(key)
+            } else if (newsMatchesFavorite(context, item) && isEnabled(context, "news")) {
+                fresh.add(item)
+            } else {
+                seen.add(key)
+            }
         }
         if (seeded && isEnabled(context, "news")) {
-            fresh.take(3).forEach { item ->
+            val item = fresh.firstOrNull()
+            if (item != null) {
                 val articleTitle = item.optString("title").ifBlank { "خبر كروي جديد" }
-                val source = item.optString("source")
                 val summary = item.optString("summary")
-                val age = relativeNewsAge(item.optString("publishedAt"))
-                val isBreaking = Regex("عاجل|رسميا|بشكل رسمي", RegexOption.IGNORE_CASE).containsMatchIn(articleTitle)
-                val notificationTitle = if (isBreaking) "عاجل 🚨 • $age" else "كرة القدم ⚽ • $age"
-                val expandedBody = listOf(articleTitle, summary).filter { it.isNotBlank() }.joinToString("\n")
+                val isBreaking = Regex("عاجل|رسميا|رسميًا|بشكل رسمي", RegexOption.IGNORE_CASE).containsMatchIn(articleTitle)
+                val notificationTitle = if (isBreaking) "🚨 عاجل • ${articleTitle.take(58)}" else "📰 ${articleTitle.take(64)}"
+                val snippet = summary.replace(Regex("\\s+"), " ").trim().take(112)
+                val expandedBody = listOf(articleTitle, snippet).filter { it.isNotBlank() }.joinToString(" • ")
                     .ifBlank { "اضغط لقراءة تفاصيل الخبر" }
                 val image = item.optString("imageUrl").takeIf { it.startsWith("https://") }.orEmpty()
                 val key = item.optString("url").ifBlank { item.optString("id") }
-                send(context, "news", notificationTitle, articleTitle, "", image, key, expandedBody)
+                seen.add(key)
+                send(
+                    context, "news", notificationTitle,
+                    snippet.ifBlank { "اضغط لقراءة تفاصيل الخبر" }, "", image, key, expandedBody,
+                    newsUrl = key,
+                    newsTitle = articleTitle,
+                    newsSource = item.optString("source"),
+                    newsImage = image,
+                    newsDate = item.optString("publishedAt")
+                )
             }
         }
         preferences.edit()
@@ -541,9 +575,8 @@ internal object KoraxSmartAlerts {
 
     private fun matchesFavorite(context: Context, match: JSONObject, event: JSONObject?): Boolean {
         if (KoraxMatchWatchStore.isWatching(context, match.optString("id"))) return true
-        if (!KoraxFavoriteStore.setupComplete(context)) return false
         val all = KoraxFavoriteStore.all(context)
-        if (all.isEmpty()) return true
+        if (all.isEmpty()) return false
         val followed = all.filter { it.notify }
         if (followed.isEmpty()) return false
 
@@ -640,7 +673,13 @@ internal object KoraxSmartAlerts {
         iconUrl: String,
         pictureUrl: String,
         uniqueKey: String,
-        expandedMessage: String = message
+        expandedMessage: String = message,
+        matchId: String = "",
+        newsUrl: String = "",
+        newsTitle: String = "",
+        newsSource: String = "",
+        newsImage: String = "",
+        newsDate: String = ""
     ) {
         if (!hasPermission(context)) return
         ensureChannels(context)
@@ -651,6 +690,15 @@ internal object KoraxSmartAlerts {
         val brandBitmap = BitmapFactory.decodeResource(context.resources, R.drawable.korax_brand)
         val intent = Intent(context, VisualShellActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        if (matchId.isNotBlank()) intent.putExtra("korax_match_id", matchId)
+        if (newsUrl.isNotBlank()) {
+            intent.putExtra("korax_news_url", newsUrl)
+            intent.putExtra("korax_news_title", newsTitle)
+            intent.putExtra("korax_news_summary", message)
+            intent.putExtra("korax_news_source", newsSource)
+            intent.putExtra("korax_news_image", newsImage)
+            intent.putExtra("korax_news_date", newsDate)
+        }
         val requestCode = uniqueKey.hashCode() and 0x7fffffff
         val pendingIntent = PendingIntent.getActivity(
             context, requestCode, intent,
@@ -658,25 +706,24 @@ internal object KoraxSmartAlerts {
         )
         val builder = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(expandedMessage))
+            .setContentTitle(title.take(72))
+            .setContentText(message.replace(Regex("\\s+"), " ").trim().take(112))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(expandedMessage.replace(Regex("\\s+"), " ").trim().take(190)))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(true)
-            .setSubText(if (kind == "news") "KORAX • أخبار كرة القدم" else "KORAX • كرة القدم")
-            .setTicker(title)
             .setColor(android.graphics.Color.rgb(213, 255, 0))
             .setCategory(if (kind == "news") NotificationCompat.CATEGORY_RECOMMENDATION else NotificationCompat.CATEGORY_EVENT)
+            .setGroup("korax_alerts")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-        builder.setLargeIcon(brandBitmap ?: contextIconBitmap)
+        builder.setLargeIcon(contextIconBitmap ?: brandBitmap)
         if (pictureBitmap != null) {
             builder.setStyle(
                 NotificationCompat.BigPictureStyle()
                     .bigPicture(pictureBitmap)
-                    .bigLargeIcon(brandBitmap)
-                    .setSummaryText(message)
+                    .bigLargeIcon(contextIconBitmap ?: brandBitmap)
+                    .setSummaryText(expandedMessage.replace(Regex("\\s+"), " ").trim().take(112))
             )
         }
         runCatching {
@@ -757,7 +804,7 @@ internal object KoraxSmartAlerts {
         }
         send(
             context, kind, "اختبار صوت $label",
-            "هذا مؤثر صوتي تجريبي مخصص لهذا النوع من تنبيهات KORAX.",
+            "هذا اختبار لنغمة الإشعار الحالية لهذا النوع على جهازك.",
             "", "", "korax-test-$kind-${System.currentTimeMillis()}"
         )
     }
@@ -882,7 +929,7 @@ internal fun KoraxNotificationsScreen(onBack: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("المؤثرات الصوتية", color = Color.White, fontWeight = FontWeight.SemiBold)
-                        Text("صوت مستقل للهدف والتمريرة وVAR والإلغاء والبطاقات والأخبار", color = Color(0xFF929AA6), fontSize = 11.sp)
+                        Text("أصوات KORAX الأصلية تختلف حسب الحدث، ويمكنك تغيير نغمة كل نوع أو تعطيلها من إعدادات قنوات الإشعارات في أندرويد.", color = Color(0xFF929AA6), fontSize = 11.sp)
                     }
                     Switch(checked = soundEnabled, onCheckedChange = {
                         soundEnabled = it
@@ -894,7 +941,17 @@ internal fun KoraxNotificationsScreen(onBack: () -> Unit) {
                     onClick = { KoraxSmartAlerts.sendTest(context); history = KoraxSmartAlerts.history(context) },
                     enabled = permissionGranted,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF27303B), contentColor = Color.White)
-                ) { Text("اختبار صوت إشعار الهدف") }
+                ) { Text("اختبار إشعار الهدف") }
+                TextButton(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            )
+                        }
+                    }
+                ) { Text("تخصيص صوت كل نوع من إعدادات أندرويد", color = Color(0xFFD5FF00), fontSize = 11.sp) }
             }
         }
         Spacer(Modifier.height(18.dp))

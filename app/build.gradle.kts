@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -17,6 +18,29 @@ val hasReleaseSigning = listOf(
     releaseKeyPassword
 ).all { !it.isNullOrBlank() }
 
+val notificationSoundSourceDir = layout.projectDirectory.dir("notification-sounds")
+val notificationSoundGeneratedResDir = layout.buildDirectory.dir("generated/res/koraxNotificationSounds")
+val generateNotificationSounds by tasks.registering {
+    inputs.dir(notificationSoundSourceDir)
+    outputs.dir(notificationSoundGeneratedResDir)
+    doLast {
+        val rawDirectory = notificationSoundGeneratedResDir.get().asFile.resolve("raw")
+        if (rawDirectory.exists()) rawDirectory.deleteRecursively()
+        rawDirectory.mkdirs()
+        notificationSoundSourceDir.asFile.listFiles { file -> file.isFile && file.name.endsWith(".wav.b64") }
+            ?.forEach { source ->
+                val resourceName = source.name.removeSuffix(".wav.b64").lowercase()
+                val decoded = Base64.getDecoder().decode(source.readText().trim())
+                require(
+                    decoded.size > 44 &&
+                        decoded.copyOfRange(0, 4).decodeToString() == "RIFF" &&
+                        decoded.copyOfRange(8, 12).decodeToString() == "WAVE"
+                ) { "Invalid KORAX notification WAV asset: ${source.name}" }
+                rawDirectory.resolve("${resourceName}_v3.wav").writeBytes(decoded)
+            }
+    }
+}
+
 android {
     namespace = "com.koora.app"
     compileSdk = 35
@@ -25,8 +49,8 @@ android {
         applicationId = "com.koora.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 15
-        versionName = "0.6.8"
+        versionCode = 16
+        versionName = "0.6.9"
 
         val apiBase = providers.gradleProperty("KOORA_API_BASE_URL")
             .orElse("https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-api").get()
@@ -68,6 +92,11 @@ android {
     }
 }
 
+android.sourceSets.getByName("main").res.srcDir(notificationSoundGeneratedResDir)
+tasks.named("preBuild").configure {
+    dependsOn(generateNotificationSounds)
+}
+
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
@@ -76,6 +105,7 @@ kotlin {
 
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
+    implementation("androidx.compose.animation:animation")
     implementation("androidx.activity:activity-compose:1.10.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.core:core-ktx:1.15.0")

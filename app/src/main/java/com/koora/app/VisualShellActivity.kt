@@ -1,6 +1,14 @@
 package com.koora.app
 
 import android.content.Context
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -39,6 +47,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -79,14 +88,46 @@ internal val KBorder: Color get() = KoraxThemePalette.border
 
 class VisualShellActivity : ComponentActivity() {
     private var smartAlertsJob: Job? = null
+    private val notificationRoute = mutableStateOf<KoraxNotificationRoute?>(null)
+
+    private fun updateNotificationRoute(source: Intent?) {
+        val matchId = source?.getStringExtra("korax_match_id").orEmpty()
+        val newsUrl = source?.getStringExtra("korax_news_url").orEmpty()
+        notificationRoute.value = when {
+            matchId.isNotBlank() -> KoraxNotificationRoute(matchId = matchId)
+            newsUrl.isNotBlank() -> {
+                val articleTitle = source?.getStringExtra("korax_news_title").orEmpty().ifBlank { "خبر كروي جديد" }
+                val article = NewsItem(
+                    id = newsUrl,
+                    title = articleTitle,
+                    summary = source?.getStringExtra("korax_news_summary").orEmpty(),
+                    url = newsUrl,
+                    source = source?.getStringExtra("korax_news_source").orEmpty(),
+                    date = source?.getStringExtra("korax_news_date").orEmpty(),
+                    image = source?.getStringExtra("korax_news_image")?.takeIf { it.startsWith("https://") }
+                )
+                KoraxNotificationRoute(article = article)
+            }
+            else -> null
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        updateNotificationRoute(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        updateNotificationRoute(intent)
         KoraxSmartAlerts.ensureChannels(this)
         KoraxSmartAlerts.setBackgroundUpdates(this, KoraxSettingsStore.getBoolean(this, "background_updates", true))
         window.statusBarColor = android.graphics.Color.rgb(0, 0, 0)
         window.navigationBarColor = android.graphics.Color.rgb(0, 0, 0)
         @Suppress("DEPRECATION") window.decorView.systemUiVisibility = 0
         setContent {
+            val route by notificationRoute
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
                 val paletteLight = KoraxThemePalette.light
                 val scheme = if (paletteLight) {
@@ -102,7 +143,7 @@ class VisualShellActivity : ComponentActivity() {
                         onSurface = KText, outline = KBorder
                     )
                 }
-                MaterialTheme(colorScheme = scheme) { KoraxSplash() }
+                MaterialTheme(colorScheme = scheme) { KoraxSplash(route) }
             }
         }
     }
@@ -126,22 +167,58 @@ class VisualShellActivity : ComponentActivity() {
 }
 
 @Composable
-private fun KoraxSplash() {
+private fun KoraxSplash(initialNotificationRoute: KoraxNotificationRoute?) {
     var intro by rememberSaveable { mutableStateOf(true) }
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(1050); intro = false }
+    val logoScale = remember { Animatable(0.88f) }
+    LaunchedEffect(Unit) {
+        logoScale.animateTo(1f, animationSpec = tween(520))
+        kotlinx.coroutines.delay(380)
+        intro = false
+    }
     if (intro) {
-        Box(Modifier.fillMaxSize().background(Color(0xFF000000)), contentAlignment = Alignment.Center) {
-            Image(
-                painter = painterResource(R.drawable.korax_brand),
-                contentDescription = "KORAX",
-                modifier = Modifier.size(264.dp),
-                contentScale = androidx.compose.ui.layout.ContentScale.Fit
-            )
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    listOf(Color(0xFF101A12), Color(0xFF050807), Color(0xFF000000))
+                )
+            ),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Image(
+                    painter = painterResource(R.drawable.korax_brand),
+                    contentDescription = "KORAX",
+                    modifier = Modifier.size(184.dp).scale(logoScale.value),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    "كرة القدم بين يديك",
+                    color = Color.White,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Spacer(Modifier.height(7.dp))
+                Text(
+                    "مباريات مباشرة • أخبار • بطولات",
+                    color = Color(0xFFD5FF00),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.1.sp
+                )
+                Spacer(Modifier.height(28.dp))
+                Box(
+                    Modifier.width(44.dp).height(3.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFFD5FF00))
+                )
+            }
         }
-    } else KoraxApp()
+    } else KoraxApp(initialNotificationRoute)
 }
 
 internal data class NewsItem(val id: String, val title: String, val summary: String, val url: String, val source: String, val date: String, val image: String?, val category: String = "football")
+private data class KoraxNotificationRoute(val matchId: String? = null, val article: NewsItem? = null)
 private data class TransferItem(val id: String, val player: String, val playerImage: String, val from: String, val fromLogo: String, val to: String, val toLogo: String, val type: String, val date: String, val amount: String, val completed: Boolean, val league: String)
 private data class MatchItem(val id: String, val home: String, val away: String, val homeLogo: String, val awayLogo: String, val score: String, val status: String, val kickoff: String, val league: String, val detailsAvailable: Boolean)
 
@@ -321,7 +398,7 @@ private class LocalComments(context: Context) {
 }
 
 @Composable
-private fun KoraxApp() {
+private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
     val context = LocalContext.current
     val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val themeMode = KoraxSettingsStore.theme(context)
@@ -334,9 +411,31 @@ private fun KoraxApp() {
     var tab by rememberSaveable { mutableStateOf("news") }
     var matchLiveRequested by rememberSaveable { mutableStateOf(false) }
     var matchDate by rememberSaveable { mutableStateOf(todayIso()) }
-    var selectedArticle by remember { mutableStateOf<NewsItem?>(null) }
+    var selectedArticle by remember { mutableStateOf(initialNotificationRoute?.article) }
     var selectedProfile by remember { mutableStateOf<KoraxFavorite?>(null) }
-    var selectedMatchId by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedMatchId by rememberSaveable { mutableStateOf(initialNotificationRoute?.matchId) }
+    LaunchedEffect(initialNotificationRoute) {
+        when {
+            initialNotificationRoute?.matchId != null -> {
+                selectedArticle = null
+                selectedProfile = null
+                selectedMatchId = initialNotificationRoute.matchId
+                tab = "matches"
+            }
+            initialNotificationRoute?.article != null -> {
+                selectedMatchId = null
+                selectedProfile = null
+                selectedArticle = initialNotificationRoute.article
+                tab = "news"
+            }
+            else -> {
+                selectedArticle = null
+                selectedMatchId = null
+                selectedProfile = null
+                tab = "news"
+            }
+        }
+    }
     var setupComplete by remember { mutableStateOf(KoraxFavoriteStore.setupComplete(context)) }
     var permissionAsked by remember { mutableStateOf(KoraxSettingsStore.requestPermissionAsked(context)) }
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -400,30 +499,39 @@ private fun KoraxApp() {
                     onOpenPlayer = { selectedProfile = it }
                 )
                 selectedMatchId != null -> KoraxMatchDetailPage(selectedMatchId!!) { selectedMatchId = null }
-                tab == "news" -> NewsScreen(
+                else -> AnimatedContent(
+                    targetState = tab,
+                    transitionSpec = {
+                        (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { it / 16 })
+                            .togetherWith(fadeOut(tween(170)) + slideOutHorizontally(tween(170)) { -it / 16 })
+                    },
+                    label = "koraxTabTransition"
+                ) { activeTab ->
+                    when {
+                        activeTab == "news" -> NewsScreen(
                     onOpenLive = { matchLiveRequested = true; tab = "matches" },
                     onChooseDate = { selected -> matchDate = selected; matchLiveRequested = false; tab = "matches" },
                     onOpenArticle = { selectedArticle = it },
                     onExplore = { tab = "explore" }
                 )
-                tab == "transfers" -> KoraxTopicPage(onBack = { tab = "more" }, onOpenArticle = { selectedArticle = it })
-                tab == "matches" -> MatchesScreen(
+                        activeTab == "transfers" -> KoraxTopicPage(onBack = { tab = "more" }, onOpenArticle = { selectedArticle = it })
+                        activeTab == "matches" -> MatchesScreen(
                     initialLive = matchLiveRequested,
                     selectedDate = matchDate,
                     onOpenMatch = { selectedMatchId = it },
                     onChooseDate = { matchDate = it; matchLiveRequested = false },
                     onSearchEntities = { tab = "match_search" }
                 )
-                tab == "match_search" -> KoraxFavoriteSelectionScreen(
+                        activeTab == "match_search" -> KoraxFavoriteSelectionScreen(
                     isFirstRun = false,
                     onFinish = { tab = "matches" },
                     onOpenProfile = { selectedProfile = it }
                 )
-                tab == "competitions" -> KoraxCompetitionsHubPage(
+                        activeTab == "competitions" -> KoraxCompetitionsHubPage(
                     onBack = { tab = "more" },
                     onOpenProfile = { selectedProfile = it }
                 )
-                tab == "explore" -> KoraxFavoriteSelectionScreen(
+                        activeTab == "explore" -> KoraxFavoriteSelectionScreen(
                     isFirstRun = false,
                     onFinish = {
                         if (!setupComplete) {
@@ -434,22 +542,22 @@ private fun KoraxApp() {
                     },
                     onOpenProfile = { selectedProfile = it }
                 )
-                tab == "favorites" -> KoraxFavoritesScreen(
+                        activeTab == "favorites" -> KoraxFavoritesScreen(
                     onOpenProfile = { selectedProfile = it },
                     onAddMore = { tab = "explore" }
                 )
-                tab == "notifications" -> KoraxNotificationsScreen { tab = "more" }
-                tab == "tools" -> KoraxExpansionScreen(
+                        activeTab == "notifications" -> KoraxNotificationsScreen { tab = "more" }
+                        activeTab == "tools" -> KoraxExpansionScreen(
                     onBack = { tab = "more" },
                     onOpenMatch = { selectedMatchId = it },
                     onOpenArticle = { selectedArticle = it }
                 )
-                tab == "settings" -> KoraxSettingsScreen(
+                        activeTab == "settings" -> KoraxSettingsScreen(
                     onBack = { tab = "more" },
                     onOpenNotifications = { tab = "notifications" },
                     onManageFavorites = { tab = "favorites" }
                 )
-                else -> MoreScreen(
+                        else -> MoreScreen(
                     home = { tab = "news" },
                     favorites = { tab = "favorites" },
                     notifications = { tab = "notifications" },
@@ -459,6 +567,8 @@ private fun KoraxApp() {
                     transfers = { tab = "transfers" },
                     tools = { tab = "tools" }
                 )
+                    }
+                }
             }
         }
     }
@@ -521,7 +631,7 @@ private fun BrandToolbar(onSearch: () -> Unit, onLive: () -> Unit, onDate: () ->
         Spacer(Modifier.weight(1f))
         Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
             IconButton(onClick = onSearch) {
-                Icon(Icons.Filled.Search, contentDescription = "بحث في الأخبار", tint = KLime)
+                Icon(Icons.Filled.Search, contentDescription = "بحث شامل", tint = KLime)
             }
         }
         Surface(shape = RoundedCornerShape(12.dp), color = KCard, border = BorderStroke(1.dp, KBorder)) {
@@ -581,8 +691,6 @@ private fun NewsScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("الكل") }
-    var query by rememberSaveable { mutableStateOf("") }
-    var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var selected by remember { mutableStateOf<NewsItem?>(null) }
     var showDatePicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -609,57 +717,16 @@ private fun NewsScreen(
                 (it.title + " " + it.summary).contains(name, ignoreCase = true)
             }
         } else matchesCategory(it, category)
-        categoryMatch && (query.isBlank() || (it.title + " " + it.summary).contains(query, true))
+        categoryMatch
     }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("KORAX", color = KLime, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 2.4.sp)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(6.dp).clip(CircleShape).background(KLime))
-                    Spacer(Modifier.width(6.dp))
-                    Text("تغطية كرة القدم • عربي وعالمي", color = KMuted, fontSize = 9.sp, fontWeight = FontWeight.Medium)
-                }
-            }
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = KCard2,
-                border = BorderStroke(1.dp, KLime.copy(alpha = .28f))
-            ) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("FOOTBALL", color = KLime, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.1.sp)
-                    Text("WORLD", color = KMuted, fontSize = 8.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                }
-            }
-        }
-        Spacer(Modifier.height(4.dp))
         BrandToolbar(
-            onSearch = { searchExpanded = !searchExpanded },
+            onSearch = onExplore,
             onLive = onOpenLive,
             onDate = { chooseMatchDate() },
             onRefresh = { scope.launch { refresh() } }
         )
-        if (searchExpanded) {
-            OutlinedTextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp),
-                placeholder = { Text("ابحث عن لاعب أو نادٍ أو خبر...", color = KMuted, fontSize = 12.sp) },
-                leadingIcon = { Icon(Icons.Filled.Search, null, tint = KLime) },
-                trailingIcon = {
-                    TextButton(onClick = { query = ""; searchExpanded = false }) {
-                        Text("إغلاق", color = KLime, fontSize = 10.sp)
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp)
-            )
-            Spacer(Modifier.height(7.dp))
-        }
         if (!KoraxFavoriteStore.setupComplete(context)) {
             Card(
                 Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 4.dp),
@@ -875,6 +942,7 @@ private fun MatchesScreen(
     onChooseDate: (String) -> Unit,
     onSearchEntities: () -> Unit
 ) {
+    val context = LocalContext.current
     var statusTab by rememberSaveable(selectedDate, initialLive) {
         mutableStateOf(if (initialLive) "live" else "upcoming")
     }
@@ -1053,8 +1121,14 @@ private fun MatchesScreen(
                 }
             }
         }
-        Text("البيانات من SportScore", color = KMuted, fontSize = 8.sp,
-            modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = 5.dp))
+        Text(
+            "Powered by SportScore",
+            color = KMuted,
+            fontSize = 8.sp,
+            modifier = Modifier.align(Alignment.CenterHorizontally).clickable {
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://sportscore.com/"))) }
+            }.padding(vertical = 5.dp)
+        )
     }
 
     selectedSummary?.let { match ->

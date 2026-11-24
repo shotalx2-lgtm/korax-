@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -78,6 +79,7 @@ private val DBorder get() = KoraxThemePalette.border
 private val DAccent get() = KoraxThemePalette.accent
 
 private val favoriteTypes = listOf(
+    "all" to "الكل",
     "league" to "دوري",
     "tournament" to "بطولة",
     "club" to "نادي",
@@ -133,6 +135,13 @@ private fun JSONObject.asFavorite(kind: String): KoraxFavorite? {
 }
 
 private suspend fun searchFavoriteItems(kind: String, query: String): List<KoraxFavorite> {
+    if (kind == "all") {
+        if (query.length < 2) return emptyList()
+        return listOf("league", "tournament", "club", "national", "player")
+            .flatMap { searchFavoriteItems(it, query) }
+            .distinctBy { it.kind + ":" + it.id }
+            .take(60)
+    }
     val encoded = encodeQuery(query)
     val path = when (kind) {
         "league", "tournament" -> if (query.length >= 2) "/api/competitions?search=$encoded" else "/api/competitions"
@@ -220,7 +229,7 @@ internal fun KoraxFavoriteSelectionScreen(
     val selected = remember {
         mutableStateListOf<KoraxFavorite>().apply { addAll(KoraxFavoriteStore.all(context)) }
     }
-    var kind by rememberSaveable { mutableStateOf("league") }
+    var kind by rememberSaveable { mutableStateOf(if (isFirstRun) "league" else "all") }
     var query by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<KoraxFavorite>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
@@ -240,6 +249,12 @@ internal fun KoraxFavoriteSelectionScreen(
         query = ""
         search()
     }
+    LaunchedEffect(kind, query) {
+        if (query.trim().length >= 2) {
+            kotlinx.coroutines.delay(420)
+            search()
+        }
+    }
 
     Column(Modifier.fillMaxSize().background(DBg)) {
         DiscoveryHeader(
@@ -258,10 +273,24 @@ internal fun KoraxFavoriteSelectionScreen(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             favoriteTypes.forEach { (key, label) ->
+                val categoryIcon = when (key) {
+                    "all" -> "🔎"
+                    "league" -> "🏆"
+                    "tournament" -> "🥇"
+                    "club" -> "⚽"
+                    "national" -> "🌍"
+                    else -> "👤"
+                }
                 FilterChip(
                     selected = kind == key,
                     onClick = { kind = key },
-                    label = { Text(label, fontSize = 10.sp, maxLines = 1) },
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(categoryIcon, fontSize = 11.sp)
+                            Spacer(Modifier.width(4.dp))
+                            Text(label, fontSize = 10.sp, maxLines = 1)
+                        }
+                    },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = DAccent,
                         selectedLabelColor = Color.Black,
@@ -283,6 +312,7 @@ internal fun KoraxFavoriteSelectionScreen(
                 placeholder = {
                     Text(
                         when (kind) {
+                            "all" -> "ابحث عن لاعب أو نادٍ أو منتخب أو دوري..."
                             "league" -> "ابحث عن دوري مثل الإنجليزي..."
                             "tournament" -> "ابحث عن بطولة مثل كأس العالم..."
                             "club" -> "ابحث عن نادٍ مثل الأهلي..."
@@ -304,8 +334,9 @@ internal fun KoraxFavoriteSelectionScreen(
             ) { Text("بحث", fontWeight = FontWeight.Bold, fontSize = 11.sp) }
         }
 
-        if (query.isBlank() && kind in setOf("club", "national", "player")) {
+        if (query.isBlank() && kind in setOf("all", "club", "national", "player")) {
             val quick = when (kind) {
+                "all" -> listOf("محمد صلاح", "Real Madrid", "مصر", "الدوري الإنجليزي", "Champions League")
                 "club" -> listOf("الأهلي", "الزمالك", "Real Madrid", "Barcelona", "Liverpool")
                 "national" -> listOf("مصر", "Brazil", "Argentina", "France", "Morocco")
                 else -> listOf("محمد صلاح", "Messi", "Ronaldo", "Mbappe", "Haaland")
@@ -318,7 +349,7 @@ internal fun KoraxFavoriteSelectionScreen(
                 quick.take(3).forEach { value ->
                     FilterChip(
                         selected = false,
-                        onClick = { query = value; scope.launch { searchFavoriteItems(kind, value).also { results = it } } },
+                        onClick = { query = value },
                         label = { Text(value, fontSize = 9.sp) }
                     )
                 }
@@ -341,7 +372,7 @@ internal fun KoraxFavoriteSelectionScreen(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("النتائج", color = DText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text(if (query.isBlank()) "العناصر المتاحة" else "اقتراحات البحث", color = DText, fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Spacer(Modifier.weight(1f))
             Text("المحدد: ${selected.size}", color = DAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
@@ -355,7 +386,7 @@ internal fun KoraxFavoriteSelectionScreen(
             }
             results.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
-                    if (kind == "league" || kind == "tournament") "اكتب اسمًا للبحث عن مسابقات أخرى" else "اكتب اسمًا ثم اضغط بحث لعرض النتائج",
+                    if (query.trim().length < 2) "اكتب حرفين على الأقل لعرض اقتراحات فورية" else "لا توجد نتائج مطابقة في البيانات المتاحة حاليًا",
                     color = DMuted, fontSize = 11.sp
                 )
             }
@@ -492,7 +523,9 @@ internal fun KoraxFavoritesScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var favorites by remember { mutableStateOf(KoraxFavoriteStore.all(context)) }
+    var filter by rememberSaveable { mutableStateOf("all") }
     LaunchedEffect(Unit) { favorites = KoraxFavoriteStore.all(context) }
+    val visibleFavorites = if (filter == "all") favorites else favorites.filter { it.kind == filter }
     Column(Modifier.fillMaxSize().background(DBg)) {
         DiscoveryHeader(
             "المفضلة",
@@ -500,6 +533,38 @@ internal fun KoraxFavoritesScreen(
             onRefresh = { favorites = KoraxFavoriteStore.all(context) },
             onSearch = onAddMore
         )
+        LazyRow(
+            Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 13.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items(favoriteTypes) { (key, label) ->
+                val categoryIcon = when (key) {
+                    "all" -> "✦"
+                    "league" -> "🏆"
+                    "tournament" -> "🥇"
+                    "club" -> "⚽"
+                    "national" -> "🌍"
+                    else -> "👤"
+                }
+                FilterChip(
+                    selected = filter == key,
+                    onClick = { filter = key },
+                    label = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(categoryIcon, fontSize = 11.sp)
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (key == "all") "الكل" else label, fontSize = 10.sp)
+                        }
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = DAccent,
+                        selectedLabelColor = Color.Black,
+                        labelColor = DMuted
+                    )
+                )
+            }
+        }
         if (favorites.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -513,26 +578,33 @@ internal fun KoraxFavoritesScreen(
             }
         } else {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${favorites.size} عنصر تتابعه", color = DMuted, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                Text("${visibleFavorites.size} عنصر في هذا القسم", color = DMuted, fontSize = 10.sp, modifier = Modifier.weight(1f))
                 TextButton(onClick = onAddMore) { Text("إضافة عناصر +", color = DAccent) }
             }
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 13.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(favorites, key = { it.kind + ":" + it.id }) { item ->
-                    FavoriteItemCard(
-                        item = item,
-                        onOpen = { onOpenProfile(item) },
-                        onNotification = { enabled ->
-                            KoraxFavoriteStore.updateNotification(context, item, enabled)
-                            favorites = KoraxFavoriteStore.all(context)
-                        },
-                        onRemove = {
-                            KoraxFavoriteStore.toggle(context, item)
-                            favorites = KoraxFavoriteStore.all(context)
-                        }
-                    )
+            if (visibleFavorites.isEmpty()) {
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text("لا توجد عناصر في هذا القسم بعد", color = DMuted, fontSize = 11.sp)
+                }
+            } else {
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 13.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(visibleFavorites, key = { it.kind + ":" + it.id }) { item ->
+                        FavoriteItemCard(
+                            item = item,
+                            onOpen = { onOpenProfile(item) },
+                            onNotification = { enabled ->
+                                KoraxFavoriteStore.updateNotification(context, item, enabled)
+                                favorites = KoraxFavoriteStore.all(context)
+                            },
+                            onRemove = {
+                                KoraxFavoriteStore.toggle(context, item)
+                                favorites = KoraxFavoriteStore.all(context)
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -857,6 +929,15 @@ internal fun KoraxEntityProfileScreen(
                 Text(
                     "المعلومات المعروضة هي الحقول التي أعادها مزوّد البيانات لهذا العنصر. قد لا تتوفر بعض الإحصائيات أو الصور لكل موسم أو بطولة.",
                     color = DMuted, fontSize = 9.sp, modifier = Modifier.padding(vertical = 15.dp)
+                )
+                Text(
+                    "Powered by SportScore",
+                    color = DMuted,
+                    fontSize = 9.sp,
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://sportscore.com/"))) }
+                    }.padding(vertical = 8.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
         }
