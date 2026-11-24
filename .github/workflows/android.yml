@@ -24,6 +24,15 @@ jobs:
         run: |
           node --check scripts/sync-world-data.mjs
           node --test scripts/sync-sportscore-batching.test.mjs scripts/football-news-filter.test.mjs scripts/football-sources/*.test.mjs
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check Supabase Edge Functions
+        run: |
+          deno check supabase/functions/korax-api/index.ts
+          deno check supabase/functions/korax-world-data-sync/index.ts
+
       - name: Test football data worker
         working-directory: worker
         run: |
