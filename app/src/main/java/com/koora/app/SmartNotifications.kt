@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -181,11 +182,11 @@ internal object KoraxSmartAlerts {
                 )
                 channel.description = "تنبيهات KORAX الخاصة بـ $label"
                 channel.enableVibration(true)
-                channel.vibrationPattern = longArrayOf(0, 180, 90, 180)
+                channel.vibrationPattern = if (key == "goal") longArrayOf(0, 110, 65, 110) else longArrayOf(0, 75)
                 channel.setShowBadge(true)
                 if (withSound) {
                     channel.setSound(
-                        Uri.parse("android.resource://${context.packageName}/$soundResource"),
+                        RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION),
                         audio
                     )
                 } else {
@@ -197,7 +198,7 @@ internal object KoraxSmartAlerts {
     }
 
     private fun channelId(kind: String, withSound: Boolean): String =
-        "korax_${kind}_v2_" + if (withSound) "sound" else "silent"
+        "korax_${kind}_v3_" + if (withSound) "sound" else "silent"
 
     suspend fun poll(context: Context) = withContext(Dispatchers.IO) {
         val base = BuildConfig.KOORA_API_BASE_URL.trim().trimEnd('/')
@@ -417,7 +418,7 @@ internal object KoraxSmartAlerts {
         val matchLabel = listOf(home?.optString("name").orEmpty(), score, away?.optString("name").orEmpty())
             .filter { it.isNotBlank() }.joinToString("  ")
         val title = when (kind) {
-            "goal" -> "⚽ هدف جديد!"
+            "goal" -> if (teamName.isNotBlank()) "⚽ هــــدف لــــ$teamName" else "⚽ هــــدف!"
             "assist" -> "🎯 تمريرة حاسمة!"
             "var" -> "📺 مراجعة VAR"
             "cancel" -> "🚫 تم إلغاء الهدف"
@@ -434,10 +435,9 @@ internal object KoraxSmartAlerts {
         val person = if (kind == "assist" && assist.isNotBlank()) assist else player
         val message = listOf(
             person.takeUnless { it == "لاعب غير محدد" },
-            teamName,
             minute,
-            competitionName,
-            matchLabel
+            matchLabel,
+            competitionName.takeIf { kind != "goal" }
         ).filterNotNull().filter { it.isNotBlank() }.joinToString(" • ")
         val playerImage = event.optString("player_image_url")
             .takeIf { it.startsWith("https://") }.orEmpty()
@@ -519,18 +519,19 @@ internal object KoraxSmartAlerts {
             if (!seeded) seen.add(key) else if (seen.add(key) && newsMatchesFavorite(context, item)) fresh.add(item)
         }
         if (seeded && isEnabled(context, "news")) {
-            fresh.take(3).forEach { item ->
+            fresh.take(1).forEach { item ->
                 val articleTitle = item.optString("title").ifBlank { "خبر كروي جديد" }
                 val source = item.optString("source")
                 val summary = item.optString("summary")
                 val age = relativeNewsAge(item.optString("publishedAt"))
                 val isBreaking = Regex("عاجل|رسميا|بشكل رسمي", RegexOption.IGNORE_CASE).containsMatchIn(articleTitle)
-                val notificationTitle = if (isBreaking) "عاجل 🚨 • $age" else "كرة القدم ⚽ • $age"
-                val expandedBody = listOf(articleTitle, summary).filter { it.isNotBlank() }.joinToString("\n")
+                val notificationTitle = if (isBreaking) "🚨 عاجل • ${articleTitle.take(58)}" else "📰 ${articleTitle.take(64)}"
+                val snippet = summary.replace(Regex("\\s+"), " ").trim().take(112)
+                val expandedBody = listOf(articleTitle, snippet).filter { it.isNotBlank() }.joinToString(" • ")
                     .ifBlank { "اضغط لقراءة تفاصيل الخبر" }
                 val image = item.optString("imageUrl").takeIf { it.startsWith("https://") }.orEmpty()
                 val key = item.optString("url").ifBlank { item.optString("id") }
-                send(context, "news", notificationTitle, articleTitle, "", image, key, expandedBody)
+                send(context, "news", notificationTitle, snippet.ifBlank { "اضغط لقراءة تفاصيل الخبر" }, "", image, key, expandedBody)
             }
         }
         preferences.edit()
@@ -543,7 +544,7 @@ internal object KoraxSmartAlerts {
         if (KoraxMatchWatchStore.isWatching(context, match.optString("id"))) return true
         if (!KoraxFavoriteStore.setupComplete(context)) return false
         val all = KoraxFavoriteStore.all(context)
-        if (all.isEmpty()) return true
+        if (all.isEmpty()) return false
         val followed = all.filter { it.notify }
         if (followed.isEmpty()) return false
 
@@ -658,25 +659,24 @@ internal object KoraxSmartAlerts {
         )
         val builder = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(expandedMessage))
+            .setContentTitle(title.take(72))
+            .setContentText(message.replace(Regex("\\s+"), " ").trim().take(112))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(expandedMessage.replace(Regex("\\s+"), " ").trim().take(190)))
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(true)
-            .setSubText(if (kind == "news") "KORAX • أخبار كرة القدم" else "KORAX • كرة القدم")
-            .setTicker(title)
             .setColor(android.graphics.Color.rgb(213, 255, 0))
             .setCategory(if (kind == "news") NotificationCompat.CATEGORY_RECOMMENDATION else NotificationCompat.CATEGORY_EVENT)
+            .setGroup("korax_alerts")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-        builder.setLargeIcon(brandBitmap ?: contextIconBitmap)
+        builder.setLargeIcon(contextIconBitmap ?: brandBitmap)
         if (pictureBitmap != null) {
             builder.setStyle(
                 NotificationCompat.BigPictureStyle()
                     .bigPicture(pictureBitmap)
-                    .bigLargeIcon(brandBitmap)
-                    .setSummaryText(message)
+                    .bigLargeIcon(contextIconBitmap ?: brandBitmap)
+                    .setSummaryText(expandedMessage.replace(Regex("\\s+"), " ").trim().take(112))
             )
         }
         runCatching {
