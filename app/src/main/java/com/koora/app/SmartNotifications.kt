@@ -585,15 +585,16 @@ internal object KoraxSmartAlerts {
     }
 
     private fun newsMatchesFavorite(context: Context, item: JSONObject): Boolean {
-        if (!KoraxFavoriteStore.setupComplete(context)) return false
-        val all = KoraxFavoriteStore.all(context)
-        if (all.isEmpty()) return true
-        val followed = all.filter { it.notify }
+        // Favorites can be added directly from a team/player profile without completing
+        // the optional discovery flow, so the setup-complete flag is not authoritative.
+        val followed = KoraxFavoriteStore.all(context).filter { it.notify }
         if (followed.isEmpty()) return false
         val text = (item.optString("title") + " " + item.optString("summary")).lowercase(Locale.ROOT)
         val category = item.optString("category").lowercase(Locale.ROOT)
         return followed.any { favorite ->
-            text.contains(favorite.name.lowercase(Locale.ROOT)) || categoryMatchesFavorite(favorite.slug, category)
+            text.contains(favorite.name.lowercase(Locale.ROOT)) ||
+                (favorite.kind == "league" || favorite.kind == "tournament") &&
+                categoryMatchesFavorite(favorite.slug, category)
         }
     }
 
