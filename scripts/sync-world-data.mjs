@@ -147,7 +147,10 @@ function addRecord(sourceKey, record) {
   }
   providerRecords.push({
     entityId, sourceKey, entityType: record.entityType,
-    name: record.canonicalName, countryCode: record.countryCode || null
+    externalId,
+    name: record.canonicalName,
+    countryCode: record.countryCode || null,
+    wikidataId: record.metadata && record.metadata.wikidataId || null
   });
   return entityId;
 }
@@ -196,6 +199,55 @@ function addCommonsAsset(asset) {
   };
   add(data.assets, row, row.entity_id + ":" + row.asset_type + ":" + row.asset_url);
 }
+function linkTheSportsDbRecordsToWikidata() {
+  const wikidataByQid = new Map();
+  for (const row of data.entitySources.values()) {
+    if (row.source_key === "wikidata" && /^Q\\d+$/.test(row.external_id)) {
+      wikidataByQid.set(row.external_id, row.entity_id);
+    }
+  }
+  for (const item of providerRecords) {
+    if (item.sourceKey !== "thesportsdb" || !item.wikidataId) continue;
+    const qid = String(item.wikidataId).match(/Q\\d+/);
+    const canonicalId = qid ? wikidataByQid.get(qid[0]) : null;
+    if (!canonicalId || canonicalId === item.entityId) continue;
+    const oldEntity = data.entities.get(item.entityId);
+    const canonical = data.entities.get(canonicalId);
+    if (!canonical || !oldEntity) continue;
+    canonical.name_ar = canonical.name_ar || oldEntity.name_ar;
+    canonical.name_en = canonical.name_en || oldEntity.name_en;
+    canonical.country_code = canonical.country_code || oldEntity.country_code;
+    canonical.country_name = canonical.country_name || oldEntity.country_name;
+    canonical.aliases = Array.from(new Set(canonical.aliases.concat(oldEntity.aliases))).slice(0, 50);
+    canonical.metadata = Object.assign({}, oldEntity.metadata, canonical.metadata);
+    canonical.completeness = Math.max(canonical.completeness, oldEntity.completeness);
+    data.entities.set(canonicalId, canonical);
+    data.entities.delete(item.entityId);
+    const sourceRow = data.entitySources.get("thesportsdb:" + item.externalId);
+    if (sourceRow) sourceRow.entity_id = canonicalId;
+    const movedAssets = [];
+    for (const [key, asset] of data.assets.entries()) {
+      if (asset.entity_id === item.entityId) {
+        data.assets.delete(key);
+        asset.entity_id = canonicalId;
+        movedAssets.push(asset);
+      }
+    }
+    for (const asset of movedAssets) add(data.assets, asset, canonicalId + ":" + asset.asset_type + ":" + asset.asset_url);
+    const movedFacts = [];
+    for (const [key, fact] of data.facts.entries()) {
+      if (fact.entity_id === item.entityId) {
+        data.facts.delete(key);
+        fact.entity_id = canonicalId;
+        movedFacts.push(fact);
+      }
+    }
+    for (const fact of movedFacts) add(data.facts, fact,
+      [canonicalId, fact.field_key, fact.source_key, fact.source_external_id].join(":"));
+    item.entityId = canonicalId;
+  }
+}
+
 function addMergeCandidates() {
   const groups = new Map();
   for (const item of providerRecords) {
@@ -458,6 +510,7 @@ async function main() {
   await runOpenFootball();
   const wikidataRecords = await runWikidata();
   await runCommons(wikidataRecords);
+  linkTheSportsDbRecordsToWikidata();
   addMergeCandidates();
 
   for (const sourceKey of SOURCE_KEYS) {
