@@ -4,6 +4,7 @@ import { createOpenLigaDbClient, filterCurrentFootballLeagues } from "./football
 import { createOpenFootballClient, OPENFOOTBALL_SEASON_FILES } from "./football-sources/openfootball.mjs";
 import { createWikidataClient, wikidataConstants } from "./football-sources/wikidata.mjs";
 import { createCommonsClient } from "./football-sources/commons.mjs";
+import { deriveProviderFacts } from "./football-sources/facts.mjs";
 import { buildSyncBatches } from "./football-sources/batches.mjs";
 import { normalizeName, scoreEntityMergeCandidate } from "./football-sources/normalize.mjs";
 
@@ -67,25 +68,6 @@ function report(sourceKey, status, requestCount, recordsSeen, extra) {
     " requests=" + outcome.requestCount + " records=" + outcome.recordsSeen +
     " errors=" + ((outcome.errors || []).length));
 }
-export function deriveProviderFacts(record) {
-  const metadata = record && record.metadata && typeof record.metadata === "object" ? record.metadata : {};
-  const values = [
-    ["founded_year", metadata.formedYear],
-    ["stadium", metadata.stadiumName],
-    ["stadium_capacity", metadata.stadiumCapacity],
-    ["official_website", metadata.website || metadata.officialWebsite],
-    ["playing_position", metadata.position],
-    ["height", metadata.height],
-    ["weight", metadata.weight],
-    ["shirt_number", metadata.shirtNumber],
-    ["current_team", metadata.teamName],
-    ["league", metadata.leagueName],
-  ];
-  return values
-    .filter(([, value]) => value !== null && value !== undefined && value !== "")
-    .map(([fieldKey, value]) => ({ fieldKey, value, confidence: 0.95 }));
-}
-
 function addRecord(sourceKey, record) {
   if (!record || !record.externalId || !record.canonicalName || !record.entityType) return null;
   const externalId = String(record.externalId);
