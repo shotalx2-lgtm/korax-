@@ -65,3 +65,9 @@ test("blocks missing or unknown licenses instead of exposing the image", () => {
   }, [{ fileName: "Unknown.jpg", assetType: "stadium" }]);
   assert.equal(result.licenseStatus, "blocked");
 });
+
+test("blocks short-form NC and ND license identifiers even without long usage text", () => {
+  assert.equal(commonsNormalizers.normalizeLicense("CC BY-NC 4.0", "").allowed, false);
+  assert.equal(commonsNormalizers.normalizeLicense("CC BY-ND 4.0", "").allowed, false);
+  assert.equal(commonsNormalizers.normalizeLicense("CC BY-SA 4.0", "").allowed, true);
+});
