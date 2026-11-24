@@ -29,6 +29,11 @@ export function normalizeOpenFootballMatch(match, competition) {
   const awayScore = numericScore(fullTime[1]);
   const isFinished = homeScore !== null && awayScore !== null;
   const round = typeof match?.round === "string" ? match.round.trim() : null;
+  let kickoffAt = null;
+  if (/T\\d{2}:\\d{2}/.test(String(match?.date || ""))) {
+    const parsedKickoff = new Date(match.date);
+    if (Number.isFinite(parsedKickoff.getTime())) kickoffAt = parsedKickoff.toISOString();
+  }
   const fingerprint = createMatchFingerprint({
     competitionName: competition.competitionName,
     season: competition.season,
@@ -57,6 +62,7 @@ export function normalizeOpenFootballMatch(match, competition) {
     rawPayload: {
       round,
       date: match.date,
+      time: match.time || null,
       team1: homeTeam,
       team2: awayTeam,
       score: match.score || null,
