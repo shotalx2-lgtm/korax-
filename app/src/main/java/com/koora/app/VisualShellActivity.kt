@@ -154,11 +154,11 @@ private fun KoraxSplash() {
                 )
                 Spacer(Modifier.height(7.dp))
                 Text(
-                    "LIVE SCORES  •  NEWS  •  WORLD FOOTBALL",
+                    "مباريات مباشرة • أخبار • بطولات",
                     color = Color(0xFFD5FF00),
-                    fontSize = 9.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.1.sp
+                    letterSpacing = 0.1.sp
                 )
                 Spacer(Modifier.height(28.dp))
                 Box(
