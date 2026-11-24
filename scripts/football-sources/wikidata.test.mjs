@@ -26,6 +26,9 @@ test("normalizes Wikidata QIDs, Arabic/English names and structured facts", () =
     stadiumLabel: value("Spotify Camp Nou"),
     image: value("http://commons.wikimedia.org/wiki/Special:FilePath/Barcelona.jpg"),
     logo: value("http://commons.wikimedia.org/wiki/Special:FilePath/Barcelona%20crest.svg"),
+    flag: value("http://commons.wikimedia.org/wiki/Special:FilePath/Flag_of_Spain.svg"),
+    stadiumImage: value("http://commons.wikimedia.org/wiki/Special:FilePath/Camp_Nou.jpg"),
+    stadiumCapacity: value("99354"),
     uefaTeamId: value("50080"),
     transfermarktTeamId: value("131"),
   });
@@ -36,8 +39,10 @@ test("normalizes Wikidata QIDs, Arabic/English names and structured facts", () =
   assert.equal(record.foundedOn, "1899-11-29");
   assert.equal(record.metadata.stadiumQid, "Q18656");
   assert.equal(record.metadata.externalIds.uefaTeamId, "50080");
-  assert.equal(record.assetCandidates.length, 2);
+  assert.equal(record.assetCandidates.length, 4);
   assert.equal(record.assetCandidates[0].fileName, "Barcelona.jpg");
+  assert.equal(record.assetCandidates.find(asset => asset.assetType === "stadium").fileName, "Camp Nou.jpg");
+  assert.equal(record.metadata.stadiumCapacity, "99354");
 });
 
 test("does not treat a QID as a club when the class is unknown", () => {
