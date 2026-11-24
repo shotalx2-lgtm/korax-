@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import worker from "../src/index.js";
-import { htmlText, classifyNewsCategory, parseRssFeed, normalizeEvent, normalizeFixture, isLiveFixture } from "../src/index.js";
+import { htmlText, classifyNewsCategory, parseRssFeed, normalizeEvent, normalizeFixture, isLiveFixture, isFootballNewsArticle } from "../src/index.js";
 
 function installCache() {
   const original = globalThis.caches;
@@ -74,7 +74,7 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
   globalThis.fetch = async (input) => {
     const url = String(input);
     calls.push(url);
-    const arabic = /btolat|youm7|hesport|aljazeera|skynewsarabia/.test(url) || url.includes("feeds.footballco.com/kooora");
+    const arabic = /btolat|hesport/.test(url) || url.includes("feeds.footballco.com/kooora");
     const sourceTitle = arabic ? "خبر جديد عن كرة القدم والدوري" : "Latest football transfer and league news";
     const xml = "<?xml version=\"1.0\"?><rss><channel><item>" +
       "<title>" + sourceTitle + "</title>" +
@@ -91,15 +91,14 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
     const body = await response.json();
     assert.equal(body.source, "publisher-rss");
     assert.equal(body.language, "ar+en");
-    assert.equal(body.feedsTotal, 27);
-    assert.ok(calls.includes("https://www.youm7.com/rss/SectionRss?SectionID=298"));
+    assert.equal(body.feedsTotal, 24);
     assert.ok(calls.includes("https://feeds.footballco.com/kooora/feed/6p5bsxot7te8yick"));
-    assert.equal(body.feedsAvailable, 27, JSON.stringify(body.feedErrors));
-    assert.equal(body.data.length, 27);
+    assert.equal(body.feedsAvailable, 24, JSON.stringify(body.feedErrors));
+    assert.equal(body.data.length, 24);
     assert.ok(body.data.some(item => item.language === "ar"));
     assert.ok(body.data.some(item => item.language === "en"));
     assert.ok(body.data.every(item => item.imageUrl?.startsWith("https://images.example/")));
-    assert.equal(calls.length, 27);
+    assert.equal(calls.length, 24);
     assert.ok(calls.every(url => !url.includes("news.google.com")));
   } finally {
     globalThis.fetch = originalFetch;
@@ -108,40 +107,18 @@ test("RSS news aggregates Arabic and international feeds with publisher images",
 });
 
 
-test("Youm7 redirect failures fall back to a publisher-attributed RSS mirror", async () => {
-  const originalFetch = globalThis.fetch;
-  const restoreCache = installCache();
-  const calls = [];
-  globalThis.fetch = async (input) => {
-    const url = String(input);
-    calls.push(url);
-    if (url.includes("www.youm7.com/rss/SectionRss")) {
-      return new Response("redirect loop", { status: 508 });
-    }
-    const articleSlug = url.includes("alikhbariya.net") ? "youm7-story" : "other-" + encodeURIComponent(url);
-    const xml = `<rss><channel><item>
-      <title><![CDATA[أخبار كرة القدم من اليوم السابع]]></title>
-      <link>https://publisher.example/${articleSlug}</link>
-      <description><![CDATA[ملخص الخبر الرياضي]]></description>
-      <pubDate>Sun, 22 Nov 2026 17:00:00 GMT</pubDate>
-      <enclosure url="https://images.example/youm7.jpg" type="image/jpeg"/>
-    </item></channel></rss>`;
-    return new Response(xml, { status: 200, headers: { "content-type": "application/rss+xml" } });
-  };
-  try {
-    const response = await worker.fetch(new Request("https://korax.test/api/news?per_page=100"), {});
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.feedsAvailable, 27);
-    assert.equal(body.feedErrors.some(item => item.feed === "youm7"), false);
-    assert.ok(calls.includes("https://www.youm7.com/rss/SectionRss?SectionID=298"));
-    assert.ok(calls.includes("https://feeds.footballco.com/kooora/feed/6p5bsxot7te8yick"));
-    assert.ok(calls.includes("https://alikhbariya.net/feeds/sources/f903fc12-4e08-4331-b249-81551c16f840.xml"));
-    assert.ok(body.data.some(item => item.source === "الإخبارية – تغطية اليوم السابع"));
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreCache();
-  }
+test("mixed RSS publishers only admit association-football stories", () => {
+  assert.equal(isFootballNewsArticle("الأهلي المصري يعلن التعاقد مع مهاجم جديد", "", "hesport"), true);
+  assert.equal(isFootballNewsArticle("Real Madrid prepare for the Champions League match", "", "hesport"), true);
+  assert.equal(isFootballNewsArticle("البرلمان يناقش مشروع قانون جديد", "تطورات سياسية محلية", "hesport"), false);
+  assert.equal(isFootballNewsArticle("Liverpool basketball team wins the final", "Basketball match report", "hesport"), false);
+  assert.equal(isFootballNewsArticle("محمد صلاح يتابع بطولة التنس", "تغطية منافسات التنس", "hesport"), false);
+  assert.equal(isFootballNewsArticle("قرار جديد من النادي بشأن مدرب الفريق", "", "kooora"), true);
+});
+
+test("fantasy endpoint is deliberately absent from the no-fantasy KORAX API", async () => {
+  const response = await worker.fetch(new Request("https://korax.test/api/fantasy/players"), {});
+  assert.equal(response.status, 404);
 });
 
 test("RSS text cleanup decodes encoded markup before stripping HTML", () => {
@@ -220,53 +197,6 @@ test("live fixture normalization retains the provider slug and nested scores", (
   assert.equal(match.competitionName, "Example League");
   assert.equal(isLiveFixture(fixture), true);
   assert.equal(isLiveFixture({ status: "finished" }), false);
-});
-
-test("fantasy uses documented SportScore league leaderboards and exposes their limited scope", async () => {
-  const originalFetch = globalThis.fetch;
-  const restoreCache = installCache();
-  const requested = [];
-  globalThis.fetch = async (input, init) => {
-    const url = new URL(String(input));
-    requested.push(url);
-    assert.equal(new Headers(init.headers).get("x-api-key"), null);
-    assert.equal(new Headers(init.headers).get("authorization"), null);
-    if (url.pathname === "/api/v1/search/") {
-      return new Response(JSON.stringify({
-        competitions: [{ name: "Saudi Pro League", slug: "saudi-pro-2026" }],
-      }), { status: 200, headers: { "content-type": "application/json" } });
-    }
-    const slug = url.searchParams.get("slug") || "unknown";
-    return new Response(JSON.stringify({
-      players: [{
-        player: {
-          id: "player-" + slug, slug: "player-" + slug,
-          name: "Test Striker", position: "Forward",
-          image: "https://images.example/player.png",
-        },
-        team: { name: "Test Club", slug: "test-club" },
-        goals: 10, assists: 3, appearances: 12,
-      }],
-    }), { status: 200, headers: { "content-type": "application/json" } });
-  };
-  try {
-    const response = await worker.fetch(new Request("https://korax.test/api/fantasy/players"), {});
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.source, "sportscore");
-    assert.equal(body.leagues.length, 6);
-    assert.equal(body.data.length, 6);
-    assert.equal(body.meta.catalogueScope, "top_scorers_and_assists_only");
-    assert.equal(body.meta.roundScoringAvailable, false);
-    assert.ok(body.data.every(player => player.position === "FWD"));
-    assert.ok(requested.some(url => url.pathname === "/api/v1/search/"));
-    assert.ok(requested.filter(url => url.pathname === "/api/v1/topscorers/").length === 12);
-    assert.ok(requested.some(url => url.searchParams.get("slug") === "jednm9whz0ryox8"));
-    assert.ok(requested.some(url => url.searchParams.get("slug") === "saudi-pro-2026"));
-  } finally {
-    globalThis.fetch = originalFetch;
-    restoreCache();
-  }
 });
 
 test("SportScore has no confirmed transfer endpoint, so the API does not invent transfer records", async () => {
