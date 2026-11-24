@@ -1114,7 +1114,7 @@ private fun MatchesScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    if (match.sourceName.isNotBlank()) "المصدر: ${match.sourceName}" + if (match.sourceLicense.isNotBlank()) " • ${match.sourceLicense}" else "" else if (match.detailsAvailable) "تفاصيل المباراة متاحة" else "البيانات الأساسية من المصدر",
+                                    if (match.sourceName.isNotBlank()) "المصدر: ${match.sourceName} • ${match.sourceLicense}" else if (match.detailsAvailable) "تفاصيل المباراة متاحة" else "البيانات الأساسية من المصدر",
                                     color = KMuted, fontSize = 8.sp, modifier = Modifier.weight(1f).then(
                                         if (match.sourceName.isNotBlank() && match.sourceUrl.isNotBlank()) Modifier.clickable {
                                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(match.sourceUrl))) }
