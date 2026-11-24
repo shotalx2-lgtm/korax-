@@ -123,8 +123,10 @@ export function mergeSupplementalMatchFeed(primaryMatches, supplementalRows, opt
   // Supplementary datasets are fixtures/results only. They must never create a live score.
   if (mode === "live") return primary;
 
+  const primaryIds = new Set(primary.map(item => String(item?.id || "")).filter(Boolean));
   const seen = new Set(primary.map(fixtureKey).filter(Boolean));
   const supplemental = rows
+    .filter(row => !row?.canonical_match_slug || !primaryIds.has(String(row.canonical_match_slug)))
     .filter(row => mode === "upcoming"
       ? row?.is_live !== true && row?.is_finished !== true
       : mode === "finished"
