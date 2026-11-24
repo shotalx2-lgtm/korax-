@@ -30,7 +30,7 @@ val generateNotificationSounds by tasks.registering {
             ?.forEach { source ->
                 val resourceName = source.name.removeSuffix(".wav.b64").lowercase()
                 val decoded = Base64.getDecoder().decode(source.readText().trim())
-                rawDirectory.resolve("$resourceName.wav").writeBytes(decoded)
+                rawDirectory.resolve("${resourceName}_v3.wav").writeBytes(decoded)
             }
     }
 }
