@@ -1121,7 +1121,7 @@ private fun MatchesScreen(
                                         } else Modifier
                                     )
                                 )
-                                Text("التفاصيل ←", color = KLime, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                Text(if (match.detailsAvailable) "التفاصيل ←" else "الملخص ←", color = KLime, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
