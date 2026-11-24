@@ -15,7 +15,11 @@ internal data class KoraxFavorite(
     val kind: String,
     val imageUrl: String = "",
     val country: String = "",
-    val notify: Boolean = true
+    val notify: Boolean = true,
+    val imageAttribution: String = "",
+    val imageLicense: String = "",
+    val imageLicenseUrl: String = "",
+    val imageSourceUrl: String = ""
 )
 
 internal object KoraxFavoriteStore {
@@ -41,7 +45,11 @@ internal object KoraxFavoriteStore {
                 kind = item.optString("kind", "club"),
                 imageUrl = item.optString("imageUrl"),
                 country = item.optString("country"),
-                notify = item.optBoolean("notify", true)
+                notify = item.optBoolean("notify", true),
+                imageAttribution = item.optString("imageAttribution"),
+                imageLicense = item.optString("imageLicense"),
+                imageLicenseUrl = item.optString("imageLicenseUrl"),
+                imageSourceUrl = item.optString("imageSourceUrl")
             )
         }
     }
@@ -56,7 +64,11 @@ internal object KoraxFavoriteStore {
                 .put("kind", item.kind)
                 .put("imageUrl", item.imageUrl)
                 .put("country", item.country)
-                .put("notify", item.notify))
+                .put("notify", item.notify)
+                .put("imageAttribution", item.imageAttribution)
+                .put("imageLicense", item.imageLicense)
+                .put("imageLicenseUrl", item.imageLicenseUrl)
+                .put("imageSourceUrl", item.imageSourceUrl))
         }
         prefs(context).edit().putString(ITEMS, array.toString()).apply()
     }
