@@ -333,7 +333,7 @@ internal fun KoraxFavoriteSelectionScreen(
             ) { Text("بحث", fontWeight = FontWeight.Bold, fontSize = 11.sp) }
         }
 
-        if (query.isBlank() && kind in setOf("club", "national", "player")) {
+        if (query.isBlank() && kind in setOf("all", "club", "national", "player")) {
             val quick = when (kind) {
                 "all" -> listOf("محمد صلاح", "Real Madrid", "مصر", "الدوري الإنجليزي", "Champions League")
                 "club" -> listOf("الأهلي", "الزمالك", "Real Madrid", "Barcelona", "Liverpool")
@@ -580,23 +580,30 @@ internal fun KoraxFavoritesScreen(
                 Text("${visibleFavorites.size} عنصر في هذا القسم", color = DMuted, fontSize = 10.sp, modifier = Modifier.weight(1f))
                 TextButton(onClick = onAddMore) { Text("إضافة عناصر +", color = DAccent) }
             }
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 13.dp, vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(visibleFavorites, key = { it.kind + ":" + it.id }) { item ->
-                    FavoriteItemCard(
-                        item = item,
-                        onOpen = { onOpenProfile(item) },
-                        onNotification = { enabled ->
-                            KoraxFavoriteStore.updateNotification(context, item, enabled)
-                            favorites = KoraxFavoriteStore.all(context)
-                        },
-                        onRemove = {
-                            KoraxFavoriteStore.toggle(context, item)
-                            favorites = KoraxFavoriteStore.all(context)
-                        }
-                    )
+            if (visibleFavorites.isEmpty()) {
+                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text("لا توجد عناصر في هذا القسم بعد", color = DMuted, fontSize = 11.sp)
+                }
+            } else {
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 13.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(visibleFavorites, key = { it.kind + ":" + it.id }) { item ->
+                        FavoriteItemCard(
+                            item = item,
+                            onOpen = { onOpenProfile(item) },
+                            onNotification = { enabled ->
+                                KoraxFavoriteStore.updateNotification(context, item, enabled)
+                                favorites = KoraxFavoriteStore.all(context)
+                            },
+                            onRemove = {
+                                KoraxFavoriteStore.toggle(context, item)
+                                favorites = KoraxFavoriteStore.all(context)
+                            }
+                        )
+                    }
                 }
             }
         }
