@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { createTheSportsDbClient } from "./football-sources/thesportsdb.mjs";
 import { createOpenLigaDbClient, filterCurrentFootballLeagues } from "./football-sources/openligadb.mjs";
 import { createOpenFootballClient, OPENFOOTBALL_SEASON_FILES } from "./football-sources/openfootball.mjs";
-import { createWikidataClient } from "./football-sources/wikidata.mjs";
+import { createWikidataClient, wikidataConstants } from "./football-sources/wikidata.mjs";
 import { createCommonsClient } from "./football-sources/commons.mjs";
 import { normalizeName, scoreEntityMergeCandidate } from "./football-sources/normalize.mjs";
 
@@ -455,12 +455,24 @@ async function runWikidata() {
   const startedAt = new Date().toISOString();
   const errors = [];
   const records = [];
-  try {
-    records.push.apply(records, await source.fetchFootballEntities({ limit: 400 }));
-  } catch (error) { errors.push("club/competition entities: " + String(error).slice(0, 200)); }
-  try {
-    records.push.apply(records, await source.fetchFootballPeople({ limit: 250 }));
-  } catch (error) { errors.push("players/coaches: " + String(error).slice(0, 200)); }
+  const countryQids = wikidataConstants.COUNTRY_QIDS;
+  const groups = [];
+  for (let i = 0; i < countryQids.length; i += 7) groups.push(countryQids.slice(i, i + 7));
+
+  for (const group of groups) {
+    try {
+      records.push.apply(records, await source.fetchFootballEntities({ countryQids: group, limit: 350 }));
+    } catch (error) {
+      errors.push("club/competition metadata for countries " + group.join(",") + ": " + String(error).slice(0, 180));
+    }
+  }
+  for (const group of groups) {
+    try {
+      records.push.apply(records, await source.fetchFootballPeople({ countryQids: group, limit: 350 }));
+    } catch (error) {
+      errors.push("players/coaches for countries " + group.join(",") + ": " + String(error).slice(0, 180));
+    }
+  }
   for (const record of records) addRecord("wikidata", record);
   if (!records.length && !errors.length) errors.push("Wikidata responded without returning usable football entities or people.");
   for (const type of Array.from(new Set(records.map(item => item.entityType)))) {
@@ -469,12 +481,19 @@ async function runWikidata() {
       coverage_status: "available",
       record_count: records.filter(item => item.entityType === type).length,
       last_checked_at: NOW,
-      metadata: { countryScope: "curated international list", sourceLicense: "CC0-1.0" }
+      metadata: {
+        countryScope: countryQids.length + " curated country identifiers queried in " + groups.length + " batches",
+        sourceLicense: "CC0-1.0",
+      },
     });
   }
   const stats = source.getStats();
   report("wikidata", errors.length ? (records.length ? "partial" : "failed") : "success",
-    stats.requestCount, records.length, { errors, startedAt });
+    stats.requestCount, records.length, {
+      errors, startedAt, queryBatches: groups.length * 2,
+      countryCount: countryQids.length,
+      entityTypes: Array.from(new Set(records.map(item => item.entityType))),
+    });
   return records;
 }
 async function runCommons(records) {
