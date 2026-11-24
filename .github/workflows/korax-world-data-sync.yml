@@ -13,7 +13,7 @@ on:
           - openligadb
   schedule:
     - cron: "40 3 * * *"
-    - cron: "*/15 * * * *"
+    - cron: "40 9,15,21 * * *"
   push:
     branches:
       - main
@@ -52,7 +52,7 @@ jobs:
         run: node scripts/sync-world-data.mjs
 
   openligadb:
-    if: github.ref == 'refs/heads/main' && ((github.event_name == 'workflow_dispatch' && inputs.sync_scope == 'openligadb') || github.event.schedule == '*/15 * * * *')
+    if: github.ref == 'refs/heads/main' && ((github.event_name == 'workflow_dispatch' && inputs.sync_scope == 'openligadb') || github.event.schedule == '40 9,15,21 * * *')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
