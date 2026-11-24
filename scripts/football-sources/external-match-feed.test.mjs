@@ -87,3 +87,22 @@ test("rejects malformed records and unknown data providers", () => {
   ], { mode: "all", scope: "all" });
   assert.deepEqual(result, []);
 });
+
+test("suppresses explicit canonical source links even when provider naming differs", () => {
+  const primary = [{
+    id: "sportscore-main-id",
+    home: "Some Home Club",
+    away: "Some Away Club",
+    startTime: "2026-11-25T19:00:00Z",
+    detailAvailable: true,
+  }];
+  const linked = baseRow({
+    external_id: "linked-source-id",
+    home_team_name: "Different Provider Home Name",
+    away_team_name: "Different Provider Away Name",
+    canonical_match_slug: "sportscore-main-id",
+  });
+  const result = mergeSupplementalMatchFeed(primary, [linked], { mode: "finished", scope: "all" });
+  assert.equal(result.length, 1);
+  assert.equal(result[0].id, "sportscore-main-id");
+});
