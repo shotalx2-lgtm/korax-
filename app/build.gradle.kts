@@ -25,11 +25,17 @@ val generateNotificationSounds by tasks.registering {
     outputs.dir(notificationSoundGeneratedResDir)
     doLast {
         val rawDirectory = notificationSoundGeneratedResDir.get().asFile.resolve("raw")
+        if (rawDirectory.exists()) rawDirectory.deleteRecursively()
         rawDirectory.mkdirs()
         notificationSoundSourceDir.asFile.listFiles { file -> file.isFile && file.name.endsWith(".wav.b64") }
             ?.forEach { source ->
                 val resourceName = source.name.removeSuffix(".wav.b64").lowercase()
                 val decoded = Base64.getDecoder().decode(source.readText().trim())
+                require(
+                    decoded.size > 44 &&
+                        decoded.copyOfRange(0, 4).decodeToString() == "RIFF" &&
+                        decoded.copyOfRange(8, 12).decodeToString() == "WAVE"
+                ) { "Invalid KORAX notification WAV asset: ${source.name}" }
                 rawDirectory.resolve("${resourceName}_v3.wav").writeBytes(decoded)
             }
     }
