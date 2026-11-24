@@ -1,6 +1,14 @@
 package com.koora.app
 
 import android.content.Context
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -39,6 +47,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -128,7 +137,12 @@ class VisualShellActivity : ComponentActivity() {
 @Composable
 private fun KoraxSplash() {
     var intro by rememberSaveable { mutableStateOf(true) }
-    LaunchedEffect(Unit) { kotlinx.coroutines.delay(900); intro = false }
+    val logoScale = remember { Animatable(0.88f) }
+    LaunchedEffect(Unit) {
+        logoScale.animateTo(1f, animationSpec = tween(520))
+        kotlinx.coroutines.delay(380)
+        intro = false
+    }
     if (intro) {
         Box(
             Modifier.fillMaxSize().background(
@@ -142,7 +156,7 @@ private fun KoraxSplash() {
                 Image(
                     painter = painterResource(R.drawable.korax_brand),
                     contentDescription = "KORAX",
-                    modifier = Modifier.size(184.dp),
+                    modifier = Modifier.size(184.dp).scale(logoScale.value),
                     contentScale = androidx.compose.ui.layout.ContentScale.Fit
                 )
                 Spacer(Modifier.height(18.dp))
@@ -430,30 +444,39 @@ private fun KoraxApp() {
                     onOpenPlayer = { selectedProfile = it }
                 )
                 selectedMatchId != null -> KoraxMatchDetailPage(selectedMatchId!!) { selectedMatchId = null }
-                tab == "news" -> NewsScreen(
+                else -> AnimatedContent(
+                    targetState = tab,
+                    transitionSpec = {
+                        (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { it / 16 })
+                            .togetherWith(fadeOut(tween(170)) + slideOutHorizontally(tween(170)) { -it / 16 })
+                    },
+                    label = "koraxTabTransition"
+                ) { activeTab ->
+                    when {
+                        activeTab == "news" -> NewsScreen(
                     onOpenLive = { matchLiveRequested = true; tab = "matches" },
                     onChooseDate = { selected -> matchDate = selected; matchLiveRequested = false; tab = "matches" },
                     onOpenArticle = { selectedArticle = it },
                     onExplore = { tab = "explore" }
                 )
-                tab == "transfers" -> KoraxTopicPage(onBack = { tab = "more" }, onOpenArticle = { selectedArticle = it })
-                tab == "matches" -> MatchesScreen(
+                        activeTab == "transfers" -> KoraxTopicPage(onBack = { tab = "more" }, onOpenArticle = { selectedArticle = it })
+                        activeTab == "matches" -> MatchesScreen(
                     initialLive = matchLiveRequested,
                     selectedDate = matchDate,
                     onOpenMatch = { selectedMatchId = it },
                     onChooseDate = { matchDate = it; matchLiveRequested = false },
                     onSearchEntities = { tab = "match_search" }
                 )
-                tab == "match_search" -> KoraxFavoriteSelectionScreen(
+                        activeTab == "match_search" -> KoraxFavoriteSelectionScreen(
                     isFirstRun = false,
                     onFinish = { tab = "matches" },
                     onOpenProfile = { selectedProfile = it }
                 )
-                tab == "competitions" -> KoraxCompetitionsHubPage(
+                        activeTab == "competitions" -> KoraxCompetitionsHubPage(
                     onBack = { tab = "more" },
                     onOpenProfile = { selectedProfile = it }
                 )
-                tab == "explore" -> KoraxFavoriteSelectionScreen(
+                        activeTab == "explore" -> KoraxFavoriteSelectionScreen(
                     isFirstRun = false,
                     onFinish = {
                         if (!setupComplete) {
@@ -464,22 +487,22 @@ private fun KoraxApp() {
                     },
                     onOpenProfile = { selectedProfile = it }
                 )
-                tab == "favorites" -> KoraxFavoritesScreen(
+                        activeTab == "favorites" -> KoraxFavoritesScreen(
                     onOpenProfile = { selectedProfile = it },
                     onAddMore = { tab = "explore" }
                 )
-                tab == "notifications" -> KoraxNotificationsScreen { tab = "more" }
-                tab == "tools" -> KoraxExpansionScreen(
+                        activeTab == "notifications" -> KoraxNotificationsScreen { tab = "more" }
+                        activeTab == "tools" -> KoraxExpansionScreen(
                     onBack = { tab = "more" },
                     onOpenMatch = { selectedMatchId = it },
                     onOpenArticle = { selectedArticle = it }
                 )
-                tab == "settings" -> KoraxSettingsScreen(
+                        activeTab == "settings" -> KoraxSettingsScreen(
                     onBack = { tab = "more" },
                     onOpenNotifications = { tab = "notifications" },
                     onManageFavorites = { tab = "favorites" }
                 )
-                else -> MoreScreen(
+                        else -> MoreScreen(
                     home = { tab = "news" },
                     favorites = { tab = "favorites" },
                     notifications = { tab = "notifications" },
