@@ -963,7 +963,7 @@ private fun MatchLineupSide(
                                                 Text(name, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center, overflow = TextOverflow.Ellipsis)
                                                 // Render a player rating only when the provider supplied a numeric value.
                                                 val ratingRaw = row.readText("rating", "player_rating", "average_rating")
-                                                val rating = Regex("""^\\s*(\\d+(?:[.,]\\d+)?)\\s*(?:/10)?\\s*$""")
+                                                val rating = Regex("""^\s*(\d+(?:[.,]\d+)?)\s*(?:/10)?\s*$""")
                                                     .matchEntire(ratingRaw)?.groupValues?.getOrNull(1)
                                                 if (!rating.isNullOrBlank()) {
                                                     Text(
