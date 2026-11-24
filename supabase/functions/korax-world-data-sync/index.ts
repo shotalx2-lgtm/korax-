@@ -130,7 +130,7 @@ Deno.serve(async request => {
       entities: await upsertRows("korax_entities", entities, "id"),
       entitySources: await upsertRows("korax_entity_sources", entitySources, "source_key,external_id"),
       assets: await upsertRows("korax_entity_assets", assets, "entity_id,asset_type,asset_url"),
-      facts: await upsertRows("korax_entity_facts", facts, "entity_id,field_key,source_key,source_external_id,observed_at"),
+      facts: await upsertRows("korax_entity_facts", facts, "entity_id,field_key,source_key,source_external_id"),
       externalMatches: await upsertRows("korax_external_matches", externalMatches, "source_key,external_id"),
       coverage: await upsertRows("korax_source_coverage", coverage, "source_key,entity_type,country_code,competition_name,season"),
       mergeCandidates: await upsertRows("korax_entity_merge_candidates", mergeCandidates, "left_entity_id,right_entity_id"),
