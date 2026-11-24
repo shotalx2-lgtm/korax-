@@ -369,7 +369,7 @@ async function runOpenLigaDb(previousCoverage) {
     if (!old || Number(league.leagueSeason) > Number(old.leagueSeason)) latest.set(league.leagueShortcut, league);
   }
   const preferredOrder = [
-    /^(1\\.\\s*)?(fußball-)?bundesliga/i,
+    /^(1\.\s*)?(fußball-)?bundesliga/i,
     /premier league/i,
     /la liga|primera division/i,
     /^serie a/i,
