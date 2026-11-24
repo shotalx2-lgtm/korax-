@@ -1148,7 +1148,7 @@ private fun MatchesScreen(
                     Text("الحالة: " + match.status, color = KMuted, fontSize = 11.sp)
                     Text("الموعد: " + displayKickoff(match.kickoff), color = KMuted, fontSize = 11.sp)
                     Text("البطولة: " + match.league.ifBlank { "غير متاحة" }, color = KMuted, fontSize = 11.sp)
-                    Text(if (match.sourceName.isNotBlank()) "المصدر الإضافي يوفر الموعد أو النتيجة فقط، ولا يوفر أحداثًا أو تشكيلات لهذه المباراة." else "لم يصل معرّف ثابت لهذه المباراة، لذلك لا يمكن فتح تفاصيلها بأمان بعد.", color = KMuted, fontSize = 10.sp),
+                    Text(if (match.sourceName.isNotBlank()) "المصدر الإضافي يوفر الموعد أو النتيجة فقط، ولا يوفر أحداثًا أو تشكيلات لهذه المباراة." else "لم يصل معرّف ثابت لهذه المباراة، لذلك لا يمكن فتح تفاصيلها بأمان بعد.", color = KMuted, fontSize = 10.sp)
                     if (match.sourceName.isNotBlank() && match.sourceUrl.isNotBlank()) TextButton(onClick = {
                         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(match.sourceUrl))) }
                     }) { Text("فتح مصدر البيانات", color = KLime, fontSize = 10.sp) }
