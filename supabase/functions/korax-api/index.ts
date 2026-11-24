@@ -654,6 +654,7 @@ async function getCachedPlayerIndex() {
         red_cards: 0,
         last_seen_match: row.match_slug || "",
         source: "sportscore-supabase-cache",
+        koraxKind: "player",
         _appearanceMatches: new Set(),
         _eventKeys: new Set(),
       };
@@ -775,6 +776,7 @@ async function searchCachedCompetitions(query, limit) {
       providerName,
       country: known?.country || "",
       kind: known ? (known.slug === "uefa-champions-league" ? "tournament" : "league") : kind,
+      koraxKind: known ? (known.slug === "uefa-champions-league" ? "tournament" : "league") : kind,
       imageUrl,
       logoUrl: imageUrl,
       source: "sportscore-supabase-cache",
@@ -787,7 +789,7 @@ async function searchCachedCompetitions(query, limit) {
       found.set(key, {
         id: known.id, slug: known.slug, name: known.name, providerName: known.providerName,
         country: known.country, kind: known.slug === "uefa-champions-league" ? "tournament" : "league",
-        imageUrl, logoUrl: imageUrl, source: "sportscore-supabase-cache",
+        koraxKind: known.slug === "uefa-champions-league" ? "tournament" : "league", imageUrl, logoUrl: imageUrl, source: "sportscore-supabase-cache",
       });
     }
   }
@@ -1408,6 +1410,39 @@ async function route(request, env) {
         : json({ error: "Competition is not in the current KORAX cache", retryable: true }, 404);
     }
     return json({ error: "Standings are not in the current SportScore cache yet", retryable: true }, 503);
+  }
+
+  if (path === "/api/entities/search") {
+    const search = (url.searchParams.get("search") || "").trim();
+    if (search.length < 2) return json({ data: [], meta: { requiresSearch: true }, source: "korax-world-entity-index" });
+    const types = ["club", "national", "player", "coach", "league", "tournament"];
+    const [canonical, teamRows, playerRows, competitionRows] = await Promise.all([
+      searchCanonicalEntities(search, types, perPage),
+      getCachedEntityMatchRows().then(rows => searchCachedTeamEntities(rows, search, perPage)),
+      searchCachedPlayers(search, perPage),
+      searchCachedCompetitions(search, perPage),
+    ]);
+    const merged = [...canonical, ...teamRows, ...playerRows, ...competitionRows];
+    const seen = new Set();
+    const data = merged.filter(item => {
+      const kind = item.koraxKind || item.kind || (item.type === "player" ? "player" : "club");
+      const key = kind + "|" + normalizeSearchText(item.name);
+      if (!normalizeSearchText(item.name) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, perPage);
+    return json({
+      data,
+      source: canonical.length ? "korax-canonical-and-sportscore-search" : "sportscore-search",
+      meta: {
+        count: data.length,
+        query: search,
+        canonicalCount: canonical.length,
+        catalogueScope: canonical.length
+          ? "canonical players, coaches, clubs, national teams and competitions plus cached SportScore data"
+          : "current KORAX SportScore match, lineup and competition cache",
+      },
+    });
   }
 
   if (path === "/api/teams" || path === "/api/players") {
