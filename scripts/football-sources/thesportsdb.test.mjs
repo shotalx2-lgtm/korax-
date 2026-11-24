@@ -6,6 +6,7 @@ test("maps stable team IDs and structured club facts without trusting fan images
   const record = theSportsDbNormalizers.teamRecord({
     idTeam: "133604",
     strTeam: "Example FC",
+    idWikidata: "Q12345",
     strTeamShort: "EXF",
     strAlternate: "Example Football Club",
     strCountry: "Egypt",
