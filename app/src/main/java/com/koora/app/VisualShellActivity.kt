@@ -220,7 +220,7 @@ private fun KoraxSplash(initialNotificationRoute: KoraxNotificationRoute?) {
 internal data class NewsItem(val id: String, val title: String, val summary: String, val url: String, val source: String, val date: String, val image: String?, val category: String = "football")
 private data class KoraxNotificationRoute(val matchId: String? = null, val article: NewsItem? = null)
 private data class TransferItem(val id: String, val player: String, val playerImage: String, val from: String, val fromLogo: String, val to: String, val toLogo: String, val type: String, val date: String, val amount: String, val completed: Boolean, val league: String)
-private data class MatchItem(val id: String, val home: String, val away: String, val homeLogo: String, val awayLogo: String, val score: String, val status: String, val kickoff: String, val league: String, val detailsAvailable: Boolean)
+private data class MatchItem(val id: String, val home: String, val away: String, val homeLogo: String, val awayLogo: String, val score: String, val status: String, val kickoff: String, val league: String, val detailsAvailable: Boolean, val sourceName: String = "", val sourceUrl: String = "")
 
 private fun apiBase() = BuildConfig.KOORA_API_BASE_URL.trim().trimEnd('/')
 internal suspend fun apiJson(path: String): JSONObject = withContext(Dispatchers.IO) {
@@ -349,7 +349,9 @@ private suspend fun loadMatches(mode: String, selectedDate: String): List<MatchI
             localizeMatchStatus(x.optString("status", "غير متاحة")),
             x.optString("startTime"),
             x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") },
-            detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false)
+            detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false),
+            sourceName = x.optString("sourceName"),
+            sourceUrl = x.optString("sourceUrl").takeIf { it.startsWith("https://") }.orEmpty()
         )
     }.distinctBy { it.id }
 }
@@ -1048,7 +1050,7 @@ private fun MatchesScreen(
                         !KoraxSettingsStore.getBoolean(context, "data_saver", false)
                     Card(
                         Modifier.fillMaxWidth().clickable {
-                            if (match.id.matches(Regex("[A-Za-z0-9_-]{8,}"))) onOpenMatch(match.id)
+                            if (match.detailsAvailable && match.id.matches(Regex("[A-Za-z0-9_-]{8,}"))) onOpenMatch(match.id)
                             else selectedSummary = match
                         },
                         shape = RoundedCornerShape(15.dp),
@@ -1111,8 +1113,12 @@ private fun MatchesScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    if (match.detailsAvailable) "تفاصيل المباراة متاحة" else "البيانات الأساسية من المصدر",
-                                    color = KMuted, fontSize = 8.sp, modifier = Modifier.weight(1f)
+                                    if (match.sourceName.isNotBlank()) "المصدر: ${match.sourceName}" else if (match.detailsAvailable) "تفاصيل المباراة متاحة" else "البيانات الأساسية من المصدر",
+                                    color = KMuted, fontSize = 8.sp, modifier = Modifier.weight(1f).then(
+                                        if (match.sourceName.isNotBlank() && match.sourceUrl.isNotBlank()) Modifier.clickable {
+                                            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(match.sourceUrl))) }
+                                        } else Modifier
+                                    )
                                 )
                                 Text("التفاصيل ←", color = KLime, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
@@ -1141,7 +1147,10 @@ private fun MatchesScreen(
                     Text("الحالة: " + match.status, color = KMuted, fontSize = 11.sp)
                     Text("الموعد: " + displayKickoff(match.kickoff), color = KMuted, fontSize = 11.sp)
                     Text("البطولة: " + match.league.ifBlank { "غير متاحة" }, color = KMuted, fontSize = 11.sp)
-                    Text("لم يصل معرّف ثابت لهذه المباراة، لذلك لا يمكن فتح تفاصيلها بأمان بعد.", color = KMuted, fontSize = 10.sp)
+                    Text(if (match.sourceName.isNotBlank()) "المصدر الإضافي يوفر الموعد أو النتيجة فقط، ولا يوفر أحداثًا أو تشكيلات لهذه المباراة." else "لم يصل معرّف ثابت لهذه المباراة، لذلك لا يمكن فتح تفاصيلها بأمان بعد.", color = KMuted, fontSize = 10.sp),
+                    if (match.sourceName.isNotBlank() && match.sourceUrl.isNotBlank()) TextButton(onClick = {
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(match.sourceUrl))) }
+                    }) { Text("فتح مصدر البيانات", color = KLime, fontSize = 10.sp) }
                 }
             },
             confirmButton = { TextButton(onClick = { selectedSummary = null }) { Text("إغلاق", color = KLime) } },
