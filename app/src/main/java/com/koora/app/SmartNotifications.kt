@@ -886,7 +886,7 @@ internal fun KoraxNotificationsScreen(onBack: () -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("المؤثرات الصوتية", color = Color.White, fontWeight = FontWeight.SemiBold)
-                        Text("تستخدم نغمة الإشعار الافتراضية للهاتف، ويمكن تخصيص صوت كل نوع من إعدادات قنوات KORAX في أندرويد.", color = Color(0xFF929AA6), fontSize = 11.sp)
+                        Text("أصوات KORAX الأصلية تختلف حسب الحدث، ويمكنك تغيير نغمة كل نوع أو تعطيلها من إعدادات قنوات الإشعارات في أندرويد.", color = Color(0xFF929AA6), fontSize = 11.sp)
                     }
                     Switch(checked = soundEnabled, onCheckedChange = {
                         soundEnabled = it
