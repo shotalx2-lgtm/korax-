@@ -173,32 +173,37 @@ internal object KoraxSmartAlerts {
         )
 
         configs.forEach { (key, label, soundResource) ->
-            listOf(true, false).forEach { withSound ->
-                val channel = NotificationChannel(
-                    channelId(key, withSound),
-                    if (withSound) label else "$label - بدون صوت",
-                    if (key == "news" || key == "yellow_card") NotificationManager.IMPORTANCE_DEFAULT
-                    else NotificationManager.IMPORTANCE_HIGH
-                )
-                channel.description = "تنبيهات KORAX الخاصة بـ $label"
-                channel.enableVibration(true)
-                channel.vibrationPattern = if (key == "goal") longArrayOf(0, 110, 65, 110) else longArrayOf(0, 75)
-                channel.setShowBadge(true)
-                if (withSound) {
-                    channel.setSound(
-                        Uri.parse("android.resource://${context.packageName}/$soundResource"),
-                        audio
-                    )
-                } else {
-                    channel.setSound(null, null)
-                }
-                manager.createNotificationChannel(channel)
-            }
+            val channel = NotificationChannel(
+                channelId(key, true),
+                label,
+                if (key == "news" || key == "yellow_card") NotificationManager.IMPORTANCE_DEFAULT
+                else NotificationManager.IMPORTANCE_HIGH
+            )
+            channel.description = "تنبيهات KORAX الخاصة بـ $label"
+            channel.enableVibration(true)
+            channel.vibrationPattern = if (key == "goal") longArrayOf(0, 110, 65, 110) else longArrayOf(0, 75)
+            channel.setShowBadge(true)
+            channel.setSound(
+                Uri.parse("android.resource://${context.packageName}/$soundResource"),
+                audio
+            )
+            manager.createNotificationChannel(channel)
         }
+
+        val silentChannel = NotificationChannel(
+            channelId("all", false),
+            "كل إشعارات KORAX - بدون صوت",
+            NotificationManager.IMPORTANCE_HIGH
+        )
+        silentChannel.description = "قناة صامتة عند إيقاف أصوات KORAX من إعدادات التطبيق"
+        silentChannel.enableVibration(true)
+        silentChannel.vibrationPattern = longArrayOf(0, 65)
+        silentChannel.setSound(null, null)
+        manager.createNotificationChannel(silentChannel)
     }
 
     private fun channelId(kind: String, withSound: Boolean): String =
-        "korax_${kind}_v3_" + if (withSound) "sound" else "silent"
+        if (withSound) "korax_${kind}_v4" else "korax_alerts_v4_silent"
 
     suspend fun poll(context: Context) = withContext(Dispatchers.IO) {
         val base = BuildConfig.KOORA_API_BASE_URL.trim().trimEnd('/')
