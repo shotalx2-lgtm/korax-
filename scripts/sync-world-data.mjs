@@ -67,6 +67,25 @@ function report(sourceKey, status, requestCount, recordsSeen, extra) {
     " requests=" + outcome.requestCount + " records=" + outcome.recordsSeen +
     " errors=" + ((outcome.errors || []).length));
 }
+export function deriveProviderFacts(record) {
+  const metadata = record && record.metadata && typeof record.metadata === "object" ? record.metadata : {};
+  const values = [
+    ["founded_year", metadata.formedYear],
+    ["stadium", metadata.stadiumName],
+    ["stadium_capacity", metadata.stadiumCapacity],
+    ["official_website", metadata.website || metadata.officialWebsite],
+    ["playing_position", metadata.position],
+    ["height", metadata.height],
+    ["weight", metadata.weight],
+    ["shirt_number", metadata.shirtNumber],
+    ["current_team", metadata.teamName],
+    ["league", metadata.leagueName],
+  ];
+  return values
+    .filter(([, value]) => value !== null && value !== undefined && value !== "")
+    .map(([fieldKey, value]) => ({ fieldKey, value, confidence: 0.95 }));
+}
+
 function addRecord(sourceKey, record) {
   if (!record || !record.externalId || !record.canonicalName || !record.entityType) return null;
   const externalId = String(record.externalId);
@@ -137,7 +156,7 @@ function addRecord(sourceKey, record) {
     };
     add(data.assets, row, entityId + ":" + row.asset_type + ":" + row.asset_url);
   }
-  for (const fact of record.facts || []) {
+  for (const fact of deriveProviderFacts(record).concat(record.facts || [])) {
     if (!fact || !fact.fieldKey || fact.value === undefined || fact.value === null) continue;
     const row = {
       entity_id: entityId,
@@ -365,35 +384,41 @@ async function runTheSportsDb() {
   const startedAt = new Date().toISOString();
   const errors = [];
   const records = [];
-  for (const country of Array.from(new Set(LEAGUES.map(item => item.country)))) {
-    try {
-      records.push.apply(records, await source.searchLeagues(country, "Soccer"));
-    } catch (error) { errors.push(country + " leagues: " + String(error).slice(0, 180)); }
-  }
+  let rateLimited = false;
+  // Seven low-cost league metadata lookups plus three capped club-list lookups.
+  // We intentionally avoid per-club squad fan-out on the shared free API.
   for (const item of LEAGUES) {
+    if (rateLimited) break;
+    try {
+      records.push.apply(records, await source.searchLeagues(item.country, "Soccer"));
+    } catch (error) {
+      errors.push(item.country + " leagues: " + String(error).slice(0, 180));
+      if (Number(error?.status) === 429) rateLimited = true;
+    }
+  }
+  for (const item of LEAGUES.slice(0, 3)) {
+    if (rateLimited) break;
     try {
       const teams = (await source.teamsInLeague(item.league)).slice(0, 10);
       records.push.apply(records, teams.map(team => Object.assign({}, team, {
         countryCode: item.countryCode, countryName: item.country
       })));
-      for (const team of teams.slice(0, 2)) {
-        try {
-          records.push.apply(records, (await source.playersInTeam(team.externalId)).slice(0, 10));
-        } catch (error) { errors.push(team.canonicalName + " squad: " + String(error).slice(0, 180)); }
-      }
       addCoverage({
         source_key: "thesportsdb", entity_type: "club", country_code: item.countryCode,
         competition_name: item.league, season: "", coverage_status: teams.length ? "available" : "partial",
         record_count: teams.length, last_checked_at: NOW,
-        metadata: { endpoint: "search_all_teams", freeTierLimit: 10 }
+        metadata: { endpoint: "search_all_teams", freeTierLimit: 10, rightsReviewRequiredForImages: true }
       });
-    } catch (error) { errors.push(item.league + ": " + String(error).slice(0, 180)); }
+    } catch (error) {
+      errors.push(item.league + ": " + String(error).slice(0, 180));
+      if (Number(error?.status) === 429) rateLimited = true;
+    }
   }
   for (const record of records) addRecord("thesportsdb", record);
-  if (!records.length && !errors.length) errors.push("TheSportsDB endpoints responded but returned no usable league, club or player metadata.");
+  if (!records.length && !errors.length) errors.push("TheSportsDB endpoints responded but returned no usable metadata.");
   const stats = source.getStats();
   report("thesportsdb", errors.length ? (records.length ? "partial" : "failed") : "success",
-    stats.requestCount, records.length, { errors, startedAt });
+    stats.requestCount, records.length, { errors, startedAt, rateLimited, squadsDeferred: true });
 }
 async function runOpenLigaDb(previousCoverage) {
   const source = createOpenLigaDbClient();
@@ -509,19 +534,23 @@ async function runWikidata() {
   const countryQids = wikidataConstants.COUNTRY_QIDS;
   const groups = [];
   for (let i = 0; i < countryQids.length; i += 7) groups.push(countryQids.slice(i, i + 7));
-
+  let stopAfterError = false;
   for (const group of groups) {
+    if (stopAfterError) break;
     try {
-      records.push.apply(records, await source.fetchFootballEntities({ countryQids: group, limit: 150 }));
+      records.push.apply(records, await source.fetchFootballEntities({ countryQids: group, limit: 120 }));
     } catch (error) {
       errors.push("club/competition metadata for countries " + group.join(",") + ": " + String(error).slice(0, 180));
+      if (Number(error?.status) === 429 || /timeout|deadline|request budget/i.test(String(error))) stopAfterError = true;
     }
   }
   for (const group of groups) {
+    if (stopAfterError) break;
     try {
-      records.push.apply(records, await source.fetchFootballPeople({ countryQids: group, limit: 350 }));
+      records.push.apply(records, await source.fetchFootballPeople({ countryQids: group, limit: 100 }));
     } catch (error) {
       errors.push("players/coaches for countries " + group.join(",") + ": " + String(error).slice(0, 180));
+      if (Number(error?.status) === 429 || /timeout|deadline|request budget/i.test(String(error))) stopAfterError = true;
     }
   }
   for (const record of records) addRecord("wikidata", record);
@@ -532,18 +561,16 @@ async function runWikidata() {
       coverage_status: "available",
       record_count: records.filter(item => item.entityType === type).length,
       last_checked_at: NOW,
-      metadata: {
-        countryScope: countryQids.length + " curated country identifiers queried in " + groups.length + " batches",
-        sourceLicense: "CC0-1.0",
-      },
+      metadata: { countryScope: countryQids.length + " curated country identifiers queried in " + groups.length + " batches", sourceLicense: "CC0-1.0" },
     });
   }
   const stats = source.getStats();
   report("wikidata", errors.length ? (records.length ? "partial" : "failed") : "success",
     stats.requestCount, records.length, {
-      errors, startedAt, queryBatches: groups.length * 2,
+      errors, startedAt, queryBatches: stats.requestCount,
       countryCount: countryQids.length,
       entityTypes: Array.from(new Set(records.map(item => item.entityType))),
+      stoppedEarly: stopAfterError
     });
   return records;
 }
