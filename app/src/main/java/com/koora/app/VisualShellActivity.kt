@@ -1041,8 +1041,14 @@ private fun MatchesScreen(
                 }
             }
         }
-        Text("البيانات من SportScore", color = KMuted, fontSize = 8.sp,
-            modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = 5.dp))
+        Text(
+            "Powered by SportScore",
+            color = KMuted,
+            fontSize = 8.sp,
+            modifier = Modifier.align(Alignment.CenterHorizontally).clickable {
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://sportscore.com/"))) }
+            }.padding(vertical = 5.dp)
+        )
     }
 
     selectedSummary?.let { match ->
