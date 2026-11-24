@@ -76,7 +76,7 @@ export function parseOpenFootballSeason(payload, competition) {
   const matches = Array.isArray(payload?.matches) ? payload.matches : [];
   return matches.map(match => normalizeOpenFootballMatch(match, {
     ...competition,
-    competitionName: competition.competitionName || payload?.name || "Unknown competition",
+    competitionName: payload?.name || competition.competitionName || "Unknown competition",
   })).filter(Boolean);
 }
 
