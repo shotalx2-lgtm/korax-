@@ -516,7 +516,7 @@ internal object KoraxSmartAlerts {
             if (!FootballNewsFilter.isFootballNews(title, summary, source)) continue
             val key = item.optString("url").ifBlank { item.optString("id") }
             if (key.isBlank()) continue
-            if (!seeded) seen.add(key) else if (seen.add(key)) fresh.add(item)
+            if (!seeded) seen.add(key) else if (seen.add(key) && newsMatchesFavorite(context, item)) fresh.add(item)
         }
         if (seeded && isEnabled(context, "news")) {
             fresh.take(3).forEach { item ->
@@ -593,10 +593,21 @@ internal object KoraxSmartAlerts {
         val text = (item.optString("title") + " " + item.optString("summary")).lowercase(Locale.ROOT)
         val category = item.optString("category").lowercase(Locale.ROOT)
         return followed.any { favorite ->
-            text.contains(favorite.name.lowercase(Locale.ROOT)) ||
-                (favorite.kind == "league" && category == favorite.slug.lowercase(Locale.ROOT)) ||
-                (favorite.kind == "tournament" && text.contains(favorite.name.lowercase(Locale.ROOT)))
+            text.contains(favorite.name.lowercase(Locale.ROOT)) || categoryMatchesFavorite(favorite.slug, category)
         }
+    }
+
+    private fun categoryMatchesFavorite(slug: String, category: String): Boolean {
+        val categoryAliases = when (slug.lowercase(Locale.ROOT)) {
+            "english-premier-league" -> setOf("premier-league")
+            "spanish-la-liga" -> setOf("la-liga")
+            "italian-serie-a" -> setOf("serie-a")
+            "french-ligue-1" -> setOf("ligue-1")
+            "saudi-professional-league" -> setOf("saudi")
+            "egyptian-premier-league" -> setOf("egypt")
+            else -> setOf(slug.lowercase(Locale.ROOT))
+        }
+        return category in categoryAliases
     }
 
     private fun scoreOrUnknown(raw: Any?): Int =
