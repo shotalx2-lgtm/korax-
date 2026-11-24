@@ -532,7 +532,6 @@ internal object KoraxSmartAlerts {
                 val articleTitle = item.optString("title").ifBlank { "خبر كروي جديد" }
                 val source = item.optString("source")
                 val summary = item.optString("summary")
-                val age = relativeNewsAge(item.optString("publishedAt"))
                 val isBreaking = Regex("عاجل|رسميا|بشكل رسمي", RegexOption.IGNORE_CASE).containsMatchIn(articleTitle)
                 val notificationTitle = (if (isBreaking) "🚨 " else "📰 ") + articleTitle.take(58)
                 val snippet = summary.trim().take(118).ifBlank { "اضغط لقراءة الخبر كاملًا" }
@@ -684,7 +683,7 @@ internal object KoraxSmartAlerts {
                     .bigPicture(pictureBitmap)
                     .bigLargeIcon(contextIconBitmap ?: brandBitmap)
                     .setBigContentTitle(title)
-                    .setSummaryText(message.take(120))
+                    .setSummaryText(expandedMessage.take(180))
             )
         } else {
             builder.setStyle(NotificationCompat.BigTextStyle().bigText(expandedMessage.take(260)))
