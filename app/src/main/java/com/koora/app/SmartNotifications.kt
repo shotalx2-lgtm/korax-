@@ -157,19 +157,19 @@ internal object KoraxSmartAlerts {
             .build()
 
         val configs = listOf(
-            Triple("goal", "هدف جديد", R.raw.korax_goal),
-            Triple("assist", "تمريرة حاسمة", R.raw.korax_assist),
-            Triple("var", "مراجعة VAR", R.raw.korax_news),
-            Triple("cancel", "إلغاء هدف", R.raw.korax_news),
-            Triple("red_card", "البطاقات الحمراء", R.raw.korax_red_card),
-            Triple("yellow_card", "البطاقات الصفراء", R.raw.korax_yellow_card),
-            Triple("penalty", "ركلات الجزاء", R.raw.korax_goal),
-            Triple("kickoff", "بداية المباراة", R.raw.korax_news),
-            Triple("halftime", "نهاية الشوط الأول", R.raw.korax_fulltime),
-            Triple("fulltime", "نهاية المباراة", R.raw.korax_fulltime),
-            Triple("substitution", "التبديلات", R.raw.korax_assist),
-            Triple("injury", "الإصابات", R.raw.korax_red_card),
-            Triple("news", "الأخبار العاجلة", R.raw.korax_news)
+            Triple("goal", "هدف جديد", R.raw.korax_goal_v3),
+            Triple("assist", "تمريرة حاسمة", R.raw.korax_assist_v3),
+            Triple("var", "مراجعة VAR", R.raw.korax_news_v3),
+            Triple("cancel", "إلغاء هدف", R.raw.korax_news_v3),
+            Triple("red_card", "البطاقات الحمراء", R.raw.korax_red_card_v3),
+            Triple("yellow_card", "البطاقات الصفراء", R.raw.korax_yellow_card_v3),
+            Triple("penalty", "ركلات الجزاء", R.raw.korax_goal_v3),
+            Triple("kickoff", "بداية المباراة", R.raw.korax_news_v3),
+            Triple("halftime", "نهاية الشوط الأول", R.raw.korax_fulltime_v3),
+            Triple("fulltime", "نهاية المباراة", R.raw.korax_fulltime_v3),
+            Triple("substitution", "التبديلات", R.raw.korax_assist_v3),
+            Triple("injury", "الإصابات", R.raw.korax_red_card_v3),
+            Triple("news", "الأخبار العاجلة", R.raw.korax_news_v3)
         )
 
         configs.forEach { (key, label, soundResource) ->
