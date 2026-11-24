@@ -12,7 +12,9 @@ export function selectDetailBatch(items, minute, batchSize = DETAIL_BATCH_SIZE, 
   const normalizedMinute = ((rawMinute % 60) + 60) % 60;
   const batchCount = Math.max(1, Math.ceil(items.length / size));
   const quarter = Math.floor(normalizedMinute / 15);
-  const rawIndex = Number.isFinite(Number(cycleIndex)) ? Math.trunc(Number(cycleIndex)) : quarter;
+  const rawIndex = cycleIndex === null || cycleIndex === undefined
+    ? quarter
+    : Number.isFinite(Number(cycleIndex)) ? Math.trunc(Number(cycleIndex)) : quarter;
   const batchIndex = ((rawIndex % batchCount) + batchCount) % batchCount;
   const start = batchIndex * size;
   return { batchIndex, batchCount, items: items.slice(start, start + size) };
