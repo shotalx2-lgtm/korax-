@@ -532,10 +532,10 @@ async function getCachedEntityMatchRows() {
 }
 
 async function getCachedEntityDetailRows() {
-  const cacheKey = "entity-search:detail-rows:v1";
+  const cacheKey = "entity-search:detail-rows:v2";
   const cached = cacheRead(cacheKey);
   if (cached !== null) return cached;
-  const path = "/rest/v1/korax_sportscore_matches?select=match_slug,match_date,kickoff_at,home_team,away_team,home_image,away_image,competition_name,competition_image,detail&detail=not.is.null&order=detail_updated_at.desc&limit=300";
+  const path = "/rest/v1/korax_sportscore_matches?select=match_slug,match_date,kickoff_at,home_team,away_team,home_image,away_image,competition_name,competition_image,detail&detail=not.is.null&order=detail_updated_at.desc&limit=1000";
   const rows = await dbRows(path);
   const result = Array.isArray(rows) ? rows : [];
   cacheWrite(cacheKey, result, 180);
@@ -598,7 +598,7 @@ function extractCachedLineupPlayers(matchRoot, row) {
 }
 
 async function getCachedPlayerIndex() {
-  const cacheKey = "entity-search:players:v1";
+  const cacheKey = "entity-search:players:v2";
   const cached = cacheRead(cacheKey);
   if (cached !== null) return cached;
   const rows = await getCachedEntityDetailRows();
@@ -608,8 +608,9 @@ async function getCachedPlayerIndex() {
     const match = root?.match && typeof root.match === "object" ? root.match : root || {};
     const players = extractCachedLineupPlayers(match, row);
     const incidents = Array.isArray(match?.incidents) ? match.incidents
-      : Array.isArray(match?.events) ? match.events : [];
-    const addPlayer = (nameValue, details = {}) => {
+      : Array.isArray(match?.events) ? match.events
+      : Array.isArray(match?.timeline) ? match.timeline : [];
+    const addPlayer = (nameValue, details = {}, involvement = "lineup") => {
       const name = nestedName(nameValue) || (typeof nameValue === "string" ? nameValue : "") ||
         details?.player_name || details?.name || "";
       if (!name.trim()) return;
@@ -626,7 +627,15 @@ async function getCachedPlayerIndex() {
         imageUrl: httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl),
         image_path: httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl),
         matchesInCache: [],
+        matches_with_lineup: 0,
+        goals: 0,
+        assists: 0,
+        yellow_cards: 0,
+        red_cards: 0,
+        last_seen_match: row.match_slug || "",
         source: "sportscore-supabase-cache",
+        _appearanceMatches: new Set(),
+        _eventKeys: new Set(),
       };
       if (row.match_slug && !current.matchesInCache.includes(row.match_slug)) {
         current.matchesInCache.push(row.match_slug);
@@ -636,30 +645,65 @@ async function getCachedPlayerIndex() {
         current.imageUrl = httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl);
         current.image_path = current.imageUrl;
       }
+      if (involvement === "lineup" && !details?.is_substitute && row.match_slug &&
+          !current._appearanceMatches.has(row.match_slug)) {
+        current._appearanceMatches.add(row.match_slug);
+        current.matches_with_lineup += 1;
+      }
+      const event = details?._event;
+      if (event && involvement !== "lineup") {
+        const eventType = nestedName(event.type) || event.type_name || event.name || "";
+        const eventDetail = String(event.addition || event.detail || event.info || "");
+        const eventText = (String(eventType) + " " + eventDetail).toLowerCase();
+        const eventKey = [
+          row.match_slug, event.minute ?? event.time ?? "", eventType,
+          nestedName(event.player) || event.player_name || "",
+          nestedName(event.assist) || nestedName(event.assist_player) || event.assist_player_name || "",
+        ].join("|");
+        if (!current._eventKeys.has(eventKey)) {
+          current._eventKeys.add(eventKey);
+          if (involvement === "assist" && /goal|هدف/i.test(eventText) && !/cancel|disallow|إلغاء|ملغى/i.test(eventText)) {
+            current.assists += 1;
+          } else if (involvement === "event") {
+            if (/goal|هدف/i.test(eventText) && !/cancel|disallow|own goal|إلغاء|ملغى/i.test(eventText)) current.goals += 1;
+            if (/yellow card|second yellow|بطاقة صفراء|إنذار/i.test(eventText)) current.yellow_cards += 1;
+            if (/red card|بطاقة حمراء|طرد/i.test(eventText)) current.red_cards += 1;
+          }
+        }
+      }
       found.set(key, current);
     };
-    for (const player of players) addPlayer(player?.player || player?.name || player?.player_name, player);
+    for (const player of players) {
+      addPlayer(player?.player || player?.name || player?.player_name, player, "lineup");
+    }
     for (const event of incidents) {
       if (event?.player && typeof event.player === "object") {
         addPlayer(event.player, {
-          ...event.player,
-          player_name: nestedName(event.player),
-          side: event?.side || "",
-        });
+          ...event.player, player_name: nestedName(event.player),
+          side: event?.side || event?.team_side || "", _event: event,
+        }, "event");
       } else {
         addPlayer(event?.player || event?.player_name, {
           player_name: event?.player || event?.player_name,
-          side: event?.side || "",
-          image_path: event?.player_image_url || "",
-        });
+          side: event?.side || event?.team_side || "",
+          image_path: event?.player_image_url || "", _event: event,
+        }, "event");
       }
-      addPlayer(event?.assist || event?.assist_player || event?.assist_player_name, {
-        player_name: nestedName(event?.assist || event?.assist_player) || event?.assist_player_name,
-        side: event?.side || "",
-      });
+      const assist = event?.assist || event?.assist_player || event?.assist_player_name;
+      if (assist) {
+        addPlayer(assist, {
+          player_name: nestedName(assist) || event?.assist_player_name || assist,
+          side: event?.side || event?.team_side || "",
+          image_path: event?.assist_player_image_url || "", _event: event,
+        }, "assist");
+      }
     }
   }
-  const result = Array.from(found.values()).sort((a, b) => a.name.localeCompare(b.name));
+  const result = Array.from(found.values())
+    .map(({ _appearanceMatches, _eventKeys, ...player }) => ({
+      ...player, matches_in_cache: player.matchesInCache.length,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   cacheWrite(cacheKey, result, 180);
   return result;
 }
@@ -733,10 +777,8 @@ async function getCachedTeamProfile(slug) {
     for (const side of ["home", "away"]) {
       const name = String(row?.[side + "_team"] || "").trim();
       if (name && cachedEntitySlug("team", name) === slug) entries.push({
-        matchSlug: row.match_slug,
-        competition: row.competition_name || "",
-        kickoff_at: row.kickoff_at || "",
-        status: row.status_text || row.status || "",
+        matchSlug: row.match_slug, competition: row.competition_name || "",
+        kickoff_at: row.kickoff_at || "", status: row.status_text || row.status || "",
       });
     }
   }
@@ -748,11 +790,21 @@ async function getCachedTeamProfile(slug) {
   const home = cachedEntitySlug("team", String(row.home_team || "")) === slug;
   const name = home ? row.home_team : row.away_team;
   const imageUrl = httpsImage(home ? row.home_image : row.away_image);
+  const normalizedName = normalizeSearchText(name);
+  const players = (await getCachedPlayerIndex())
+    .filter((player) => normalizeSearchText(player.team_name) === normalizedName)
+    .sort((a, b) => (b.matches_with_lineup || 0) - (a.matches_with_lineup || 0))
+    .map((player) => ({
+      id: player.id, slug: player.slug, name: player.name, imageUrl: player.imageUrl,
+      position: player.position, shirt_number: player.shirt_number,
+      matches_with_lineup: player.matches_with_lineup, goals: player.goals, assists: player.assists,
+    }));
   return {
     team: {
       id: slug, slug, name, imageUrl, logoUrl: imageUrl, image_path: imageUrl,
       cached_matches: entries.length,
       competitions: [...new Set(entries.map((item) => item.competition).filter(Boolean))],
+      players, roster_source: "players observed in cached SportScore lineups", roster_complete: false,
     },
   };
 }
@@ -1046,173 +1098,6 @@ async function getCachedArabicNews() {
   return payload;
 }
 
-const FANTASY_LEAGUE_TARGETS = [
-  { key: "england", slug: "jednm9whz0ryox8", label: "الدوري الإنجليزي", search: "English Premier League" },
-  { key: "spain", slug: "vl7oqdehlyr510j", label: "الدوري الإسباني", search: "Spanish La Liga" },
-  { key: "france", slug: "yl5ergphnzr8k0o", label: "الدوري الفرنسي", search: "French Ligue 1" },
-  { key: "italy", slug: "4zp5rzghp5q82w1", label: "الدوري الإيطالي", search: "Italian Serie A" },
-  { key: "germany", slug: "gy0or5jhg6qwzv3", label: "الدوري الألماني", search: "Bundesliga" },
-  { key: "saudi", slug: "", label: "الدوري السعودي", search: "Saudi Pro League" },
-];
-
-function fantasyPosition(value) {
-  const name = nestedName(value).toLowerCase();
-  if (name.includes("goal") || name.includes("keeper") || name === "gk") return "GK";
-  if (name.includes("defen") || name === "def") return "DEF";
-  if (name.includes("mid")) return "MID";
-  if (name.includes("attack") || name.includes("forward") || name.includes("strik") || name === "fwd") return "FWD";
-  return "";
-}
-
-function numericStat(details, ...names) {
-  const wanted = names.map((name) => name.toLowerCase().replace(/[^a-z]/g, ""));
-  const item = Array.isArray(details) ? details.find((entry) =>
-    wanted.includes(nestedName(entry?.type).toLowerCase().replace(/[^a-z]/g, ""))) : null;
-  const raw = item?.value ?? item?.total ?? 0;
-  if (typeof raw === "number") return raw;
-  if (typeof raw === "string") return Number(raw) || 0;
-  if (raw && typeof raw === "object") return Number(raw.total ?? raw.all?.count ?? raw.count ?? raw.value) || 0;
-  return 0;
-}
-
-function calculateSeasonFantasyPoints(position, details) {
-  const appearances = numericStat(details, "Appearances", "Appearences");
-  const goals = numericStat(details, "Goals");
-  const assists = numericStat(details, "Assists");
-  const cleanSheets = numericStat(details, "Clean Sheets", "Cleansheets");
-  const saves = numericStat(details, "Saves");
-  const penaltySaves = numericStat(details, "Penalty Saves", "Penalties Saved");
-  const penaltyMisses = numericStat(details, "Penalties Missed", "Penalty Misses");
-  const yellowCards = numericStat(details, "Yellow Cards");
-  const redCards = numericStat(details, "Red Cards");
-  const ownGoals = numericStat(details, "Own Goals");
-  const goalsConceded = numericStat(details, "Goals Conceded");
-  const goalValue = position === "GK" || position === "DEF" ? 6 : position === "MID" ? 5 : 4;
-  const cleanSheetValue = position === "GK" || position === "DEF" ? 4 : position === "MID" ? 1 : 0;
-  const concededPenalty = position === "GK" || position === "DEF" ? Math.floor(goalsConceded / 2) : 0;
-  return Math.round(appearances * 2 + goals * goalValue + assists * 3 + cleanSheets * cleanSheetValue
-    + Math.floor(saves / 3) + penaltySaves * 5 - penaltyMisses * 2 - yellowCards - redCards * 3 - ownGoals * 2 - concededPenalty);
-}
-
-function scoreValue(row, ...keys) {
-  for (const key of keys) {
-    const value = row?.[key] ?? row?.stats?.[key] ?? row?.statistics?.[key];
-    if (value !== undefined && value !== null && value !== "") {
-      const number = Number(typeof value === "object" ? value.total ?? value.value ?? value.count : value);
-      if (Number.isFinite(number)) return number;
-    }
-  }
-  return 0;
-}
-
-function normalizeFantasyPlayer(row, league) {
-  const player = row?.player && typeof row.player === "object" ? row.player : row;
-  const team = row?.team || row?.club || player?.team || player?.club || {};
-  const name = nestedName(player) || row?.player_name || row?.name || "";
-  const id = String(player?.slug || player?.id || row?.player_slug || row?.player_id || row?.slug || "");
-  const position = fantasyPosition(player?.position || row?.position || player?.role || row?.role ||
-    row?.player_position || row?.position_name || player?.position_name || row?.role_name || "");
-  if (!id || !name || !position) return null;
-  const goals = scoreValue(row, "goals", "goal", "total_goals");
-  const assists = scoreValue(row, "assists", "total_assists");
-  const appearances = scoreValue(row, "appearances", "apps", "matches");
-  const details = [
-    { type: { name: "Goals" }, value: goals }, { type: { name: "Assists" }, value: assists },
-    { type: { name: "Appearances" }, value: appearances },
-    { type: { name: "Clean Sheets" }, value: scoreValue(row, "clean_sheets", "cleanSheets") },
-    { type: { name: "Saves" }, value: scoreValue(row, "saves") },
-    { type: { name: "Yellow Cards" }, value: scoreValue(row, "yellow_cards", "yellowCards") },
-    { type: { name: "Red Cards" }, value: scoreValue(row, "red_cards", "redCards") },
-  ];
-  const image = player?.image || player?.image_url || player?.photo || player?.photo_url ||
-    row?.player_image || row?.player_image_url || row?.image || row?.image_url || "";
-  const club = nestedName(team) || row?.team_name || row?.club_name || "";
-  const price = position === "GK" ? 4.5 : position === "DEF" ? 5.0 : position === "MID" ? 6.0 : 6.5;
-  return {
-    id: "sportscore-" + id, providerId: id, name, club, teamId: String(team?.id || team?.slug || ""),
-    position, price, points: calculateSeasonFantasyPoints(position, details),
-    imageUrl: typeof image === "string" && image.startsWith("https://") ? image : null,
-    league: league.label, leagueId: league.slug,
-    stats: { appearances, goals, assists, cleanSheets: scoreValue(row, "clean_sheets", "cleanSheets"), saves: scoreValue(row, "saves") },
-  };
-}
-
-async function resolveFantasyCompetition(target, env) {
-  if (target.slug) return target.slug;
-  const payload = await cachedProviderRequest("/api/v1/search/", {
-    q: target.search, sport: "football", limit: 20,
-  }, env, 21600);
-  const root = unwrap(payload);
-  const rows = Array.isArray(root?.competitions) ? root.competitions
-    : Array.isArray(root?.leagues) ? root.leagues
-    : Array.isArray(root?.tournaments) ? root.tournaments
-    : Array.isArray(root?.results) ? root.results.filter((item) => String(item.type || "").toLowerCase().includes("competition")) : [];
-  const matchName = (item) => (nestedName(item) || item?.title || item?.competition_name || item?.league_name || "").toLowerCase();
-  const match = rows.find((item) => {
-    const name = matchName(item);
-    return name.includes("saudi") && (name.includes("pro") || name.includes("professional"));
-  }) || rows.find((item) => matchName(item).includes("saudi"));
-  const urlSlug = String(match?.url || match?.href || "").match(/\/([a-z0-9]{8,})\/?$/i)?.[1] || "";
-  return match?.slug || match?.competition_slug || match?.url_slug || urlSlug;
-}
-
-async function loadFantasyLeaguePlayers(target, env) {
-  const slug = await resolveFantasyCompetition(target, env);
-  if (!slug) return {
-    key: target.key, name: target.label, leagueId: "", available: false,
-    reason: "competition_not_found", players: [],
-  };
-  const [goalsPayload, assistsPayload] = await Promise.all([
-    cachedProviderRequest("/api/v1/topscorers/", { sport: "football", slug, limit: 50, stat: "goals" }, env, 3600),
-    cachedProviderRequest("/api/v1/topscorers/", { sport: "football", slug, limit: 50, stat: "assists" }, env, 3600),
-  ]);
-  const rowsFor = (payload) => {
-    const root = unwrap(payload);
-    if (Array.isArray(root)) return root;
-    for (const key of ["players", "topscorers", "top_scorers", "scorers", "assists", "data"]) {
-      if (Array.isArray(root?.[key])) return root[key];
-    }
-    return [];
-  };
-  const unique = new Map();
-  for (const payload of [goalsPayload, assistsPayload]) {
-    for (const row of rowsFor(payload)) {
-      const player = normalizeFantasyPlayer(row, { ...target, slug });
-      if (player && !unique.has(player.id)) unique.set(player.id, player);
-    }
-  }
-  const players = Array.from(unique.values());
-  return {
-    key: target.key, name: target.label, leagueId: slug, available: players.length > 0,
-    reason: players.length ? "leaderboards_only" : "no_leaderboard_data", players,
-  };
-}
-
-async function getCachedFantasyPlayers(env) {
-  const cacheKey = "fantasy:players:sportscore-1";
-  const cached = cacheRead(cacheKey);
-  if (cached !== null) return cached;
-  const results = await Promise.allSettled(FANTASY_LEAGUE_TARGETS.map((target) => loadFantasyLeaguePlayers(target, env)));
-  const leagues = results.map((result, index) => result.status === "fulfilled" ? result.value : ({
-    key: FANTASY_LEAGUE_TARGETS[index].key, name: FANTASY_LEAGUE_TARGETS[index].label,
-    leagueId: FANTASY_LEAGUE_TARGETS[index].slug, available: false, reason: "provider_unavailable", players: [],
-  }));
-  const unique = new Map();
-  for (const league of leagues) for (const player of league.players || []) if (!unique.has(player.id)) unique.set(player.id, player);
-  const payload = {
-    data: Array.from(unique.values()),
-    leagues: leagues.map(({ players, ...summary }) => ({ ...summary, playerCount: players.length })),
-    meta: {
-      playerCount: unique.size, scoringVersion: "KORAX-SEASON-1", updatedAt: new Date().toISOString(),
-      catalogueScope: "top_scorers_and_assists_only", roundScoringAvailable: false,
-      limitation: "SportScore does not expose a complete squad endpoint. This is a leaderboard-only player catalogue, not a full 15-player market or live gameweek scoring source.",
-    },
-    source: "sportscore",
-  };
-  cacheWrite(cacheKey, payload, 3600);
-  return payload;
-}
-
 const KORAX_COMPETITIONS = [
   { id: "english-premier-league", slug: "english-premier-league", name: "الدوري الإنجليزي", country: "إنجلترا", providerName: "English Premier League" },
   { id: "spanish-la-liga", slug: "spanish-la-liga", name: "الدوري الإسباني", country: "إسبانيا", providerName: "Spanish La Liga" },
@@ -1259,8 +1144,6 @@ async function route(request, env) {
     if (category) data = data.filter((item) => item.category === category);
     return json({ ...payload, data: data.slice(0, requested), source: "publisher-rss" });
   }
-
-  if (path === "/api/fantasy/players") return json(await getCachedFantasyPlayers(env));
 
   if (path === "/api/matches") {
     const legacyLive = url.searchParams.get("live") === "1";
@@ -1470,4 +1353,4 @@ Deno.serve(async (request) => {
   }
 });
 
-export { fantasyPosition, numericStat, calculateSeasonFantasyPoints, htmlText, classifyNewsCategory, parseRssFeed, normalizeEvent, normalizeFixture, isLiveFixture };
+export { htmlText, classifyNewsCategory, parseRssFeed, normalizeEvent, normalizeFixture, isLiveFixture };
