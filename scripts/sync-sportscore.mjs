@@ -74,10 +74,11 @@ async function main() {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
   const minute = now.getUTCMinutes();
+  const triggeredByReleaseChange = process.env.GITHUB_EVENT_NAME === "push";
   const fullSync = process.env.KORAX_FORCE_FULL_SYNC === "true" ||
-    process.env.GITHUB_EVENT_NAME === "workflow_dispatch" || minute % 15 === 0;
+    process.env.GITHUB_EVENT_NAME === "workflow_dispatch" || triggeredByReleaseChange || minute % 15 === 0;
   const standingsSync = process.env.KORAX_FORCE_FULL_SYNC === "true" ||
-    process.env.GITHUB_EVENT_NAME === "workflow_dispatch" || minute === 0;
+    process.env.GITHUB_EVENT_NAME === "workflow_dispatch" || triggeredByReleaseChange || minute === 0;
 
   const matchMap = new Map();
   const livePayload = await sportJson(SPORTScore_BASE + "/api/widget/matches/?sport=football&limit=50");
@@ -89,7 +90,7 @@ async function main() {
   const competitions = [];
   if (fullSync) {
     const dates = [];
-    for (let offset = -1; offset <= 7; offset++) {
+    for (let offset = -7; offset <= 14; offset++) {
       const date = new Date(now);
       date.setUTCDate(date.getUTCDate() + offset);
       dates.push(date.toISOString().slice(0, 10));
@@ -113,21 +114,38 @@ async function main() {
   const matches = [...matchMap.values()];
   let details = [];
   if (fullSync) {
+    const nowMs = now.getTime();
+    const oldestDetailMs = nowMs - 7 * 24 * 60 * 60 * 1000;
+    const newestDetailMs = nowMs + 14 * 24 * 60 * 60 * 1000;
+    const fixtureTime = match => Date.parse(match.time || match.start_time || "");
+    const fixtureStatus = match => String(match.status || match.status_text || match.state || "");
+    const priority = match => {
+      const status = fixtureStatus(match);
+      if (/live|in.?play|in_progress|1st.?half|2nd.?half|half.?time|extra.?time|penalt|مباشر|الشوط|استراحة/i.test(status)) return 0;
+      return fixtureTime(match) >= nowMs ? 1 : 2;
+    };
     const candidates = matches
       .filter(match => {
-        const time = Date.parse(match.time || match.start_time || "");
-        if (!Number.isFinite(time)) return false;
-        return new Date(time).toISOString().slice(0, 10) === today &&
-          !/cancel|postpon|abandon/i.test(String(match.status || ""));
+        const time = fixtureTime(match);
+        if (!Number.isFinite(time) || time < oldestDetailMs || time > newestDetailMs) return false;
+        return !/cancel|postpon|abandon/i.test(fixtureStatus(match));
       })
-      .sort((a, b) => Date.parse(a.time || a.start_time) - Date.parse(b.time || b.start_time))
-      .slice(0, 80);
-    const batch = selectDetailBatch(candidates, minute, 20);
+      .sort((a, b) => {
+        const tier = priority(a) - priority(b);
+        if (tier !== 0) return tier;
+        const aTime = fixtureTime(a);
+        const bTime = fixtureTime(b);
+        // Refresh live and upcoming fixtures first; walk completed fixtures newest-first.
+        return priority(a) === 2 ? bTime - aTime : aTime - bTime;
+      });
+    const cycleIndex = Math.floor(nowMs / (15 * 60 * 1000));
+    const batch = selectDetailBatch(candidates, minute, 20, cycleIndex);
     console.log(
-      "SportScore detail batch:",
+      "SportScore rolling detail batch:",
       batch.batchIndex + 1,
       "of",
       batch.batchCount,
+      "; window: 7 days past / 14 days ahead",
       "; candidates:",
       candidates.length,
       "; selected:",
