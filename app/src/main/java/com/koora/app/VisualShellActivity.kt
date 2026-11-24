@@ -220,7 +220,7 @@ private fun KoraxSplash(initialNotificationRoute: KoraxNotificationRoute?) {
 internal data class NewsItem(val id: String, val title: String, val summary: String, val url: String, val source: String, val date: String, val image: String?, val category: String = "football")
 private data class KoraxNotificationRoute(val matchId: String? = null, val article: NewsItem? = null)
 private data class TransferItem(val id: String, val player: String, val playerImage: String, val from: String, val fromLogo: String, val to: String, val toLogo: String, val type: String, val date: String, val amount: String, val completed: Boolean, val league: String)
-private data class MatchItem(val id: String, val home: String, val away: String, val homeLogo: String, val awayLogo: String, val score: String, val status: String, val kickoff: String, val league: String, val detailsAvailable: Boolean, val sourceName: String = "", val sourceUrl: String = "")
+private data class MatchItem(val id: String, val home: String, val away: String, val homeLogo: String, val awayLogo: String, val score: String, val status: String, val kickoff: String, val league: String, val detailsAvailable: Boolean, val sourceName: String = "", val sourceLicense: String = "", val sourceUrl: String = "")
 
 private fun apiBase() = BuildConfig.KOORA_API_BASE_URL.trim().trimEnd('/')
 internal suspend fun apiJson(path: String): JSONObject = withContext(Dispatchers.IO) {
@@ -351,6 +351,7 @@ private suspend fun loadMatches(mode: String, selectedDate: String): List<MatchI
             x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") },
             detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false),
             sourceName = x.optString("sourceName"),
+            sourceLicense = x.optString("sourceLicense"),
             sourceUrl = x.optString("sourceUrl").takeIf { it.startsWith("https://") }.orEmpty()
         )
     }.distinctBy { it.id }
@@ -1113,7 +1114,7 @@ private fun MatchesScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    if (match.sourceName.isNotBlank()) "المصدر: ${match.sourceName}" else if (match.detailsAvailable) "تفاصيل المباراة متاحة" else "البيانات الأساسية من المصدر",
+                                    if (match.sourceName.isNotBlank()) "المصدر: ${match.sourceName}" + if (match.sourceLicense.isNotBlank()) " • ${match.sourceLicense}" else "" else if (match.detailsAvailable) "تفاصيل المباراة متاحة" else "البيانات الأساسية من المصدر",
                                     color = KMuted, fontSize = 8.sp, modifier = Modifier.weight(1f).then(
                                         if (match.sourceName.isNotBlank() && match.sourceUrl.isNotBlank()) Modifier.clickable {
                                             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(match.sourceUrl))) }
