@@ -179,7 +179,8 @@ private data class KoraxStatsCompetition(
     val slug: String,
     val name: String,
     val country: String,
-    val providerName: String
+    val providerName: String,
+    val imageUrl: String = ""
 )
 
 private fun findKoraxStatsRows(
@@ -268,7 +269,8 @@ internal fun KoraxStatisticsHubPage(
                     if (slug.isBlank() || name.isBlank()) return@mapNotNull null
                     KoraxStatsCompetition(
                         slug, name, row.koraxStatText("country"),
-                        row.koraxStatText("providerName", "name_en").ifBlank { name }
+                        row.koraxStatText("providerName", "name_en").ifBlank { name },
+                        row.koraxStatText("imageUrl", "logoUrl", "competition_logo", "image", "logo")
                     )
                 }
                 val catalogueItems = runCatching {
@@ -279,7 +281,8 @@ internal fun KoraxStatisticsHubPage(
                         val name = row.koraxStatText("name", "name_en", "canonical_name")
                         val providerName = row.koraxStatText("name_en", "canonical_name", "providerName")
                         if (slug.isBlank() || name.isBlank()) return@mapNotNull null
-                        KoraxStatsCompetition(slug, name, row.koraxStatText("country"), providerName.ifBlank { name })
+                        KoraxStatsCompetition(slug, name, row.koraxStatText("country"), providerName.ifBlank { name },
+                             row.koraxStatText("imageUrl", "logoUrl", "competition_logo", "image", "logo"))
                     }
                 }.getOrDefault(emptyList())
                 (curatedItems + catalogueItems).distinctBy { it.providerName.lowercase(Locale.ROOT) }
@@ -288,6 +291,34 @@ internal fun KoraxStatisticsHubPage(
             if (selectedSlug.isBlank()) selectedSlug = competitions.firstOrNull()?.slug.orEmpty()
             if (result.isFailure) error = result.exceptionOrNull()?.message.orEmpty()
             loadingCompetitions = false
+        }
+
+        var competitionSuggestions by remember { mutableStateOf<List<KoraxStatsCompetition>>(emptyList()) }
+        var activeSearch by remember { mutableStateOf(false) }
+        LaunchedEffect(competitionQuery) {
+            val query = competitionQuery.trim()
+            if (query.isBlank()) {
+                competitionSuggestions = emptyList()
+                activeSearch = false
+            } else {
+                kotlinx.coroutines.delay(220)
+                activeSearch = true
+                val result = runCatching {
+                    val found = apiJson("/api/competitions?search=${query.urlEncoded()}&per_page=24").rows()
+                    (0 until found.length()).mapNotNull { index ->
+                        val row = found.optJSONObject(index) ?: return@mapNotNull null
+                        val slug = row.koraxStatText("slug", "id")
+                        val name = row.koraxStatText("name", "providerName", "title")
+                        if (slug.isBlank() || name.isBlank()) return@mapNotNull null
+                        KoraxStatsCompetition(
+                            slug, name, row.koraxStatText("country"),
+                            row.koraxStatText("providerName", "name_en", "canonical_name").ifBlank { name },
+                            row.koraxStatText("imageUrl", "logoUrl", "competition_logo", "image", "logo")
+                        )
+                    }
+                }
+                competitionSuggestions = result.getOrDefault(emptyList())
+            }
         }
 
         LaunchedEffect(selectedSlug, metric, refreshKey) {
@@ -345,48 +376,53 @@ internal fun KoraxStatisticsHubPage(
                         Text("اختر البطولة", color = XText, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                         Text("تتغير الجداول والهدافون حسب المسابقة التي تختارها", color = XMuted, fontSize = 9.sp)
                         Spacer(Modifier.height(9.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            OutlinedTextField(
-                                value = competitionQuery,
-                                onValueChange = { competitionQuery = it },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true,
-                                placeholder = { Text("ابحث عن دوري أو بطولة", fontSize = 10.sp) },
-                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp)
-                            )
-                            IconButton(
-                                enabled = competitionQuery.trim().length >= 2 && !searchingCompetitions,
-                                onClick = {
-                                    scope.launch {
-                                        searchingCompetitions = true
-                                        val searchResult = runCatching {
-                                            val found = apiJson("/api/competitions?search=${competitionQuery.trim().urlEncoded()}&per_page=50").rows()
-                                            (0 until found.length()).mapNotNull { index ->
-                                                val row = found.optJSONObject(index) ?: return@mapNotNull null
-                                                val slug = row.koraxStatText("slug", "id")
-                                                val name = row.koraxStatText("name", "providerName", "title")
-                                                if (slug.isBlank() || name.isBlank()) return@mapNotNull null
-                                                KoraxStatsCompetition(
-                                                    slug, name, row.koraxStatText("country"),
-                                                    row.koraxStatText("providerName", "name_en", "canonical_name").ifBlank { name }
-                                                )
-                                            }
-                                        }
-                                        val found = searchResult.getOrDefault(emptyList())
-                                        if (found.isNotEmpty()) {
-                                            competitions = (found + competitions).distinctBy { it.providerName.lowercase(Locale.ROOT) }
-                                            selectedSlug = found.first().slug
-                                        } else if (searchResult.isFailure) {
-                                            error = searchResult.exceptionOrNull()?.message.orEmpty()
-                                        } else {
-                                            error = "لم نجد بطولة بهذا الاسم في فهرس البيانات الحالي."
-                                        }
-                                        searchingCompetitions = false
+                        OutlinedTextField(
+                            value = competitionQuery,
+                            onValueChange = { competitionQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            placeholder = { Text("اكتب أول حرف للبحث عن دوري أو بطولة...", fontSize = 10.sp) },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = XText),
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = XAccent) },
+                            trailingIcon = {
+                                if (competitionQuery.isNotBlank()) {
+                                    IconButton(onClick = { competitionQuery = "" }) {
+                                        Icon(Icons.Filled.Close, contentDescription = "مسح", tint = XMuted)
                                     }
                                 }
-                            ) {
-                                if (searchingCompetitions) CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp, color = XAccent)
-                                else Icon(Icons.Filled.Search, contentDescription = "بحث", tint = XAccent)
+                            }
+                        )
+                        if (competitionQuery.isNotBlank()) {
+                            Text("اقتراحات مباشرة", color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(top = 8.dp, bottom = 5.dp))
+                            if (competitionSuggestions.isEmpty()) {
+                                Text(if (activeSearch) "لا توجد نتائج مطابقة في الفهرس الحالي" else "جارٍ البحث...", color = XMuted, fontSize = 10.sp)
+                            } else {
+                                competitionSuggestions.take(8).forEach { suggestion ->
+                                    Row(
+                                        Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp))
+                                            .clickable {
+                                                competitions = (listOf(suggestion) + competitions).distinctBy { it.slug }
+                                                selectedSlug = suggestion.slug
+                                                competitionQuery = ""
+                                                competitionSuggestions = emptyList()
+                                            }.padding(vertical = 7.dp, horizontal = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(Modifier.size(34.dp).clip(CircleShape).background(XCard), contentAlignment = Alignment.Center) {
+                                            if (suggestion.imageUrl.isNotBlank()) {
+                                                coil.compose.AsyncImage(model = suggestion.imageUrl, contentDescription = suggestion.name,
+                                                    modifier = Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
+                                            } else Text(suggestion.name.take(1), color = XAccent, fontWeight = FontWeight.Bold)
+                                        }
+                                        Spacer(Modifier.width(9.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(suggestion.name, color = XText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text(suggestion.country.ifBlank { "بطولة أو دوري" }, color = XMuted, fontSize = 8.sp)
+                                        }
+                                        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = XAccent)
+                                    }
+                                }
                             }
                         }
                         if (loadingCompetitions) {
