@@ -70,10 +70,20 @@ private fun JSONObject.readImage(vararg keys: String): String {
     val aliases = listOf(
         "imageUrl", "image_path", "imagePath", "image_url", "photo_url", "photo",
         "thumbnail", "logoUrl", "logo", "logo_url", "logo_path",
-        "crest", "crestUrl", "crest_url", "badge", "emblem"
+        "crest", "crestUrl", "crest_url", "badge", "emblem",
+        "player_image_url", "player_image", "playerImage", "avatar_url",
+        "profile_image", "profileImage", "portrait", "headshot", "picture"
     )
+    fun imageValue(value: Any?, depth: Int = 0): String {
+        if (value is String) return value.trim().takeIf { it.startsWith("https://") }.orEmpty()
+        if (value !is JSONObject || depth >= 2) return ""
+        val nestedKeys = listOf("url", "src", "original", "large", "medium", "imageUrl", "image_url", "image_path", "photo_url", "avatar_url")
+        return nestedKeys.firstNotNullOfOrNull { key ->
+            imageValue(value.opt(key), depth + 1).takeIf { it.isNotBlank() }
+        }.orEmpty()
+    }
     return (keys.toList() + aliases).distinct()
-        .firstNotNullOfOrNull { key -> optString(key).takeIf { it.startsWith("https://") } }
+        .firstNotNullOfOrNull { key -> imageValue(opt(key)).takeIf { it.isNotBlank() } }
         .orEmpty()
 }
 
@@ -295,6 +305,7 @@ internal fun KoraxStatisticsHubPage(
 
         var competitionSuggestions by remember { mutableStateOf<List<KoraxStatsCompetition>>(emptyList()) }
         var activeSearch by remember { mutableStateOf(false) }
+        var showCompetitionPicker by rememberSaveable { mutableStateOf(false) }
         LaunchedEffect(competitionQuery) {
             val query = competitionQuery.trim()
             if (query.isBlank()) {
@@ -432,7 +443,7 @@ internal fun KoraxStatisticsHubPage(
                         } else if (competitionQuery.isBlank()) {
                             Row(
                                 Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(13.dp))
-                                    .background(XCard2).clickable { competitionQuery = "" }.padding(10.dp),
+                                    .background(XCard2).clickable { showCompetitionPicker = true }.padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(Modifier.size(43.dp).clip(CircleShape).background(XCard), contentAlignment = Alignment.Center) {
@@ -447,12 +458,34 @@ internal fun KoraxStatisticsHubPage(
                                     Text(selectedCompetition?.name ?: "اختر بطولة", color = XText, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                                     Text(selectedCompetition?.country.orEmpty(), color = XMuted, fontSize = 9.sp)
                                 }
-                                Text("تغيير", color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                Text("اختيار بطولة  ▾", color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 }
 
+                if (competitions.isNotEmpty()) {
+                    Text("اختيار سريع للبطولة", color = XMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 4.dp, top = 9.dp, bottom = 4.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp), contentPadding = PaddingValues(horizontal = 2.dp)) {
+                        items(competitions.take(10), key = { it.slug }) { option ->
+                            FilterChip(
+                                selected = selectedSlug == option.slug,
+                                onClick = { selectedSlug = option.slug; competitionQuery = "" },
+                                label = { Text(option.name, fontSize = 9.sp, maxLines = 1) },
+                                leadingIcon = {
+                                    if (option.imageUrl.isNotBlank()) coil.compose.AsyncImage(
+                                        model = option.imageUrl, contentDescription = null,
+                                        modifier = Modifier.size(17.dp), contentScale = ContentScale.Fit
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = XAccent, selectedLabelColor = Color.Black, labelColor = XMuted
+                                )
+                            )
+                        }
+                    }
+                }
                 Spacer(Modifier.height(12.dp))
                 Text("ماذا تريد أن تشاهد؟", color = XText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(7.dp))
@@ -555,9 +588,9 @@ internal fun KoraxStatisticsHubPage(
                                     Divider(color = XBorder.copy(alpha = .65f))
                                 }
                                 Row(Modifier.fillMaxWidth().padding(top = 9.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    Text("■ صعود / تأهل", color = Color(0xFF20C978), fontSize = 8.sp)
-                                    Text("■ مراكز وسط", color = Color(0xFF3997F5), fontSize = 8.sp)
-                                    Text("■ هبوط", color = Color(0xFFEF5350), fontSize = 8.sp)
+                                    Text("■ مراكز متقدمة", color = Color(0xFF20C978), fontSize = 8.sp)
+                                    Text("■ وسط الجدول", color = Color(0xFF3997F5), fontSize = 8.sp)
+                                    Text("■ مراكز متأخرة", color = Color(0xFFEF5350), fontSize = 8.sp)
                                 }
                             }
                         }
@@ -648,6 +681,73 @@ internal fun KoraxStatisticsHubPage(
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
                 Spacer(Modifier.height(16.dp))
+            }
+        }
+        if (showCompetitionPicker) {
+            androidx.compose.ui.window.Dialog(onDismissRequest = { showCompetitionPicker = false }) {
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = XCard,
+                    border = BorderStroke(1.dp, XBorder),
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 620.dp)
+                ) {
+                    Column(Modifier.padding(15.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("اختيار البطولة", color = XText, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("اختر من البطولات المتاحة أو ابحث بالاسم", color = XMuted, fontSize = 9.sp)
+                            }
+                            IconButton(onClick = { showCompetitionPicker = false }) { Text("×", color = XMuted, fontSize = 22.sp) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = competitionQuery,
+                            onValueChange = { competitionQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(13.dp),
+                            placeholder = { Text("ابحث عن دوري أو بطولة...", fontSize = 10.sp) },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = XText),
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = XAccent) }
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        val pickerRows = if (competitionQuery.isBlank()) competitions else competitionSuggestions
+                        LazyColumn(
+                            modifier = Modifier.weight(1f, fill = false).heightIn(max = 440.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(pickerRows.take(50), key = { it.slug }) { option ->
+                                Row(
+                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            competitions = (listOf(option) + competitions).distinctBy { it.slug }
+                                            selectedSlug = option.slug
+                                            competitionQuery = ""
+                                            showCompetitionPicker = false
+                                        }.padding(horizontal = 7.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(Modifier.size(34.dp).clip(CircleShape).background(XCard2), contentAlignment = Alignment.Center) {
+                                        if (option.imageUrl.isNotBlank()) coil.compose.AsyncImage(
+                                            model = option.imageUrl, contentDescription = option.name,
+                                            modifier = Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit
+                                        ) else Text(option.name.take(1), color = XAccent, fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(Modifier.width(9.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(option.name, color = XText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text(option.country.ifBlank { "بطولة" }, color = XMuted, fontSize = 8.sp)
+                                    }
+                                    if (selectedSlug == option.slug) Text("✓", color = XAccent, fontWeight = FontWeight.Black)
+                                }
+                            }
+                        }
+                        if (pickerRows.isEmpty()) {
+                            Text(if (competitionQuery.isBlank()) "لا توجد بطولات محملة" else "لا توجد نتائج مطابقة في الفهرس الحالي",
+                                color = XMuted, fontSize = 10.sp, modifier = Modifier.padding(vertical = 12.dp))
+                        }
+                    }
+                }
             }
         }
     }
@@ -1426,7 +1526,11 @@ private fun MatchLineupSide(
                                         rowPlayers.forEach { row ->
                                             val name = row.readText("player_name", "name")
                                             val number = row.readText("shirt_number")
-                                            val image = row.readText("imageUrl", "image_url")
+                                            val image = row.readImage(
+                                        "imageUrl", "image_path", "image_url", "player_image_url",
+                                        "player_image", "playerImage", "photo_url", "photo",
+                                        "avatar_url", "profile_image", "portrait", "headshot"
+                                    )
                                             Column(
                                                 Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
                                                     .background(Color(0xFF0A4C39).copy(alpha = .92f)).padding(5.dp),
