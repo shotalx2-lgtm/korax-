@@ -583,8 +583,9 @@ internal fun KoraxStatisticsHubPage(
                                     Text("النقاط", color = XAccent, fontSize = 9.sp)
                                 }
                                 Divider(color = XBorder)
-                                rows.drop(3).take(37).forEachIndexed { offset, row ->
-                                    val index = offset + 3
+                                val tableOffset = if (rows.size >= 3) 3 else 0
+                                rows.drop(tableOffset).take(37).forEachIndexed { offset, row ->
+                                    val index = offset + tableOffset
                                     val rank = row.koraxStatText("position", "rank", "place", "pos").toIntOrNull() ?: index + 1
                                     val teamName = row.koraxStatText("team_name", "teamName", "name", "participant_name", "team", "participant").ifBlank { "فريق غير محدد" }
                                     val teamObject = row.optJSONObject("team") ?: row.optJSONObject("participant")
