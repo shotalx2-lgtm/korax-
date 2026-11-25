@@ -140,7 +140,7 @@ private fun JSONObject.asFavorite(kind: String): KoraxFavorite? {
 }
 
 private suspend fun searchFavoriteItems(kind: String, query: String, offset: Int = 0): List<KoraxFavorite> {
-    if (query.trim().length < 2) {
+    if (query.trim().isBlank()) {
         val types = when (kind) {
             "all" -> "club,national,player,coach,league,tournament"
             "league", "tournament", "club", "national", "player", "coach" -> kind
@@ -290,7 +290,7 @@ internal fun KoraxFavoriteSelectionScreen(
         search()
     }
     LaunchedEffect(kind, query) {
-        if (query.trim().length >= 2) {
+        if (query.trim().length >= 1) {
             kotlinx.coroutines.delay(420)
             search()
         }
@@ -428,7 +428,7 @@ internal fun KoraxFavoriteSelectionScreen(
             }
             results.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
-                    if (query.trim().isBlank()) "لا توجد سجلات متاحة لهذا القسم في فهرس البيانات الحالي" else if (query.trim().length < 2) "اكتب حرفين على الأقل لعرض اقتراحات البحث" else "لا توجد نتائج مطابقة في البيانات المتاحة حاليًا",
+                    if (query.trim().isBlank()) "لا توجد سجلات متاحة لهذا القسم في فهرس البيانات الحالي" else if (query.trim().isBlank()) "اكتب للبحث عن اقتراحات" else "لا توجد نتائج مطابقة في البيانات المتاحة حاليًا",
                     color = DMuted, fontSize = 11.sp
                 )
             }
