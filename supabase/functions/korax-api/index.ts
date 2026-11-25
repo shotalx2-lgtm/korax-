@@ -171,7 +171,7 @@ function normalizeScores(scores, homeId, awayId, stateName) {
 function httpsImage(...values) {
   const imageKeys = [
     "url", "src", "original", "large", "medium", "small",
-    "imageUrl", "image_url", "image_path", "photo_url", "avatar_url",
+    "imageUrl", "image_url", "image_path", "image", "photo_url", "photo", "picture", "avatar_url",
     "profile_image", "profileImage", "portrait", "headshot",
   ];
   for (const candidate of values) {
