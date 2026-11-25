@@ -660,9 +660,9 @@ internal fun KoraxStatisticsHubPage(
                                     ) {
                                         Text(row.koraxStatText("position", "rank").ifBlank { (index + 1).toString() }, color = XAccent, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.width(22.dp))
                                         Box(Modifier.size(42.dp).clip(CircleShape).background(XCard2), contentAlignment = Alignment.Center) {
+                                            Text(playerName.take(1), color = XAccent, fontSize = 17.sp, fontWeight = FontWeight.Black)
                                             if (playerImage.isNotBlank()) coil.compose.AsyncImage(model = playerImage, contentDescription = playerName,
                                                 modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                            else Text(playerName.take(1), color = XAccent, fontSize = 17.sp, fontWeight = FontWeight.Black)
                                         }
                                         Spacer(Modifier.width(8.dp))
                                         Column(Modifier.weight(1f)) {
