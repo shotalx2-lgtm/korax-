@@ -128,11 +128,17 @@ function participantLocation(participant) {
 }
 
 function normalizeParticipant(participant) {
+  const crest = httpsImage(
+    participant, participant?.image_path, participant?.image_url, participant?.imageUrl,
+    participant?.logoUrl, participant?.logo_url, participant?.logo,
+    participant?.crest, participant?.crestUrl, participant?.badge, participant?.emblem
+  );
   return {
     id: String(participant?.id ?? ""),
     name: participant?.name || "اسم غير متاح",
-    crest: participant?.image_path || participant?.logoUrl || "",
-    logoUrl: participant?.image_path || participant?.logoUrl || "",
+    crest,
+    logoUrl: crest,
+    imageUrl: crest,
     country: nestedName(participant?.country),
     venue: nestedName(participant?.venue),
   };
@@ -169,16 +175,28 @@ function normalizeScores(scores, homeId, awayId, stateName) {
 }
 
 function httpsImage(...values) {
-  for (const value of values) {
-    if (typeof value === "string" && /^https:\/\//i.test(value)) return value;
+  const imageKeys = [
+    "url", "src", "original", "large", "medium", "small",
+    "imageUrl", "image_url", "image_path", "image", "photo_url", "photo", "picture", "avatar_url",
+    "profile_image", "profileImage", "portrait", "headshot",
+    "logoUrl", "logo_url", "logo", "crest", "crestUrl", "badge", "emblem",
+  ];
+  for (const candidate of values) {
+    const value = typeof candidate === "string"
+      ? candidate
+      : candidate && typeof candidate === "object"
+        ? imageKeys.map(key => candidate[key]).find(item => typeof item === "string" && /^https:\/\//i.test(item.trim()))
+        : "";
+    if (typeof value === "string" && /^https:\/\//i.test(value.trim())) return value.trim();
   }
   return "";
 }
 
 function normalizeEvent(event) {
   const type = nestedName(event?.type) || event?.type_name || event?.name || "حدث";
-  const playerRaw = event?.player && typeof event.player === "object" ? event.player : {};
-  const player = nestedName(event?.player) || event?.player_name || "";
+  const playerRaw = event?.player && typeof event.player === "object" ? event.player
+    : event?.player_info && typeof event.player_info === "object" ? event.player_info : {};
+  const player = nestedName(event?.player) || event?.player_name || event?.athlete_name || "";
   const teamRaw = event?.participant || event?.team || {};
   const team = nestedName(teamRaw) || event?.team_name || "";
   const assistRaw = event?.assist || event?.assist_player || event?.assisted_by ||
@@ -194,27 +212,47 @@ function normalizeEvent(event) {
     type_name: type,
     player_id: playerRaw?.id ?? event?.player_id ?? null,
     player_name: player,
-    player_image_url: httpsImage(playerRaw?.image_path, playerRaw?.image_url, playerRaw?.photo_url),
+    player_image_url: httpsImage(
+      playerRaw, playerRaw?.image_path, playerRaw?.image_url, playerRaw?.photo_url,
+      playerRaw?.photo, playerRaw?.avatar_url, playerRaw?.profile_image,
+      event?.player_image_url, event?.player_image, event?.playerImage,
+      event?.photo_url, event?.avatar_url, event?.imageUrl, event?.image_url
+    ),
     team_id: teamRaw?.id ?? event?.participant_id ?? event?.team_id ?? null,
     team: team ? { id: teamRaw?.id ?? null, name: team, imageUrl: teamImage } : null,
     team_side: event?.side || "",
     team_image_url: teamImage,
     assist_player_id: assistRaw?.id ?? event?.assist_player_id ?? null,
     assist_player_name: assistName,
-    assist_player_image_url: httpsImage(assistRaw?.image_path, assistRaw?.image_url, assistRaw?.photo_url),
+    assist_player_image_url: httpsImage(
+      assistRaw, assistRaw?.image_path, assistRaw?.image_url, assistRaw?.photo_url,
+      assistRaw?.photo, assistRaw?.avatar_url, assistRaw?.profile_image,
+      event?.assist_player_image_url, event?.assist_player_image, event?.assistPlayerImage
+    ),
     detail: event?.addition || event?.info || event?.result || substitution || "",
     is_goal: Boolean(event?.is_goal),
   };
 }
 
 function normalizeLineup(item) {
-  const player = item?.player || {};
+  const player = item?.player && typeof item.player === "object" ? item.player
+    : item?.player_info && typeof item.player_info === "object" ? item.player_info
+    : item?.athlete && typeof item.athlete === "object" ? item.athlete : {};
   const team = item?.team || item?.participant || {};
   const teamName = nestedName(team) || item?.team_name || "";
+  const playerImage = httpsImage(
+    player, player?.image_path, player?.image_url, player?.photo_url, player?.photo,
+    player?.avatar_url, player?.profile_image, player?.profileImage, player?.portrait,
+    item?.imageUrl, item?.image_url, item?.image_path, item?.player_image_url,
+    item?.player_image, item?.playerImage, item?.photo_url, item?.avatar_url,
+    item?.profile_image, item?.portrait, item?.headshot
+  );
   return {
     player_id: player?.id ?? item?.player_id ?? item?.id ?? null,
-    player_name: nestedName(player) || item?.player_name || item?.name || "",
-    imageUrl: httpsImage(player?.image_path, player?.image_url, item?.imageUrl, item?.image_url),
+    player_name: nestedName(player) || item?.player_name || item?.name || item?.athlete_name || "",
+    imageUrl: playerImage,
+    image_path: playerImage,
+    player_image_url: playerImage,
     position_name: nestedName(item?.position) || item?.position_name || "",
     shirt_number: item?.jersey_number ?? item?.shirt_number ?? item?.number ?? null,
     team_id: team?.id ?? item?.team_id ?? null,
@@ -402,7 +440,8 @@ function normalizeTeam(team) {
       return {
         id: String(player?.id ?? entry?.player_id ?? ""),
         name: player?.name || entry?.player_name || "",
-        imageUrl: player?.image_path || "",
+        imageUrl: httpsImage(player, player?.image_path, player?.image_url, player?.photo_url, player?.photo, player?.avatar_url, player?.profile_image, entry?.imageUrl, entry?.image_url, entry?.player_image_url),
+        image_path: httpsImage(player, player?.image_path, player?.image_url, player?.photo_url, player?.photo, player?.avatar_url, player?.profile_image, entry?.imageUrl, entry?.image_url, entry?.player_image_url),
         position: nestedName(player?.position) || nestedName(entry?.position),
         shirt_number: entry?.jersey_number ?? entry?.shirt_number ?? player?.shirt_number ?? null,
       };
@@ -419,7 +458,8 @@ function normalizePlayer(player) {
   return {
     id: String(player?.id ?? ""),
     name: player?.name || "اسم غير متاح",
-    imageUrl: player?.image_path || "",
+    imageUrl: httpsImage(player, player?.image_path, player?.image_url, player?.photo_url, player?.photo, player?.avatar_url, player?.profile_image, player?.profileImage, player?.portrait, player?.headshot),
+    image_path: httpsImage(player, player?.image_path, player?.image_url, player?.photo_url, player?.photo, player?.avatar_url, player?.profile_image, player?.profileImage, player?.portrait, player?.headshot),
     position: nestedName(player?.position) || nestedName(player?.detailed_position),
     nationality: nestedName(player?.nationality) || nestedName(player?.country),
     date_of_birth: player?.date_of_birth || "",
@@ -645,8 +685,8 @@ async function getCachedPlayerIndex() {
         position: nestedName(details?.position) || details?.position_name || "",
         shirt_number: details?.number ?? details?.shirt_number ?? details?.jersey_number ?? null,
         team_name: teamName || "",
-        imageUrl: httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl),
-        image_path: httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl),
+        imageUrl: httpsImage(details, details?.image_path, details?.image_url, details?.photo_url, details?.photo, details?.avatar_url, details?.profile_image, details?.imageUrl, details?.player_image_url, details?.playerImage),
+        image_path: httpsImage(details, details?.image_path, details?.image_url, details?.photo_url, details?.photo, details?.avatar_url, details?.profile_image, details?.imageUrl, details?.player_image_url, details?.playerImage),
         matchesInCache: [],
         competitionNames: [],
         competitionSlugs: [],
@@ -674,7 +714,7 @@ async function getCachedPlayerIndex() {
       }
       if (!current.position) current.position = nestedName(details?.position) || details?.position_name || "";
       if (!current.imageUrl) {
-        current.imageUrl = httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl);
+        current.imageUrl = httpsImage(details, details?.image_path, details?.image_url, details?.photo_url, details?.photo, details?.avatar_url, details?.profile_image, details?.imageUrl, details?.player_image_url, details?.playerImage);
         current.image_path = current.imageUrl;
       }
       if (involvement === "lineup" && !details?.is_substitute && row.match_slug &&
@@ -831,7 +871,7 @@ function isDisplayableEntityAsset(asset) {
 
 async function searchCanonicalEntities(query, types, limit) {
   const normalizedQuery = String(query || "").trim();
-  if (normalizedQuery.length < 2) return [];
+  if (normalizedQuery.length < 1) return [];
   const rows = await dbRpc("search_korax_entities", {
     p_query: normalizedQuery,
     p_types: types,
@@ -953,6 +993,90 @@ async function listCanonicalEntities(types, limit, offset) {
   }).filter(Boolean);
 }
 
+async function getWikimediaPlayerPortrait(metadata) {
+  const wikidataId = String(metadata?.wikidataId || metadata?.externalIds?.wikidata || "").trim();
+  if (!/^Q[1-9][0-9]*$/.test(wikidataId)) return null;
+  const cacheKey = "wikimedia-player-portrait:v1:" + wikidataId;
+  const cached = cacheRead(cacheKey);
+  if (cached !== null) return cached || null;
+
+  try {
+    const wikidataUrl = new URL("https://www.wikidata.org/w/api.php");
+    wikidataUrl.search = new URLSearchParams({
+      action: "wbgetclaims",
+      entity: wikidataId,
+      property: "P18",
+      format: "json",
+    }).toString();
+    const wikidataResponse = await fetch(wikidataUrl, {
+      headers: { "User-Agent": "KORAX football app/1.0 (Wikidata and Wikimedia Commons image attribution)" },
+      signal: AbortSignal.timeout(3500),
+    });
+    if (!wikidataResponse.ok) throw new Error("Wikidata image lookup HTTP " + wikidataResponse.status);
+    const wikidata = await wikidataResponse.json();
+    const claims = Array.isArray(wikidata?.claims?.P18) ? wikidata.claims.P18 : [];
+    const claim = claims.find(item =>
+      item?.rank !== "deprecated" && typeof item?.mainsnak?.datavalue?.value === "string"
+    );
+    const fileName = String(claim?.mainsnak?.datavalue?.value || "").trim();
+    if (!fileName) {
+      cacheWrite(cacheKey, false, 86400);
+      return null;
+    }
+
+    const commonsUrl = new URL("https://commons.wikimedia.org/w/api.php");
+    commonsUrl.search = new URLSearchParams({
+      action: "query",
+      format: "json",
+      formatversion: "2",
+      prop: "imageinfo",
+      iiprop: "url|extmetadata",
+      iiurlwidth: "480",
+      titles: "File:" + fileName,
+    }).toString();
+    const commonsResponse = await fetch(commonsUrl, {
+      headers: { "User-Agent": "KORAX football app/1.0 (Wikimedia Commons license verification)" },
+      signal: AbortSignal.timeout(3500),
+    });
+    if (!commonsResponse.ok) throw new Error("Wikimedia Commons image lookup HTTP " + commonsResponse.status);
+    const commons = await commonsResponse.json();
+    const page = Array.isArray(commons?.query?.pages) ? commons.query.pages[0] : null;
+    const info = Array.isArray(page?.imageinfo) ? page.imageinfo[0] : null;
+    const metadataFields = info?.extmetadata || {};
+    const license = htmlText(metadataFields?.LicenseShortName?.value || "").trim();
+    const licenseUrl = String(metadataFields?.LicenseUrl?.value || "").trim();
+    const artist = htmlText(metadataFields?.Artist?.value || metadataFields?.Creator?.value || "").trim();
+    const imageUrl = String(info?.thumburl || info?.url || "").trim();
+    const sourcePageUrl = String(info?.descriptionurl || "").trim();
+    const isAllowedLicense =
+      /^CC BY(?:-SA)? [0-9]+(?:\.[0-9]+)?$/i.test(license) ||
+      /^CC0(?: 1\.0)?$/i.test(license) ||
+      /^public domain$/i.test(license);
+    const needsCredit = /^CC BY/i.test(license);
+    if (!isAllowedLicense || !/^https:\/\//i.test(imageUrl) ||
+        !/^https:\/\//i.test(sourcePageUrl) || !/^https:\/\//i.test(licenseUrl) ||
+        (needsCredit && !artist)) {
+      cacheWrite(cacheKey, false, 86400);
+      return null;
+    }
+    const result = {
+      imageUrl,
+      imageAttribution: artist || "Wikimedia Commons",
+      imageLicense: license,
+      imageLicenseUrl: licenseUrl,
+      imageSourceUrl: sourcePageUrl,
+      imageSource: "Wikimedia Commons",
+      imageFileName: fileName,
+    };
+    cacheWrite(cacheKey, result, 7 * 86400);
+    return result;
+  } catch (error) {
+    console.warn("[korax-wikimedia-portrait] lookup skipped", wikidataId, String(error).slice(0, 180));
+    cacheWrite(cacheKey, false, 1800);
+    return null;
+  }
+}
+
 async function getCanonicalEntityProfile(id) {
   const safeId = String(id || "");
   if (!/^[0-9a-f-]{36}$/i.test(safeId)) return null;
@@ -973,6 +1097,8 @@ async function getCanonicalEntityProfile(id) {
   const verifiedAssets = (Array.isArray(assetRows) ? assetRows : []).filter(isDisplayableEntityAsset);
   const preferredImage = verifiedAssets.find(asset => asset.is_primary) || verifiedAssets[0] || null;
   const metadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata : {};
+  const wikimediaPortrait = !preferredImage && (entity.entity_type === "player" || entity.entity_type === "coach")
+    ? await getWikimediaPlayerPortrait(metadata) : null;
   const root = {
     id: entity.id,
     slug: entity.id,
@@ -982,13 +1108,14 @@ async function getCanonicalEntityProfile(id) {
     country: entity.country_name || entity.country_code || "",
     country_name: entity.country_name || "",
     country_code: entity.country_code || "",
-    imageUrl: preferredImage?.asset_url || "",
-    image_path: preferredImage?.asset_url || "",
-    logoUrl: preferredImage?.asset_url || "",
-    imageAttribution: preferredImage?.attribution_text || preferredImage?.creator || "",
-    imageLicense: preferredImage?.license_code || "",
-    imageLicenseUrl: preferredImage?.license_url || "",
-    imageSourceUrl: preferredImage?.source_page_url || "",
+    imageUrl: preferredImage?.asset_url || wikimediaPortrait?.imageUrl || "",
+    image_path: preferredImage?.asset_url || wikimediaPortrait?.imageUrl || "",
+    logoUrl: preferredImage?.asset_url || wikimediaPortrait?.imageUrl || "",
+    imageAttribution: preferredImage?.attribution_text || preferredImage?.creator || wikimediaPortrait?.imageAttribution || "",
+    imageLicense: preferredImage?.license_code || wikimediaPortrait?.imageLicense || "",
+    imageLicenseUrl: preferredImage?.license_url || wikimediaPortrait?.imageLicenseUrl || "",
+    imageSourceUrl: preferredImage?.source_page_url || wikimediaPortrait?.imageSourceUrl || "",
+    imageSource: preferredImage ? preferredImage.source_key : wikimediaPortrait?.imageSource || "",
     position: facts.playing_position || metadata.position || "",
     position_name: facts.playing_position || metadata.position || "",
     team_name: facts.current_team?.name || facts.current_team || metadata.teamName || "",
@@ -1062,7 +1189,27 @@ async function getCachedTeamProfile(slug) {
 async function getCachedPlayerProfile(slug) {
   const players = await getCachedPlayerIndex();
   const player = players.find((item) => item.slug === slug);
-  return player ? { player } : null;
+  if (!player) return null;
+  if (player.imageUrl) return { player };
+
+  // Cached match identities can be linked to a canonical player record by exact name.
+  // Only a verified Commons portrait from the canonical profile is used as a fallback.
+  try {
+    const matches = await searchCanonicalEntities(player.name, ["player"], 3);
+    const exact = matches.find(item =>
+      normalizeSearchText(item.name_en || item.canonical_name || item.name) === normalizeSearchText(player.name)
+    ) || matches[0];
+    if (exact?.id && /^[0-9a-f-]{36}$/i.test(exact.id)) {
+      const profile = await getCanonicalEntityProfile(exact.id);
+      const canonicalPlayer = profile?.player;
+      if (canonicalPlayer?.imageUrl) {
+        return { player: { ...player, ...canonicalPlayer, id: player.id, slug, name: player.name } };
+      }
+    }
+  } catch (error) {
+    console.warn("[korax-player-profile] canonical portrait fallback skipped", String(error).slice(0, 160));
+  }
+  return { player };
 }
 
 async function getCachedCompetitionProfile(slug) {
@@ -1482,7 +1629,7 @@ async function route(request, env) {
       const imageUrl = badges.get(item.slug) || "";
       return { ...item, kind: item.slug === "uefa-champions-league" ? "tournament" : "league", imageUrl, logoUrl: imageUrl };
     });
-    if (search.length >= 2) {
+    if (search.length >= 1) {
       const [canonical, cached] = await Promise.all([
         searchCanonicalEntities(search, ["league", "tournament"], perPage),
         searchCachedCompetitions(search, perPage),
@@ -1713,7 +1860,7 @@ async function route(request, env) {
 
   if (path === "/api/entities/search") {
     const search = (url.searchParams.get("search") || "").trim();
-    if (search.length < 2) return json({ data: [], meta: { requiresSearch: true }, source: "korax-world-entity-index" });
+    if (search.length < 1) return json({ data: [], meta: { requiresSearch: true }, source: "korax-world-entity-index" });
     const types = ["club", "national", "player", "coach", "league", "tournament"];
     const [canonical, teamRows, playerRows, competitionRows] = await Promise.all([
       searchCanonicalEntities(search, types, perPage),

@@ -70,10 +70,20 @@ private fun JSONObject.readImage(vararg keys: String): String {
     val aliases = listOf(
         "imageUrl", "image_path", "imagePath", "image_url", "photo_url", "photo",
         "thumbnail", "logoUrl", "logo", "logo_url", "logo_path",
-        "crest", "crestUrl", "crest_url", "badge", "emblem"
+        "crest", "crestUrl", "crest_url", "badge", "emblem",
+        "player_image_url", "player_image", "playerImage", "avatar_url",
+        "profile_image", "profileImage", "portrait", "headshot", "picture"
     )
+    fun imageValue(value: Any?, depth: Int = 0): String {
+        if (value is String) return value.trim().takeIf { it.startsWith("https://") }.orEmpty()
+        if (value !is JSONObject || depth >= 2) return ""
+        val nestedKeys = listOf("url", "src", "original", "large", "medium", "imageUrl", "image_url", "image_path", "photo_url", "avatar_url")
+        return nestedKeys.firstNotNullOfOrNull { key ->
+            imageValue(value.opt(key), depth + 1).takeIf { it.isNotBlank() }
+        }.orEmpty()
+    }
     return (keys.toList() + aliases).distinct()
-        .firstNotNullOfOrNull { key -> optString(key).takeIf { it.startsWith("https://") } }
+        .firstNotNullOfOrNull { key -> imageValue(opt(key)).takeIf { it.isNotBlank() } }
         .orEmpty()
 }
 
@@ -179,7 +189,8 @@ private data class KoraxStatsCompetition(
     val slug: String,
     val name: String,
     val country: String,
-    val providerName: String
+    val providerName: String,
+    val imageUrl: String = ""
 )
 
 private fun findKoraxStatsRows(
@@ -268,7 +279,8 @@ internal fun KoraxStatisticsHubPage(
                     if (slug.isBlank() || name.isBlank()) return@mapNotNull null
                     KoraxStatsCompetition(
                         slug, name, row.koraxStatText("country"),
-                        row.koraxStatText("providerName", "name_en").ifBlank { name }
+                        row.koraxStatText("providerName", "name_en").ifBlank { name },
+                        row.readImage("imageUrl", "logoUrl", "competition_logo", "image", "logo", "image_path", "image_url", "logo_url", "crest")
                     )
                 }
                 val catalogueItems = runCatching {
@@ -279,7 +291,8 @@ internal fun KoraxStatisticsHubPage(
                         val name = row.koraxStatText("name", "name_en", "canonical_name")
                         val providerName = row.koraxStatText("name_en", "canonical_name", "providerName")
                         if (slug.isBlank() || name.isBlank()) return@mapNotNull null
-                        KoraxStatsCompetition(slug, name, row.koraxStatText("country"), providerName.ifBlank { name })
+                        KoraxStatsCompetition(slug, name, row.koraxStatText("country"), providerName.ifBlank { name },
+                             row.readImage("imageUrl", "logoUrl", "competition_logo", "image", "logo", "image_path", "image_url", "logo_url", "crest"))
                     }
                 }.getOrDefault(emptyList())
                 (curatedItems + catalogueItems).distinctBy { it.providerName.lowercase(Locale.ROOT) }
@@ -288,6 +301,35 @@ internal fun KoraxStatisticsHubPage(
             if (selectedSlug.isBlank()) selectedSlug = competitions.firstOrNull()?.slug.orEmpty()
             if (result.isFailure) error = result.exceptionOrNull()?.message.orEmpty()
             loadingCompetitions = false
+        }
+
+        var competitionSuggestions by remember { mutableStateOf<List<KoraxStatsCompetition>>(emptyList()) }
+        var activeSearch by remember { mutableStateOf(false) }
+        var showCompetitionPicker by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(competitionQuery) {
+            val query = competitionQuery.trim()
+            if (query.isBlank()) {
+                competitionSuggestions = emptyList()
+                activeSearch = false
+            } else {
+                kotlinx.coroutines.delay(220)
+                activeSearch = true
+                val result = runCatching {
+                    val found = apiJson("/api/competitions?search=${query.urlEncoded()}&per_page=24").rows()
+                    (0 until found.length()).mapNotNull { index ->
+                        val row = found.optJSONObject(index) ?: return@mapNotNull null
+                        val slug = row.koraxStatText("slug", "id")
+                        val name = row.koraxStatText("name", "providerName", "title")
+                        if (slug.isBlank() || name.isBlank()) return@mapNotNull null
+                        KoraxStatsCompetition(
+                            slug, name, row.koraxStatText("country"),
+                            row.koraxStatText("providerName", "name_en", "canonical_name").ifBlank { name },
+                            row.readImage("imageUrl", "logoUrl", "competition_logo", "image", "logo", "image_path", "image_url", "logo_url", "crest")
+                        )
+                    }
+                }
+                competitionSuggestions = result.getOrDefault(emptyList())
+            }
         }
 
         LaunchedEffect(selectedSlug, metric, refreshKey) {
@@ -345,76 +387,105 @@ internal fun KoraxStatisticsHubPage(
                         Text("اختر البطولة", color = XText, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                         Text("تتغير الجداول والهدافون حسب المسابقة التي تختارها", color = XMuted, fontSize = 9.sp)
                         Spacer(Modifier.height(9.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            OutlinedTextField(
-                                value = competitionQuery,
-                                onValueChange = { competitionQuery = it },
-                                modifier = Modifier.weight(1f),
-                                singleLine = true,
-                                placeholder = { Text("ابحث عن دوري أو بطولة", fontSize = 10.sp) },
-                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp)
-                            )
-                            IconButton(
-                                enabled = competitionQuery.trim().length >= 2 && !searchingCompetitions,
-                                onClick = {
-                                    scope.launch {
-                                        searchingCompetitions = true
-                                        val searchResult = runCatching {
-                                            val found = apiJson("/api/competitions?search=${competitionQuery.trim().urlEncoded()}&per_page=50").rows()
-                                            (0 until found.length()).mapNotNull { index ->
-                                                val row = found.optJSONObject(index) ?: return@mapNotNull null
-                                                val slug = row.koraxStatText("slug", "id")
-                                                val name = row.koraxStatText("name", "providerName", "title")
-                                                if (slug.isBlank() || name.isBlank()) return@mapNotNull null
-                                                KoraxStatsCompetition(
-                                                    slug, name, row.koraxStatText("country"),
-                                                    row.koraxStatText("providerName", "name_en", "canonical_name").ifBlank { name }
-                                                )
-                                            }
-                                        }
-                                        val found = searchResult.getOrDefault(emptyList())
-                                        if (found.isNotEmpty()) {
-                                            competitions = (found + competitions).distinctBy { it.providerName.lowercase(Locale.ROOT) }
-                                            selectedSlug = found.first().slug
-                                        } else if (searchResult.isFailure) {
-                                            error = searchResult.exceptionOrNull()?.message.orEmpty()
-                                        } else {
-                                            error = "لم نجد بطولة بهذا الاسم في فهرس البيانات الحالي."
-                                        }
-                                        searchingCompetitions = false
+                        OutlinedTextField(
+                            value = competitionQuery,
+                            onValueChange = { competitionQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            placeholder = { Text("اكتب أول حرف للبحث عن دوري أو بطولة...", fontSize = 10.sp) },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = XText),
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = XAccent) },
+                            trailingIcon = {
+                                if (competitionQuery.isNotBlank()) {
+                                    IconButton(onClick = { competitionQuery = "" }) {
+                                        Text("×", color = XMuted, fontSize = 22.sp)
                                     }
                                 }
-                            ) {
-                                if (searchingCompetitions) CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp, color = XAccent)
-                                else Icon(Icons.Filled.Search, contentDescription = "بحث", tint = XAccent)
+                            }
+                        )
+                        if (competitionQuery.isNotBlank()) {
+                            Text("اقتراحات مباشرة", color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(top = 8.dp, bottom = 5.dp))
+                            if (competitionSuggestions.isEmpty()) {
+                                Text(if (activeSearch) "لا توجد نتائج مطابقة في الفهرس الحالي" else "جارٍ البحث...", color = XMuted, fontSize = 10.sp)
+                            } else {
+                                competitionSuggestions.take(8).forEach { suggestion ->
+                                    Row(
+                                        Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp))
+                                            .clickable {
+                                                competitions = (listOf(suggestion) + competitions).distinctBy { it.slug }
+                                                selectedSlug = suggestion.slug
+                                                competitionQuery = ""
+                                                competitionSuggestions = emptyList()
+                                            }.padding(vertical = 7.dp, horizontal = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(Modifier.size(34.dp).clip(CircleShape).background(XCard), contentAlignment = Alignment.Center) {
+                                            if (suggestion.imageUrl.isNotBlank()) {
+                                                coil.compose.AsyncImage(model = suggestion.imageUrl, contentDescription = suggestion.name,
+                                                    modifier = Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
+                                            } else Text(suggestion.name.take(1), color = XAccent, fontWeight = FontWeight.Bold)
+                                        }
+                                        Spacer(Modifier.width(9.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(suggestion.name, color = XText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Text(suggestion.country.ifBlank { "بطولة أو دوري" }, color = XMuted, fontSize = 8.sp)
+                                        }
+                                        Text("›", color = XAccent, fontSize = 20.sp)
+                                    }
+                                }
                             }
                         }
                         if (loadingCompetitions) {
                             LinearProgressIndicator(Modifier.fillMaxWidth(), color = XAccent)
                         } else if (competitions.isEmpty()) {
                             Text("قائمة البطولات غير متاحة حاليًا. اسحب للتحديث.", color = XMuted, fontSize = 10.sp)
-                        } else {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                items(competitions, key = { it.slug }) { competition ->
-                                    FilterChip(
-                                        selected = selectedSlug == competition.slug,
-                                        onClick = { selectedSlug = competition.slug },
-                                        label = { Text(competition.name, fontSize = 10.sp, maxLines = 1) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = XAccent,
-                                            selectedLabelColor = Color.Black,
-                                            labelColor = XMuted
-                                        )
-                                    )
+                        } else if (competitionQuery.isBlank()) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(13.dp))
+                                    .background(XCard2).clickable { showCompetitionPicker = true }.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.size(43.dp).clip(CircleShape).background(XCard), contentAlignment = Alignment.Center) {
+                                    if (!selectedCompetition?.imageUrl.isNullOrBlank()) {
+                                        coil.compose.AsyncImage(model = selectedCompetition!!.imageUrl, contentDescription = selectedCompetition.name,
+                                            modifier = Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
+                                    } else Text(selectedCompetition?.name?.take(1).orEmpty(), color = XAccent, fontSize = 20.sp, fontWeight = FontWeight.Black)
                                 }
-                            }
-                            selectedCompetition?.country?.takeIf { it.isNotBlank() }?.let {
-                                Text(it, color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(top = 5.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("البطولة المختارة", color = XMuted, fontSize = 8.sp)
+                                    Text(selectedCompetition?.name ?: "اختر بطولة", color = XText, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text(selectedCompetition?.country.orEmpty(), color = XMuted, fontSize = 9.sp)
+                                }
+                                Text("اختيار بطولة  ▾", color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
                 }
 
+                if (competitions.isNotEmpty()) {
+                    Text("اختيار سريع للبطولة", color = XMuted, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 4.dp, top = 9.dp, bottom = 4.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp), contentPadding = PaddingValues(horizontal = 2.dp)) {
+                        items(competitions.take(10), key = { it.slug }) { option ->
+                            FilterChip(
+                                selected = selectedSlug == option.slug,
+                                onClick = { selectedSlug = option.slug; competitionQuery = "" },
+                                label = { Text(option.name, fontSize = 9.sp, maxLines = 1) },
+                                leadingIcon = {
+                                    if (option.imageUrl.isNotBlank()) coil.compose.AsyncImage(
+                                        model = option.imageUrl, contentDescription = null,
+                                        modifier = Modifier.size(17.dp), contentScale = ContentScale.Fit
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = XAccent, selectedLabelColor = Color.Black, labelColor = XMuted
+                                )
+                            )
+                        }
+                    }
+                }
                 Spacer(Modifier.height(12.dp))
                 Text("ماذا تريد أن تشاهد؟", color = XText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(7.dp))
@@ -454,40 +525,118 @@ internal fun KoraxStatisticsHubPage(
                         "لا نعرض ترتيبًا أو قائمة هدافين من أرقام مخمّنة. جرّب بطولة أخرى أو افتح ملف النادي أو اللاعب للاطلاع على المعلومات المتاحة."
                     )
                     metric == "standings" -> {
-                        Text("جدول الترتيب", color = XText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("ترتيب البطولة", color = XText, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("ترتيب الفرق وأرقامها في المسابقة", color = XMuted, fontSize = 9.sp,
+                            modifier = Modifier.padding(top = 3.dp, bottom = 9.dp))
+                        if (rows.size >= 3) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(7.dp), modifier = Modifier.fillMaxWidth()) {
+                                rows.take(3).forEachIndexed { index, row ->
+                                    val rank = row.koraxStatText("position", "rank", "place", "pos").toIntOrNull() ?: index + 1
+                                    val name = row.koraxStatText("team_name", "teamName", "name", "participant_name", "team", "participant").ifBlank { "فريق غير محدد" }
+                                    val teamObject = row.optJSONObject("team") ?: row.optJSONObject("participant")
+                                    val image = row.readImage("team_logo", "teamLogo", "team_image", "teamImage", "team_logo_url", "participant_logo", "participant_image", "crest")
+                                        .ifBlank { teamObject?.readImage().orEmpty() }
+                                    Card(
+                                        Modifier.weight(1f),
+                                        colors = CardDefaults.cardColors(containerColor = XCard2),
+                                        border = BorderStroke(1.dp, XBorder),
+                                        shape = RoundedCornerShape(14.dp)
+                                    ) {
+                                        Column(
+                                            Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 10.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text("المركز $rank", color = when(rank) {
+                                                1 -> Color(0xFFFFD166)
+                                                2 -> Color(0xFFBFC8D4)
+                                                else -> Color(0xFFCD8A56)
+                                            }, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold)
+                                            Spacer(Modifier.height(7.dp))
+                                            Box(Modifier.size(39.dp).clip(CircleShape).background(XCard), contentAlignment = Alignment.Center) {
+                                                Text(name.take(1), color = XAccent, fontWeight = FontWeight.Black)
+                                                if (image.isNotBlank()) coil.compose.AsyncImage(
+                                                    model = image, contentDescription = name,
+                                                    modifier = Modifier.fillMaxSize().padding(2.dp), contentScale = ContentScale.Fit
+                                                )
+                                            }
+                                            Spacer(Modifier.height(6.dp))
+                                            Text(name, color = XText, fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                                                maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                            Text(row.koraxStatText("points", "pts").ifBlank { "—" } + " نقطة",
+                                                color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Black)
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(11.dp))
+                        }
                         Card(
-                            Modifier.fillMaxWidth().padding(top = 7.dp),
+                            Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = XCard),
                             border = BorderStroke(1.dp, XBorder),
-                            shape = RoundedCornerShape(15.dp)
+                            shape = RoundedCornerShape(17.dp)
                         ) {
                             Column(Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
-                                Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("#", color = XMuted, fontSize = 9.sp, modifier = Modifier.width(24.dp))
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("المركز", color = XMuted, fontSize = 9.sp, modifier = Modifier.width(42.dp))
                                     Text("النادي", color = XMuted, fontSize = 9.sp, modifier = Modifier.weight(1f))
-                                    Text("لعب", color = XMuted, fontSize = 9.sp, modifier = Modifier.width(30.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                    Text("ف", color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                    Text("ت", color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                    Text("خ", color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                    Text("نقاط", color = XAccent, fontSize = 9.sp, modifier = Modifier.width(42.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                                    Text("النقاط", color = XAccent, fontSize = 9.sp)
                                 }
                                 Divider(color = XBorder)
-                                rows.take(40).forEachIndexed { index, row ->
+                                val tableOffset = if (rows.size >= 3) 3 else 0
+                                rows.drop(tableOffset).take(37).forEachIndexed { offset, row ->
+                                    val index = offset + tableOffset
+                                    val rank = row.koraxStatText("position", "rank", "place", "pos").toIntOrNull() ?: index + 1
+                                    val teamName = row.koraxStatText("team_name", "teamName", "name", "participant_name", "team", "participant").ifBlank { "فريق غير محدد" }
+                                    val teamObject = row.optJSONObject("team") ?: row.optJSONObject("participant")
+                                    val teamImage = row.readImage("team_logo", "teamLogo", "team_image", "teamImage", "team_logo_url", "participant_logo", "participant_image", "crest")
+                                        .ifBlank { teamObject?.readImage().orEmpty() }
+                                    val accent = when {
+                                        rank <= 4 -> Color(0xFF20C978)
+                                        rows.size > 5 && rank > rows.size - 3 -> Color(0xFFEF5350)
+                                        else -> Color(0xFF3997F5)
+                                    }
                                     Row(
-                                        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                        Modifier.fillMaxWidth().padding(vertical = 7.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(row.koraxStatText("position", "rank", "place", "pos").ifBlank { (index + 1).toString() }, color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
-                                        Text(row.koraxStatText("team_name", "teamName", "name", "participant_name", "team", "participant").ifBlank { "فريق غير محدد" }, color = XText, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(row.koraxStatText("played", "matches", "played_matches", "games", "p").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(30.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                        Text(row.koraxStatText("won", "wins", "won_matches", "w").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                        Text(row.koraxStatText("draw", "draws", "drawn", "d").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                        Text(row.koraxStatText("lost", "losses", "lost_matches", "l").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                        Text(row.koraxStatText("points", "pts").ifBlank { "—" }, color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(42.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                                        Box(Modifier.width(3.dp).height(53.dp).clip(RoundedCornerShape(4.dp)).background(accent))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(rank.toString(), color = accent, fontSize = 11.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(25.dp))
+                                        Box(Modifier.size(35.dp).clip(CircleShape).background(XCard2), contentAlignment = Alignment.Center) {
+                                            Text(teamName.take(1), color = XAccent, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                            if (teamImage.isNotBlank()) coil.compose.AsyncImage(
+                                                model = teamImage, contentDescription = teamName,
+                                                modifier = Modifier.fillMaxSize().padding(2.dp), contentScale = ContentScale.Fit
+                                            )
+                                        }
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(teamName, color = XText, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            val form = row.koraxStatText("form", "recent_form", "last_matches")
+                                            if (form.isNotBlank()) Text("آخر النتائج  $form", color = XMuted, fontSize = 8.sp, maxLines = 1)
+                                            Spacer(Modifier.height(4.dp))
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                Text("لعب " + row.koraxStatText("played", "matches", "played_matches", "games", "p").ifBlank { "—" }, color = XMuted, fontSize = 8.sp)
+                                                Text("ف " + row.koraxStatText("won", "wins", "won_matches", "w").ifBlank { "—" }, color = XMuted, fontSize = 8.sp)
+                                                Text("ت " + row.koraxStatText("draw", "draws", "drawn", "d").ifBlank { "—" }, color = XMuted, fontSize = 8.sp)
+                                                Text("خ " + row.koraxStatText("lost", "losses", "lost_matches", "l").ifBlank { "—" }, color = XMuted, fontSize = 8.sp)
+                                                Text("فارق " + row.koraxStatText("goal_difference", "goalDifference", "gd").ifBlank { "—" }, color = XMuted, fontSize = 8.sp)
+                                            }
+                                        }
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(row.koraxStatText("points", "pts").ifBlank { "—" }, color = XAccent, fontSize = 15.sp, fontWeight = FontWeight.Black)
+                                            Text("نقطة", color = XMuted, fontSize = 7.sp)
+                                        }
                                     }
-                                    Divider(color = XBorder.copy(alpha = .65f))
+                                    if (index < rows.lastIndex) Divider(color = XBorder.copy(alpha = .65f))
                                 }
-                                Text("ف = فوز • ت = تعادل • خ = خسارة", color = XMuted, fontSize = 8.sp, modifier = Modifier.padding(top = 7.dp))
+                                Row(Modifier.fillMaxWidth().padding(top = 9.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("■ مراكز متقدمة", color = Color(0xFF20C978), fontSize = 8.sp)
+                                    Text("■ وسط الجدول", color = Color(0xFF3997F5), fontSize = 8.sp)
+                                    Text("■ مراكز متأخرة", color = Color(0xFFEF5350), fontSize = 8.sp)
+                                }
                             }
                         }
                     }
@@ -501,19 +650,36 @@ internal fun KoraxStatisticsHubPage(
                         ) {
                             Column(Modifier.padding(horizontal = 12.dp, vertical = 5.dp)) {
                                 rows.take(30).forEachIndexed { index, row ->
+                                    val playerName = row.koraxStatText("player_name", "name", "player", "participant", "title").ifBlank { "لاعب غير محدد" }
+                                    val playerImage = row.readImage("player_image", "playerImage", "player_photo", "photo_url", "avatar", "image_url")
+                                        .ifBlank { row.optJSONObject("player")?.readImage().orEmpty() }
+                                    val playerTeamImage = row.readImage("team_logo", "team_image", "team_logo_url", "club_logo")
+                                        .ifBlank { row.optJSONObject("team")?.readImage().orEmpty() }
                                     Row(
                                         Modifier.fillMaxWidth().padding(vertical = 9.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(row.koraxStatText("position", "rank").ifBlank { (index + 1).toString() }, color = XAccent, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.width(25.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(row.koraxStatText("player_name", "name", "player", "participant", "title").ifBlank { "لاعب غير محدد" }, color = XText, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text(row.koraxStatText("team_name", "team", "club_name", "teamName").ifBlank { "النادي غير متاح" }, color = XMuted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(row.koraxStatText("position", "rank").ifBlank { (index + 1).toString() }, color = XAccent, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.width(22.dp))
+                                        Box(Modifier.size(42.dp).clip(CircleShape).background(XCard2), contentAlignment = Alignment.Center) {
+                                            Text(playerName.take(1), color = XAccent, fontSize = 17.sp, fontWeight = FontWeight.Black)
+                                            if (playerImage.isNotBlank()) coil.compose.AsyncImage(model = playerImage, contentDescription = playerName,
+                                                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                                         }
-                                        Text(
-                                            row.koraxStatText(if (metric == "goals") "goals" else "assists", "value", "total", "count", "stat_value").ifBlank { "—" },
-                                            color = XAccent, fontSize = 17.sp, fontWeight = FontWeight.Black
-                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(playerName, color = XText, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                if (playerTeamImage.isNotBlank()) coil.compose.AsyncImage(model = playerTeamImage, contentDescription = null,
+                                                    modifier = Modifier.size(13.dp), contentScale = ContentScale.Fit)
+                                                Text(row.koraxStatText("team_name", "team", "club_name", "teamName").ifBlank { "النادي غير متاح" },
+                                                    color = XMuted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            }
+                                        }
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(row.koraxStatText(if (metric == "goals") "goals" else "assists", "value", "total", "count", "stat_value").ifBlank { "—" },
+                                                color = XAccent, fontSize = 17.sp, fontWeight = FontWeight.Black)
+                                            Text(if (metric == "goals") "هدف" else "صناعة", color = XMuted, fontSize = 8.sp)
+                                        }
                                     }
                                     Divider(color = XBorder.copy(alpha = .65f))
                                 }
@@ -560,6 +726,73 @@ internal fun KoraxStatisticsHubPage(
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
                 Spacer(Modifier.height(16.dp))
+            }
+        }
+        if (showCompetitionPicker) {
+            androidx.compose.ui.window.Dialog(onDismissRequest = { showCompetitionPicker = false }) {
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = XCard,
+                    border = BorderStroke(1.dp, XBorder),
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 620.dp)
+                ) {
+                    Column(Modifier.padding(15.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("اختيار البطولة", color = XText, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("اختر من البطولات المتاحة أو ابحث بالاسم", color = XMuted, fontSize = 9.sp)
+                            }
+                            IconButton(onClick = { showCompetitionPicker = false }) { Text("×", color = XMuted, fontSize = 22.sp) }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = competitionQuery,
+                            onValueChange = { competitionQuery = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            shape = RoundedCornerShape(13.dp),
+                            placeholder = { Text("ابحث عن دوري أو بطولة...", fontSize = 10.sp) },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = XText),
+                            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = XAccent) }
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        val pickerRows = if (competitionQuery.isBlank()) competitions else competitionSuggestions
+                        LazyColumn(
+                            modifier = Modifier.weight(1f, fill = false).heightIn(max = 440.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            items(pickerRows.take(50), key = { it.slug }) { option ->
+                                Row(
+                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            competitions = (listOf(option) + competitions).distinctBy { it.slug }
+                                            selectedSlug = option.slug
+                                            competitionQuery = ""
+                                            showCompetitionPicker = false
+                                        }.padding(horizontal = 7.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(Modifier.size(34.dp).clip(CircleShape).background(XCard2), contentAlignment = Alignment.Center) {
+                                        if (option.imageUrl.isNotBlank()) coil.compose.AsyncImage(
+                                            model = option.imageUrl, contentDescription = option.name,
+                                            modifier = Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit
+                                        ) else Text(option.name.take(1), color = XAccent, fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(Modifier.width(9.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(option.name, color = XText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        Text(option.country.ifBlank { "بطولة" }, color = XMuted, fontSize = 8.sp)
+                                    }
+                                    if (selectedSlug == option.slug) Text("✓", color = XAccent, fontWeight = FontWeight.Black)
+                                }
+                            }
+                        }
+                        if (pickerRows.isEmpty()) {
+                            Text(if (competitionQuery.isBlank()) "لا توجد بطولات محملة" else "لا توجد نتائج مطابقة في الفهرس الحالي",
+                                color = XMuted, fontSize = 10.sp, modifier = Modifier.padding(vertical = 12.dp))
+                        }
+                    }
+                }
             }
         }
     }
@@ -1025,6 +1258,32 @@ private fun MatchDetailContent(match: JSONObject) {
     val matchId = match.optString("id")
     var watching by remember(matchId) { mutableStateOf(KoraxMatchWatchStore.isWatching(context, matchId)) }
     var detailTab by rememberSaveable(matchId) { mutableStateOf("events") }
+    var relatedNews by remember(matchId) { mutableStateOf<List<NewsItem>>(emptyList()) }
+    var relatedNewsLoading by remember(matchId) { mutableStateOf(true) }
+    val kickoffValue = match.readText("startTime", "kickoff", "date")
+    LaunchedEffect(matchId, homeName, awayName, kickoffValue) {
+        relatedNewsLoading = true
+        val result = runCatching {
+            val normalize = { value: String ->
+                value.lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+            }
+            val names = listOf(homeName, awayName).flatMap { name ->
+                listOf(name, arabicFootballName(name))
+            }.map { normalize(it) }.filter { it.length >= 4 }.distinct()
+            val kickoffInstant = runCatching { java.time.Instant.parse(kickoffValue) }.getOrNull()
+            val limitToPreMatch = kickoffInstant?.isAfter(java.time.Instant.now()) == true
+            loadNews().filter { article ->
+                val articleText = normalize(article.title + " " + article.summary)
+                val mentionsTeam = names.any { term -> articleText.contains(term) }
+                val published = runCatching { java.time.Instant.parse(article.date) }.getOrNull()
+                val beforeKickoff = !limitToPreMatch || published == null ||
+                    kickoffInstant == null || !published.isAfter(kickoffInstant)
+                mentionsTeam && beforeKickoff
+            }.take(5)
+        }
+        relatedNews = result.getOrDefault(emptyList())
+        relatedNewsLoading = false
+    }
 
     fun belongsTo(row: JSONObject, side: String, teamId: String, teamName: String): Boolean {
         val rowSide = row.readText("side")
@@ -1077,7 +1336,7 @@ private fun MatchDetailContent(match: JSONObject) {
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(score, color = XText, fontSize = 29.sp, fontWeight = FontWeight.Black)
-                        Text(match.optString("status").ifBlank { "الحالة غير متاحة" }, color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(localizeVisualMatchStatus(match.optString("status")), color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         if (awayLogo.isNotBlank()) {
@@ -1147,10 +1406,22 @@ private fun MatchDetailContent(match: JSONObject) {
                     repeat(events.length()) { index ->
                         val row = events.optJSONObject(index) ?: return@repeat
                         val minute = row.readText("minute").ifBlank { "—" }
-                        val type = row.readText("type_name", "type").ifBlank { "حدث" }
+                        val rawType = row.readText("type_name", "type").lowercase(Locale.ROOT)
+                        val type = when {
+                            rawType.contains("goal") || rawType.contains("هدف") -> "هدف"
+                            rawType.contains("yellow") || rawType.contains("أصفر") || rawType.contains("اصفر") -> "بطاقة صفراء"
+                            rawType.contains("red card") || rawType.contains("أحمر") || rawType.contains("احمر") -> "بطاقة حمراء"
+                            rawType.contains("substitution") || rawType.contains("sub ") || rawType.contains("تبديل") -> "تبديل"
+                            rawType.contains("penalty") || rawType.contains("جزاء") -> "ركلة جزاء"
+                            rawType.contains("offside") || rawType.contains("تسلل") -> "تسلل"
+                            rawType.contains("var") -> "مراجعة تقنية الفيديو"
+                            rawType.isBlank() -> "حدث"
+                            else -> row.readText("type_name", "type")
+                        }
                         val player = row.readText("player_name", "player")
+                        val playerImage = row.readImage("player_image_url", "player_image", "playerImage", "imageUrl", "photo_url", "avatar_url")
                         val detail = row.readText("detail")
-                        val kind = type.lowercase(Locale.ROOT)
+                        val kind = rawType
                         val eventSymbol = when {
                             kind.contains("goal") || kind.contains("هدف") -> "⚽"
                             kind.contains("yellow") || kind.contains("أصفر") || kind.contains("اصفر") -> "🟨"
@@ -1168,6 +1439,13 @@ private fun MatchDetailContent(match: JSONObject) {
                                 Text(minute + "'", color = XAccent, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.width(34.dp))
                                 Text(eventSymbol, fontSize = 15.sp)
                                 Spacer(Modifier.width(9.dp))
+                                if (playerImage.isNotBlank()) {
+                                    coil.compose.AsyncImage(
+                                        model = playerImage, contentDescription = player,
+                                        modifier = Modifier.size(30.dp).clip(CircleShape), contentScale = ContentScale.Crop
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                }
                                 Column(Modifier.weight(1f)) {
                                     Text(type, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     Text(listOf(player, detail).filter { it.isNotBlank() }.joinToString(" • ").ifBlank { "تفاصيل اللاعب غير متاحة" }, color = XMuted, fontSize = 9.sp)
@@ -1243,7 +1521,7 @@ private fun MatchDetailContent(match: JSONObject) {
                 val referee = match.optJSONObject("referee")?.optString("name").orEmpty()
                 val details = listOf(
                     "البطولة" to competitionName,
-                    "الحالة" to match.optString("status"),
+                    "الحالة" to localizeVisualMatchStatus(match.optString("status")),
                     "الموعد" to match.readText("startTime", "kickoff", "date"),
                     "الملعب" to venue,
                     "الحكم" to referee
@@ -1260,6 +1538,55 @@ private fun MatchDetailContent(match: JSONObject) {
                 }
             }
         }
+        Spacer(Modifier.height(14.dp))
+        Card(
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = XCard),
+            border = BorderStroke(1.dp, XBorder),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                Text(
+                    if (runCatching { java.time.Instant.parse(kickoffValue).isAfter(java.time.Instant.now()) }.getOrDefault(false))
+                        "أخبار ما قبل المواجهة" else "آخر أخبار الفريقين",
+                    color = XText, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold
+                )
+                Text("أخبار منشورة من مصادر KORAX الحالية وتذكر أحد الناديين", color = XMuted, fontSize = 9.sp,
+                    modifier = Modifier.padding(top = 3.dp, bottom = 8.dp))
+                when {
+                    relatedNewsLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = XAccent, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("جارٍ البحث عن آخر الأخبار...", color = XMuted, fontSize = 9.sp)
+                    }
+                    relatedNews.isEmpty() -> Text(
+                        "لا توجد أخبار حديثة مطابقة للفريقين في المصادر المتاحة حاليًا.",
+                        color = XMuted, fontSize = 10.sp, lineHeight = 15.sp
+                    )
+                    else -> relatedNews.forEachIndexed { index, article ->
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp))
+                                .clickable {
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(article.url)))
+                                    }
+                                }.padding(vertical = 8.dp, horizontal = 5.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(article.source, color = XAccent, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.weight(1f))
+                                Text(article.date.take(10), color = XMuted, fontSize = 8.sp)
+                            }
+                            Text(article.title, color = XText, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                                lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 4.dp))
+                        }
+                        if (index < relatedNews.lastIndex) Divider(color = XBorder.copy(alpha = .7f))
+                    }
+                }
+            }
+        }
+
         if (!match.optBoolean("detailAvailable")) {
             Text("يعرض هذا اللقاء البيانات الأساسية فقط؛ لم تصل تفاصيل إضافية من SportScore بعد.", color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(vertical = 12.dp))
         } else {
@@ -1338,17 +1665,27 @@ private fun MatchLineupSide(
                                         rowPlayers.forEach { row ->
                                             val name = row.readText("player_name", "name")
                                             val number = row.readText("shirt_number")
-                                            val image = row.readText("imageUrl", "image_url")
+                                            val image = row.readImage(
+                                        "imageUrl", "image_path", "image_url", "player_image_url",
+                                        "player_image", "playerImage", "photo_url", "photo",
+                                        "avatar_url", "profile_image", "portrait", "headshot"
+                                    )
                                             Column(
                                                 Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
                                                     .background(Color(0xFF0A4C39).copy(alpha = .92f)).padding(5.dp),
                                                 horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
-                                                if (image.startsWith("https://")) {
-                                                    coil.compose.AsyncImage(image, name, Modifier.size(26.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-                                                } else {
-                                                    Box(Modifier.size(26.dp).clip(CircleShape).background(Color.White.copy(alpha = .16f)), contentAlignment = Alignment.Center) {
-                                                        Text(number.ifBlank { name.take(1) }, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                Box(
+                                                    Modifier.size(26.dp).clip(CircleShape).background(Color.White.copy(alpha = .16f)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(number.ifBlank { name.take(1) }, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                    if (image.startsWith("https://")) {
+                                                        coil.compose.AsyncImage(
+                                                            image, name,
+                                                            Modifier.fillMaxSize().clip(CircleShape),
+                                                            contentScale = ContentScale.Crop
+                                                        )
                                                     }
                                                 }
                                                 Spacer(Modifier.height(3.dp))

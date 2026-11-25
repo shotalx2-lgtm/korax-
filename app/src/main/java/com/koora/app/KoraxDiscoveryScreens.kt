@@ -106,10 +106,20 @@ private fun JSONObject.firstString(vararg keys: String): String {
 }
 
 private fun JSONObject.firstImage(): String {
-    val keys = listOf("imageUrl", "image_path", "imagePath", "image_url", "logoUrl", "logo", "logo_url", "logo_path", "crest", "crestUrl", "crest_url", "badge", "emblem", "photo", "photo_url", "thumbnail")
-    return keys.firstNotNullOfOrNull { key ->
-        optString(key).takeIf { it.startsWith("https://") }
-    }.orEmpty()
+    val keys = listOf(
+        "imageUrl", "image_path", "imagePath", "image_url", "image", "logoUrl", "logo",
+        "logo_url", "logo_path", "crest", "crestUrl", "crest_url", "badge", "emblem",
+        "photo", "photo_url", "thumbnail", "player_image_url", "player_image", "playerImage",
+        "avatar_url", "profile_image", "profileImage", "portrait", "headshot", "picture"
+    )
+    fun read(value: Any?, depth: Int = 0): String {
+        if (value is String) return value.trim().takeIf { it.startsWith("https://") }.orEmpty()
+        if (value !is JSONObject || depth >= 2) return ""
+        return listOf("url", "src", "original", "large", "medium", "imageUrl", "image_url", "image_path", "photo_url")
+            .firstNotNullOfOrNull { key -> read(value.opt(key), depth + 1).takeIf { it.isNotBlank() } }
+            .orEmpty()
+    }
+    return keys.firstNotNullOfOrNull { key -> read(opt(key)).takeIf { it.isNotBlank() } }.orEmpty()
 }
 
 private fun JSONObject.asFavorite(kind: String): KoraxFavorite? {
@@ -140,7 +150,7 @@ private fun JSONObject.asFavorite(kind: String): KoraxFavorite? {
 }
 
 private suspend fun searchFavoriteItems(kind: String, query: String, offset: Int = 0): List<KoraxFavorite> {
-    if (query.trim().length < 2) {
+    if (query.trim().isBlank()) {
         val types = when (kind) {
             "all" -> "club,national,player,coach,league,tournament"
             "league", "tournament", "club", "national", "player", "coach" -> kind
@@ -290,7 +300,7 @@ internal fun KoraxFavoriteSelectionScreen(
         search()
     }
     LaunchedEffect(kind, query) {
-        if (query.trim().length >= 2) {
+        if (query.trim().length >= 1) {
             kotlinx.coroutines.delay(420)
             search()
         }
@@ -428,7 +438,7 @@ internal fun KoraxFavoriteSelectionScreen(
             }
             results.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Text(
-                    if (query.trim().isBlank()) "لا توجد سجلات متاحة لهذا القسم في فهرس البيانات الحالي" else if (query.trim().length < 2) "اكتب حرفين على الأقل لعرض اقتراحات البحث" else "لا توجد نتائج مطابقة في البيانات المتاحة حاليًا",
+                    if (query.trim().isBlank()) "لا توجد سجلات متاحة لهذا القسم في فهرس البيانات الحالي" else if (query.trim().isBlank()) "اكتب للبحث عن اقتراحات" else "لا توجد نتائج مطابقة في البيانات المتاحة حاليًا",
                     color = DMuted, fontSize = 11.sp
                 )
             }
@@ -536,19 +546,15 @@ private fun FavoriteSearchResultCard(
                 Modifier.size(49.dp).clip(RoundedCornerShape(12.dp)).background(DCard2),
                 contentAlignment = Alignment.Center
             ) {
-                if (item.imageUrl.isNotBlank() && KoraxSettingsStore.getBoolean(
-                        androidx.compose.ui.platform.LocalContext.current, "show_images", true
-                    ) && !KoraxSettingsStore.getBoolean(
-                        androidx.compose.ui.platform.LocalContext.current, "data_saver", false
-                    )
+                Text(item.name.take(1), color = DAccent, fontSize = 20.sp, fontWeight = FontWeight.Black)
+                if (item.imageUrl.isNotBlank() && KoraxSettingsStore.getBoolean(context, "show_images", true) &&
+                    !KoraxSettingsStore.getBoolean(context, "data_saver", false)
                 ) {
                     coil.compose.AsyncImage(
                         model = item.imageUrl, contentDescription = item.name,
-                        modifier = Modifier.fillMaxSize().padding(4.dp),
-                        contentScale = ContentScale.Fit
+                        modifier = Modifier.fillMaxSize().padding(if (item.kind == "player") 0.dp else 4.dp),
+                        contentScale = if (item.kind == "player") ContentScale.Crop else ContentScale.Fit
                     )
-                } else {
-                    Text(item.name.take(1), color = DAccent, fontSize = 20.sp, fontWeight = FontWeight.Black)
                 }
             }
             Spacer(Modifier.width(10.dp))
@@ -599,6 +605,40 @@ internal fun KoraxFavoritesScreen(
     var favorites by remember { mutableStateOf(KoraxFavoriteStore.all(context)) }
     var filter by rememberSaveable { mutableStateOf("all") }
     LaunchedEffect(Unit) { favorites = KoraxFavoriteStore.all(context) }
+    val missingImageKey = favorites.filter { it.imageUrl.isBlank() }
+        .joinToString("|") { it.kind + ":" + it.id + ":" + it.slug }
+    LaunchedEffect(missingImageKey) {
+        val missing = favorites.filter { it.imageUrl.isBlank() }.take(40)
+        if (missing.isNotEmpty()) {
+            val refreshed = favorites.toMutableList()
+            var changed = false
+            for (item in missing) {
+                val endpoint = when (item.kind) {
+                    "league", "tournament" -> "/api/competitions/" + encodeQuery(item.slug)
+                    "player", "coach" -> "/api/players/" + encodeQuery(item.slug)
+                    else -> "/api/teams/" + encodeQuery(item.slug)
+                }
+                val root = runCatching { unwrapProfile(apiJson(endpoint)) }.getOrNull() ?: continue
+                val image = findProfileImage(root)
+                if (image.isBlank()) continue
+                val index = refreshed.indexOfFirst { it.kind == item.kind && it.id == item.id }
+                if (index >= 0) {
+                    refreshed[index] = refreshed[index].copy(
+                        imageUrl = image,
+                        imageAttribution = root.firstString("imageAttribution").ifBlank { item.imageAttribution },
+                        imageLicense = root.firstString("imageLicense").ifBlank { item.imageLicense },
+                        imageLicenseUrl = root.firstString("imageLicenseUrl").ifBlank { item.imageLicenseUrl },
+                        imageSourceUrl = root.firstString("imageSourceUrl").ifBlank { item.imageSourceUrl }
+                    )
+                    changed = true
+                }
+            }
+            if (changed) {
+                favorites = refreshed
+                KoraxFavoriteStore.save(context, refreshed)
+            }
+        }
+    }
     val visibleFavorites = if (filter == "all") favorites else favorites.filter { it.kind == filter }
     Column(Modifier.fillMaxSize().background(DBg)) {
         DiscoveryHeader(
@@ -700,11 +740,16 @@ private fun FavoriteItemCard(
     ) {
         Row(Modifier.fillMaxWidth().padding(11.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(45.dp).clip(RoundedCornerShape(11.dp)).background(DCard2), contentAlignment = Alignment.Center) {
+                Text(item.name.take(1), color = DAccent, fontSize = 19.sp, fontWeight = FontWeight.Black)
                 if (item.imageUrl.isNotBlank() && KoraxSettingsStore.getBoolean(
                         androidx.compose.ui.platform.LocalContext.current, "show_images", true
+                    ) && !KoraxSettingsStore.getBoolean(
+                        androidx.compose.ui.platform.LocalContext.current, "data_saver", false
                     )
-                ) coil.compose.AsyncImage(model = item.imageUrl, contentDescription = item.name, modifier = Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
-                else Text(item.name.take(1), color = DAccent, fontSize = 19.sp, fontWeight = FontWeight.Black)
+                ) coil.compose.AsyncImage(
+                    model = item.imageUrl, contentDescription = item.name, modifier = Modifier.fillMaxSize(),
+                    contentScale = if (item.kind == "player") ContentScale.Crop else ContentScale.Fit
+                )
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
@@ -791,6 +836,13 @@ private fun findProfileImage(value: JSONObject, depth: Int = 0): String {
             is JSONObject -> {
                 val found = findProfileImage(child, depth + 1)
                 if (found.isNotBlank()) return found
+            }
+            is JSONArray -> {
+                for (index in 0 until child.length()) {
+                    val nested = child.optJSONObject(index) ?: continue
+                    val found = findProfileImage(nested, depth + 1)
+                    if (found.isNotBlank()) return found
+                }
             }
             else -> Unit
         }
@@ -957,13 +1009,15 @@ internal fun KoraxEntityProfileScreen(
                                 Modifier.size(104.dp).clip(RoundedCornerShape(18.dp)).background(DCard2),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (image.isNotBlank() && KoraxSettingsStore.getBoolean(context, "show_images", true)) {
+                                Text(profileName.take(1), color = DAccent, fontSize = 42.sp, fontWeight = FontWeight.Black)
+                                if (image.isNotBlank() && KoraxSettingsStore.getBoolean(context, "show_images", true) &&
+                                    !KoraxSettingsStore.getBoolean(context, "data_saver", false)
+                                ) {
                                     coil.compose.AsyncImage(
                                         model = image, contentDescription = profileName,
-                                        modifier = Modifier.fillMaxSize().padding(5.dp), contentScale = ContentScale.Fit
+                                        modifier = Modifier.fillMaxSize().padding(5.dp),
+                                        contentScale = if (favorite.kind == "player") ContentScale.Crop else ContentScale.Fit
                                     )
-                                } else {
-                                    Text(profileName.take(1), color = DAccent, fontSize = 42.sp, fontWeight = FontWeight.Black)
                                 }
                             }
                             Spacer(Modifier.width(13.dp))
@@ -1115,8 +1169,11 @@ internal fun KoraxEntityProfileScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(Modifier.size(38.dp).clip(CircleShape).background(DCard2), contentAlignment = Alignment.Center) {
-                                if (player.imageUrl.isNotBlank()) coil.compose.AsyncImage(model = player.imageUrl, contentDescription = player.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                else Text(player.name.take(1), color = DAccent, fontWeight = FontWeight.Bold)
+                                Text(player.name.take(1), color = DAccent, fontWeight = FontWeight.Bold)
+                                if (player.imageUrl.isNotBlank()) coil.compose.AsyncImage(
+                                    model = player.imageUrl, contentDescription = player.name,
+                                    modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+                                )
                             }
                             Spacer(Modifier.width(9.dp))
                             Text(player.name, color = DText, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, modifier = Modifier.weight(1f))
