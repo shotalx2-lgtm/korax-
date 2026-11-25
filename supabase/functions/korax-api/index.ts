@@ -619,7 +619,7 @@ function extractCachedLineupPlayers(matchRoot, row) {
 }
 
 async function getCachedPlayerIndex() {
-  const cacheKey = "entity-search:players:v2";
+  const cacheKey = "entity-search:players:v3";
   const cached = cacheRead(cacheKey);
   if (cached !== null) return cached;
   const rows = await getCachedEntityDetailRows();
@@ -648,6 +648,8 @@ async function getCachedPlayerIndex() {
         imageUrl: httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl),
         image_path: httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl),
         matchesInCache: [],
+        competitionNames: [],
+        competitionSlugs: [],
         matches_with_lineup: 0,
         goals: 0,
         assists: 0,
@@ -661,6 +663,14 @@ async function getCachedPlayerIndex() {
       };
       if (row.match_slug && !current.matchesInCache.includes(row.match_slug)) {
         current.matchesInCache.push(row.match_slug);
+      }
+      const cachedCompetitionName = String(row.competition_name || "").trim();
+      const cachedCompetitionSlug = String(row.competition_slug || "").trim();
+      if (cachedCompetitionName && !current.competitionNames.includes(cachedCompetitionName)) {
+        current.competitionNames.push(cachedCompetitionName);
+      }
+      if (cachedCompetitionSlug && !current.competitionSlugs.includes(cachedCompetitionSlug)) {
+        current.competitionSlugs.push(cachedCompetitionSlug);
       }
       if (!current.position) current.position = nestedName(details?.position) || details?.position_name || "";
       if (!current.imageUrl) {
@@ -728,8 +738,11 @@ async function getCachedPlayerIndex() {
     }
   }
   const result = Array.from(found.values())
-    .map(({ _appearanceMatches, _eventKeys, ...player }) => ({
-      ...player, matches_in_cache: player.matchesInCache.length,
+    .map(({ _appearanceMatches, _eventKeys, competitionNames, competitionSlugs, ...player }) => ({
+      ...player,
+      competition_names: competitionNames,
+      competition_slugs: competitionSlugs,
+      matches_in_cache: player.matchesInCache.length,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
   cacheWrite(cacheKey, result, 180);
@@ -1518,6 +1531,160 @@ async function route(request, env) {
         : json({ error: "Competition is not in the current KORAX cache", retryable: true }, 404);
     }
     return json({ error: "Standings are not in the current SportScore cache yet", retryable: true }, 503);
+  }
+
+
+  if (path === "/api/standings") {
+    const requestedSlug = (url.searchParams.get("slug") || "").trim().toLowerCase();
+    if (!/^[a-z0-9-]{2,80}$/.test(requestedSlug)) {
+      return json({ error: "A valid competition slug is required", data: [] }, 400);
+    }
+    const requestedName = (url.searchParams.get("name") || "").trim();
+    const storedCompetitions = await dbRows(
+      "/rest/v1/korax_sportscore_competitions?select=slug,name,country,standings,updated_at&limit=100"
+    );
+    const stored = (Array.isArray(storedCompetitions) ? storedCompetitions : []).find((row) =>
+      String(row.slug || "").toLowerCase() === requestedSlug ||
+      (requestedName && normalizeSearchText(row.name) === normalizeSearchText(requestedName))
+    );
+    const storedTables = stored?.standings?.tables;
+    if (Array.isArray(storedTables) && storedTables.some((table) => Array.isArray(table?.rows) && table.rows.length)) {
+      return json({
+        data: stored.standings,
+        competitionSlug: stored.slug,
+        competitionName: stored.name,
+        updatedAt: stored.updated_at,
+        source: "sportscore-supabase-cache",
+        meta: {
+          complete: true,
+          scope: "provider-standings-snapshot",
+          note: "جدول الترتيب محفوظ من مزود البيانات، وآخر مزامنة في " + String(stored.updated_at || "وقت غير محدد"),
+        },
+      });
+    }
+
+    const aliases = {
+      "english-premier-league": "English Premier League",
+      "spanish-la-liga": "Spanish La Liga",
+      "french-ligue-1": "French Ligue 1",
+      "italian-serie-a": "Italian Serie A",
+      "saudi-professional-league": "Saudi Professional League",
+      "uefa-champions-league": "UEFA Champions League",
+      "egyptian-premier-league": "Egyptian Premier League",
+    };
+    const requestedCompetitionName = (requestedName || aliases[requestedSlug] || requestedSlug.replace(/-/g, " "))
+      .replace(/[%*]/g, "").slice(0, 100);
+    const matchQuery = new URLSearchParams({
+      select: "match_slug,competition_name,home_team,away_team,home_score,away_score,detail,match_date",
+      is_finished: "eq.true",
+      order: "match_date.desc",
+      limit: "1000",
+      competition_name: "ilike.*" + requestedCompetitionName + "*",
+    });
+    const matchRows = await dbRows("/rest/v1/korax_sportscore_matches?" + matchQuery.toString());
+    const clubs = new Map();
+    const ensureClub = (name) => {
+      const key = normalizeSearchText(name);
+      if (!key) return null;
+      if (!clubs.has(key)) clubs.set(key, {
+        team: String(name).trim(), team_name: String(name).trim(),
+        played: 0, p: 0, won: 0, w: 0, draw: 0, d: 0, lost: 0, l: 0,
+        goals_for: 0, gf: 0, goals_against: 0, ga: 0, goal_difference: 0, gd: 0, points: 0, pts: 0,
+      });
+      return clubs.get(key);
+    };
+    for (const item of Array.isArray(matchRows) ? matchRows : []) {
+      const detail = item?.detail?.match && typeof item.detail.match === "object" ? item.detail.match : item?.detail || {};
+      const homeName = String(item.home_team || detail.home || "").trim();
+      const awayName = String(item.away_team || detail.away || "").trim();
+      const homeGoals = Number(item.home_score ?? detail.home_score);
+      const awayGoals = Number(item.away_score ?? detail.away_score);
+      if (!homeName || !awayName || !Number.isFinite(homeGoals) || !Number.isFinite(awayGoals)) continue;
+      const home = ensureClub(homeName);
+      const away = ensureClub(awayName);
+      if (!home || !away) continue;
+      home.played += 1; home.p += 1; away.played += 1; away.p += 1;
+      home.goals_for += homeGoals; home.gf += homeGoals; home.goals_against += awayGoals; home.ga += awayGoals;
+      away.goals_for += awayGoals; away.gf += awayGoals; away.goals_against += homeGoals; away.ga += homeGoals;
+      if (homeGoals > awayGoals) {
+        home.won += 1; home.w += 1; away.lost += 1; away.l += 1; home.points += 3; home.pts += 3;
+      } else if (homeGoals < awayGoals) {
+        away.won += 1; away.w += 1; home.lost += 1; home.l += 1; away.points += 3; away.pts += 3;
+      } else {
+        home.draw += 1; home.d += 1; away.draw += 1; away.d += 1; home.points += 1; home.pts += 1; away.points += 1; away.pts += 1;
+      }
+    }
+    const derivedRows = Array.from(clubs.values())
+      .map((team) => ({ ...team, goal_difference: team.goals_for - team.goals_against, gd: team.goals_for - team.goals_against }))
+      .sort((a, b) => b.points - a.points || b.goal_difference - a.goal_difference || b.goals_for - a.goals_for || a.team.localeCompare(b.team))
+      .map((team, index) => ({ ...team, position: index + 1, pos: index + 1 }));
+    return json({
+      data: {
+        sport: "football",
+        competition: stored?.name || requestedCompetitionName,
+        competition_slug: requestedSlug,
+        tables: derivedRows.length ? [{ group: "", rows: derivedRows }] : [],
+      },
+      source: "korax-match-cache-derived",
+      meta: {
+        complete: false,
+        scope: "finished-matches-in-cache",
+        matchesUsed: derivedRows.reduce((total, row) => total + row.played, 0) / 2,
+        note: "ترتيب محسوب من المباريات المنتهية المحفوظة فقط؛ لا يُعد جدول الموسم الرسمي الكامل.",
+      },
+    });
+  }
+
+  if (path === "/api/topscorers") {
+    const requestedSlug = (url.searchParams.get("slug") || "").trim().toLowerCase();
+    if (requestedSlug && !/^[a-z0-9-]{2,80}$/.test(requestedSlug)) {
+      return json({ error: "A valid competition slug is required", data: [] }, 400);
+    }
+    const stat = (url.searchParams.get("stat") || "goals").toLowerCase();
+    if (!["goals", "assists"].includes(stat)) {
+      return json({ error: "stat must be goals or assists", data: [] }, 400);
+    }
+    const requestedName = normalizeSearchText(url.searchParams.get("name") || requestedSlug.replace(/-/g, " "));
+    const requestedLimit = Number(url.searchParams.get("limit") || 30);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(50, Math.max(1, Math.floor(requestedLimit))) : 30;
+    const allPlayers = await getCachedPlayerIndex();
+    const competitionPlayers = requestedName ? allPlayers.filter((player) => {
+      const names = Array.isArray(player.competition_names) ? player.competition_names : [];
+      const slugs = Array.isArray(player.competition_slugs) ? player.competition_slugs : [];
+      return slugs.some((slug) => String(slug).toLowerCase() === requestedSlug) ||
+        names.some((name) => {
+          const normalized = normalizeSearchText(name);
+          return normalized && (normalized.includes(requestedName) || requestedName.includes(normalized));
+        });
+    }) : allPlayers;
+    const hasCompetitionScope = !requestedName || competitionPlayers.length > 0;
+    const scopedPlayers = hasCompetitionScope ? competitionPlayers : allPlayers;
+    const data = scopedPlayers
+      .filter((player) => Number(player[stat] || 0) > 0)
+      .sort((a, b) => Number(b[stat] || 0) - Number(a[stat] || 0) ||
+        Number(b.matches_with_lineup || 0) - Number(a.matches_with_lineup || 0))
+      .slice(0, limit)
+      .map((player, index) => ({
+        ...player,
+        player_name: player.name,
+        value: Number(player[stat] || 0),
+        stat_value: Number(player[stat] || 0),
+        position: index + 1,
+      }));
+    return json({
+      data,
+      stat,
+      competitionSlug: requestedSlug || null,
+      competitionName: url.searchParams.get("name") || null,
+      source: "korax-player-index-cache",
+      meta: {
+        complete: false,
+        scope: hasCompetitionScope ? "cached-competition-details" : "all-cached-match-details-fallback",
+        note: hasCompetitionScope
+          ? "الأرقام مستخرجة من أحداث المباريات المحفوظة لهذه البطولة فقط، وقد لا تغطي الموسم كاملًا."
+          : "لا تتوفر أحداث كافية لهذه البطولة في الذاكرة التفصيلية؛ نعرض الهدافين من كل المباريات ذات التفاصيل المحفوظة مع توضيح أن القائمة غير مخصصة لبطولة واحدة.",
+      },
+    });
   }
 
   if (path === "/api/entities/search") {
