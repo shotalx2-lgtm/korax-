@@ -29,7 +29,7 @@ export function createWikipediaClient(options = {}) {
     timeoutMs: 15_000,
     maxRetries: 1,
     defaultHeaders: {
-      "user-agent": "KORAX-World-Data-Sync/1.0 (https://github.com/shotalx2-lgtm/korax-; contact: support@korax.app)",
+      "user-agent": "KORAX-World-Data-Sync/1.0 (https://github.com/shotalx2-lgtm/korax-)",
       accept: "application/json",
     },
     ...options,
