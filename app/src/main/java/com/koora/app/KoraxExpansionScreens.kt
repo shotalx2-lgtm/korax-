@@ -1363,6 +1363,7 @@ private fun MatchDetailContent(match: JSONObject) {
                         val minute = row.readText("minute").ifBlank { "—" }
                         val type = row.readText("type_name", "type").ifBlank { "حدث" }
                         val player = row.readText("player_name", "player")
+                        val playerImage = row.readImage("player_image_url", "player_image", "playerImage", "imageUrl", "photo_url", "avatar_url")
                         val detail = row.readText("detail")
                         val kind = type.lowercase(Locale.ROOT)
                         val eventSymbol = when {
@@ -1382,6 +1383,13 @@ private fun MatchDetailContent(match: JSONObject) {
                                 Text(minute + "'", color = XAccent, fontWeight = FontWeight.Bold, fontSize = 10.sp, modifier = Modifier.width(34.dp))
                                 Text(eventSymbol, fontSize = 15.sp)
                                 Spacer(Modifier.width(9.dp))
+                                if (playerImage.isNotBlank()) {
+                                    coil.compose.AsyncImage(
+                                        model = playerImage, contentDescription = player,
+                                        modifier = Modifier.size(30.dp).clip(CircleShape), contentScale = ContentScale.Crop
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                }
                                 Column(Modifier.weight(1f)) {
                                     Text(type, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                     Text(listOf(player, detail).filter { it.isNotBlank() }.joinToString(" • ").ifBlank { "تفاصيل اللاعب غير متاحة" }, color = XMuted, fontSize = 9.sp)
