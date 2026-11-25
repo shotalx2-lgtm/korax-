@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
 import { createTheSportsDbClient } from "./football-sources/thesportsdb.mjs";
+import { createFootballDataOrgClient, normalizeFootballDataMatch } from "./football-sources/football-data-org.mjs";
+import { createApiFootballClient, normalizeApiFootballFixture } from "./football-sources/api-football.mjs";
+import { createWikipediaClient } from "./football-sources/wikipedia.mjs";
 import { createOpenLigaDbClient, filterCurrentFootballLeagues } from "./football-sources/openligadb.mjs";
 import { createOpenFootballClient, OPENFOOTBALL_SEASON_FILES } from "./football-sources/openfootball.mjs";
 import { createWikidataClient, wikidataConstants } from "./football-sources/wikidata.mjs";
@@ -14,7 +17,7 @@ const RUN_ID = String(process.env.GITHUB_RUN_ID || ("manual-" + Date.now()));
 const RUN_ATTEMPT = String(process.env.GITHUB_RUN_ATTEMPT || "1");
 const RUN_KEY = RUN_ID + ":" + RUN_ATTEMPT;
 const NOW = new Date().toISOString();
-const ALL_SOURCE_KEYS = ["thesportsdb", "openligadb", "openfootball", "wikidata", "wikimedia_commons"];
+const ALL_SOURCE_KEYS = ["thesportsdb", "openligadb", "openfootball", "wikidata", "wikimedia_commons", "football_data_org", "api_football", "wikipedia"];
 const OPENLIGA_ONLY = process.env.KORAX_SYNC_SCOPE === "openligadb";
 const SOURCE_KEYS = OPENLIGA_ONLY ? ["openligadb"] : ALL_SOURCE_KEYS;
 const LEAGUES = [
@@ -362,7 +365,7 @@ async function persistInBatches(payload) {
   }
 }
 async function runTheSportsDb() {
-  const source = createTheSportsDbClient();
+  const source = createTheSportsDbClient({ apiKey: process.env.THESPORTSDB_API_KEY });
   const startedAt = new Date().toISOString();
   const errors = [];
   const records = [];
@@ -483,6 +486,296 @@ async function runOpenLigaDb(previousCoverage) {
   report("openligadb", errors.length ? (checked ? "partial" : "failed") : "success",
     stats.requestCount, recordCount, { errors, startedAt, leaguesChecked: checked, leaguesDiscovered: list.length });
 }
+
+async function runFootballDataOrg() {
+  const token = String(process.env.FOOTBALL_DATA_API_TOKEN || "").trim();
+  if (!token) {
+    report("football_data_org", "skipped", 0, 0, {
+      errors: [], reason: "FOOTBALL_DATA_API_TOKEN secret is not configured"
+    });
+    return;
+  }
+  const source = createFootballDataOrgClient({ token });
+  const startedAt = new Date().toISOString();
+  const errors = [];
+  let records = 0;
+  let competitionsChecked = 0;
+  const now = new Date();
+  const from = new Date(now.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+  const to = new Date(now.getTime() + 14 * 86400000).toISOString().slice(0, 10);
+
+  try {
+    const competitions = await source.competitions();
+    for (const competition of competitions.slice(0, 12)) {
+      const code = String(competition?.code || "").trim();
+      const name = String(competition?.name || "").trim();
+      if (!code || !name) continue;
+      try {
+        const matches = await source.matches(code, from, to);
+        competitionsChecked++;
+        for (const raw of matches) {
+          const normalized = normalizeFootballDataMatch(raw);
+          if (!normalized) continue;
+          addExternalMatch(normalized);
+          records++;
+        }
+        addCoverage({
+          source_key: "football_data_org",
+          entity_type: "competition",
+          country_code: String(competition?.area?.code || ""),
+          competition_name: name,
+          season: String(competition?.currentSeason?.startDate || "").slice(0, 4),
+          coverage_status: "available",
+          record_count: matches.length,
+          last_checked_at: NOW,
+          metadata: {
+            code,
+            delayedScores: true,
+            freeTierCompetitionLimit: 12,
+            includesFixturesAndTables: true,
+            attributionRequired: "Football data provided by the Football-Data.org API",
+            logosAndProfilePhotosRequireSeparateRights: true
+          }
+        });
+      } catch (error) {
+        errors.push(name + ": " + String(error).slice(0, 180));
+      }
+    }
+  } catch (error) {
+    errors.push("competition catalogue: " + String(error).slice(0, 220));
+  }
+
+  const stats = source.getStats();
+  report("football_data_org", errors.length ? (competitionsChecked ? "partial" : "failed") : "success",
+    stats.requestCount, records, {
+      errors, startedAt, competitionsChecked, dateFrom: from, dateTo: to,
+      freeTierCompetitionLimit: 12, liveScores: false
+    });
+}
+
+async function runApiFootball() {
+  const apiKey = String(process.env.API_FOOTBALL_KEY || "").trim();
+  const rightsConfirmed = String(process.env.API_FOOTBALL_RIGHTS_CONFIRMED || "").toLowerCase() === "true";
+  if (!apiKey || !rightsConfirmed) {
+    report("api_football", "skipped", 0, 0, {
+      errors: [],
+      reason: !apiKey
+        ? "API_FOOTBALL_KEY secret is not configured"
+        : "publication rights for the covered leagues/competitions have not been confirmed"
+    });
+    return;
+  }
+
+  const source = createApiFootballClient({ apiKey });
+  const startedAt = new Date().toISOString();
+  const errors = [];
+  let records = 0;
+  let leaguesChecked = 0;
+  const season = new Date().getUTCFullYear();
+  const requestedLimit = Number.parseInt(process.env.API_FOOTBALL_MAX_LEAGUES || "45", 10);
+  const maxLeagues = Number.isFinite(requestedLimit) ? Math.max(1, Math.min(80, requestedLimit)) : 45;
+
+  try {
+    const catalogue = await source.leagues(season);
+    const eligible = catalogue.filter(item => {
+      const seasons = Array.isArray(item?.seasons) ? item.seasons : [];
+      return seasons.some(value => Number(value?.year) === season);
+    }).sort((a, b) => {
+      const currentA = (a.seasons || []).some(value => Number(value?.year) === season && value?.current) ? 0 : 1;
+      const currentB = (b.seasons || []).some(value => Number(value?.year) === season && value?.current) ? 0 : 1;
+      return currentA - currentB || String(a?.league?.name || "").localeCompare(String(b?.league?.name || ""));
+    });
+
+    // Rotate the capped daily window so the 100-request free quota is not exhausted
+    // on one fixed set of leagues. Only seasons explicitly reported by the provider are used.
+    const dayNumber = Math.floor(Date.now() / 86400000);
+    const start = eligible.length ? (dayNumber * maxLeagues) % eligible.length : 0;
+    const rotated = eligible.slice(start).concat(eligible.slice(0, start));
+    for (const item of rotated.slice(0, maxLeagues)) {
+      const league = item?.league || {};
+      const id = league?.id;
+      const name = String(league?.name || "").trim();
+      if (!id || !name) continue;
+      try {
+        const fixtures = await source.fixtures(id, season);
+        leaguesChecked++;
+        const kind = /cup|championship|trophy|champions league|europa league|conference league|world cup|nations league/i.test(name)
+          ? "tournament" : "league";
+        addRecord("api_football", {
+          entityType: kind,
+          externalId: String(id),
+          canonicalName: name,
+          nameEn: name,
+          countryName: String(item?.country?.name || ""),
+          metadata: { season, provider: "api_football", freePlanSeasonMayBeLimited: true }
+        });
+        for (const raw of fixtures) {
+          const normalized = normalizeApiFootballFixture(raw);
+          if (!normalized) continue;
+          addExternalMatch(normalized);
+          records++;
+          const teams = raw?.teams || {};
+          for (const side of ["home", "away"]) {
+            const team = teams[side] || {};
+            if (!team?.id || !team?.name) continue;
+            addRecord("api_football", {
+              entityType: "club",
+              externalId: String(team.id),
+              canonicalName: String(team.name),
+              nameEn: String(team.name),
+              countryName: String(item?.country?.name || ""),
+              metadata: { leagueName: name, season, provider: "api_football" }
+            });
+          }
+        }
+        addCoverage({
+          source_key: "api_football",
+          entity_type: "competition",
+          country_code: String(item?.country?.code || ""),
+          competition_name: name,
+          season: String(season),
+          coverage_status: fixtures.length ? "available" : "partial",
+          record_count: fixtures.length,
+          last_checked_at: NOW,
+          metadata: { leagueId: id, rotatedDailyWindow: true, freeRequestsPerDay: 100 }
+        });
+      } catch (error) {
+        errors.push(name + ": " + String(error).slice(0, 180));
+      }
+    }
+  } catch (error) {
+    errors.push("league catalogue: " + String(error).slice(0, 220));
+  }
+
+  const stats = source.getStats();
+  report("api_football", errors.length ? (leaguesChecked ? "partial" : "failed") : "success",
+    stats.requestCount, records, {
+      errors, startedAt, season, leaguesChecked, maxLeaguesPerRun: maxLeagues,
+      rightsConfirmed, requestsRemainingInConfiguredBudget: stats.remaining
+    });
+}
+
+async function runWikipedia() {
+  const source = createWikipediaClient();
+  const startedAt = new Date().toISOString();
+  const errors = [];
+  const selected = [];
+  const seen = new Set();
+  const eligibleTypes = new Set(["club", "national", "player", "coach", "league", "tournament"]);
+  for (const item of providerRecords
+    .filter(value => eligibleTypes.has(value.entityType) && data.entities.has(value.entityId))
+    .sort((a, b) => Number(data.entities.get(b.entityId)?.completeness || 0) -
+      Number(data.entities.get(a.entityId)?.completeness || 0))) {
+    if (seen.has(item.entityId)) continue;
+    seen.add(item.entityId);
+    selected.push(item);
+    if (selected.length >= 20) break;
+  }
+
+  if (!selected.length) {
+    report("wikipedia", "skipped", 0, 0, {
+      errors: [], reason: "No provider-backed football entities are currently available for exact-title enrichment"
+    });
+    return;
+  }
+
+  const counts = new Map();
+  let imported = 0;
+  for (const item of selected) {
+    const entity = data.entities.get(item.entityId);
+    if (!entity) continue;
+    const arTitle = String(entity.name_ar || "").trim();
+    const enTitle = String(entity.name_en || item.name || entity.canonical_name || "").trim();
+    let page = null;
+    try {
+      if (arTitle) page = await source.pageSummary(arTitle, "ar");
+      if (!page && enTitle && normalizeName(enTitle) !== normalizeName(arTitle)) {
+        page = await source.pageSummary(enTitle, "en");
+      } else if (!page && enTitle && !arTitle) {
+        page = await source.pageSummary(enTitle, "en");
+      }
+    } catch (error) {
+      errors.push(String(item.name || item.entityId) + ": " + String(error).slice(0, 180));
+      continue;
+    }
+    if (!page) continue;
+
+    const externalId = page.language + ":" + page.pageId + ":" + item.entityId;
+    const sourceKey = "wikipedia:" + externalId;
+    data.entitySources.set(sourceKey, {
+      entity_id: item.entityId,
+      source_key: "wikipedia",
+      external_id: externalId,
+      external_url: page.url,
+      match_method: "exact_wikipedia_title",
+      confidence: 0.94,
+      is_primary: false,
+      raw_payload: {
+        title: page.title,
+        pageId: page.pageId,
+        language: page.language,
+        license: page.license,
+        attribution: "Wikipedia contributors — " + page.title
+      },
+      last_seen_at: NOW,
+      updated_at: NOW
+    });
+
+    const fieldKey = "wikipedia_summary_" + page.language;
+    data.facts.set([item.entityId, fieldKey, "wikipedia", externalId].join(":"), {
+      entity_id: item.entityId,
+      field_key: fieldKey,
+      value: page.summary,
+      source_key: "wikipedia",
+      source_external_id: externalId,
+      confidence: 0.94,
+      observed_at: NOW,
+      is_current: true,
+      metadata: {
+        source_url: page.url,
+        license_code: page.license,
+        license_url: "https://creativecommons.org/licenses/by-sa/4.0/",
+        attribution_text: "Wikipedia contributors — " + page.title,
+        language: page.language
+      }
+    });
+    if (page.language === "ar" && !entity.name_ar) {
+      entity.name_ar = page.title;
+      data.entities.set(item.entityId, entity);
+    }
+    counts.set(item.entityType, (counts.get(item.entityType) || 0) + 1);
+    imported++;
+  }
+
+  for (const [entityType, count] of counts.entries()) {
+    addCoverage({
+      source_key: "wikipedia",
+      entity_type: entityType,
+      country_code: "",
+      competition_name: "",
+      season: "",
+      coverage_status: "available",
+      record_count: count,
+      last_checked_at: NOW,
+      metadata: {
+        method: "exact-title article match",
+        maxEntitiesPerDailyRun: 20,
+        license: "CC-BY-SA-4.0/GFDL",
+        attributionRequired: true
+      }
+    });
+  }
+
+  const stats = source.getStats();
+  report("wikipedia", errors.length ? (imported ? "partial" : "failed") : "success",
+    stats.requestCount, imported, {
+      errors, startedAt, candidates: selected.length,
+      maxEntitiesPerDailyRun: 20,
+      attributionRequired: true,
+      license: "CC-BY-SA-4.0/GFDL"
+    });
+}
+
 async function runOpenFootball() {
   const source = createOpenFootballClient();
   const startedAt = new Date().toISOString();
@@ -516,7 +809,7 @@ async function runWikidata() {
   const countryQids = wikidataConstants.COUNTRY_QIDS;
   const groups = [];
   // Small country batches keep WDQS query plans bounded; every request is paced.
-  for (let i = 0; i < countryQids.length; i += 2) groups.push(countryQids.slice(i, i + 2));
+  for (let i = 0; i < countryQids.length; i += 4) groups.push(countryQids.slice(i, i + 4));
   let stopAfterError = false;
   for (const group of groups) {
     if (stopAfterError) break;
@@ -524,7 +817,7 @@ async function runWikidata() {
       records.push.apply(records, await source.fetchFootballEntities({ countryQids: group, limit: 60 }));
     } catch (error) {
       errors.push("club/competition metadata for countries " + group.join(",") + ": " + String(error).slice(0, 180));
-      if (Number(error?.status) === 429 || /request budget/i.test(String(error))) stopAfterError = true;
+      if (Number(error?.status) === 429 || /timeout|deadline|request budget/i.test(String(error))) stopAfterError = true;
     }
   }
   for (const group of groups) {
@@ -613,14 +906,26 @@ async function main() {
   const state = await callSync(token, { action: "state", sourceKeys: ["openligadb"] });
   const previousCoverage = Array.isArray(state.coverage) ? state.coverage : [];
 
-  if (!OPENLIGA_ONLY) await runTheSportsDb();
+  if (!OPENLIGA_ONLY) {
+    if (String(process.env.THESPORTSDB_RIGHTS_CONFIRMED || "").toLowerCase() === "true" &&
+        String(process.env.THESPORTSDB_API_KEY || "").trim()) {
+      await runTheSportsDb();
+    } else {
+      report("thesportsdb", "skipped", 0, 0, {
+        errors: [], reason: "Paid-tier key and permission for public-app distribution are required"
+      });
+    }
+  }
   try { await runOpenLigaDb(previousCoverage); }
   catch (error) { report("openligadb", "failed", 0, 0, { errors: [String(error)] }); }
   if (!OPENLIGA_ONLY) {
     await runOpenFootball();
+    await runFootballDataOrg();
+    await runApiFootball();
     const wikidataRecords = await runWikidata();
     await runCommons(wikidataRecords);
     linkTheSportsDbRecordsToWikidata();
+    await runWikipedia();
     addMergeCandidates();
   }
 
