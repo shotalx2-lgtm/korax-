@@ -166,51 +166,63 @@ class VisualShellActivity : ComponentActivity() {
     }
 }
 
+
 @Composable
 private fun KoraxSplash(initialNotificationRoute: KoraxNotificationRoute?) {
     var intro by rememberSaveable { mutableStateOf(true) }
     val logoScale = remember { Animatable(0.88f) }
+    val glowAlpha = remember { Animatable(0.22f) }
     LaunchedEffect(Unit) {
-        logoScale.animateTo(1f, animationSpec = tween(520))
-        kotlinx.coroutines.delay(380)
+        kotlinx.coroutines.coroutineScope {
+            launch { logoScale.animateTo(1f, animationSpec = tween(620)) }
+            launch {
+                glowAlpha.animateTo(0.60f, animationSpec = tween(850))
+                glowAlpha.animateTo(0.28f, animationSpec = tween(850))
+            }
+        }
+        delay(420L)
         intro = false
     }
     if (intro) {
         Box(
             Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF101A12), Color(0xFF050807), Color(0xFF000000))
-                )
+                Brush.verticalGradient(listOf(Color(0xFF121B13), Color(0xFF080C09), Color(0xFF020303)))
             ),
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Image(
-                    painter = painterResource(R.drawable.korax_brand),
-                    contentDescription = "KORAX",
-                    modifier = Modifier.size(184.dp).scale(logoScale.value),
-                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
-                )
-                Spacer(Modifier.height(18.dp))
-                Text(
-                    "كرة القدم بين يديك",
-                    color = Color.White,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
+            Box(
+                Modifier.size(258.dp).clip(CircleShape)
+                    .background(Color(0xFFD5FF00).copy(alpha = glowAlpha.value * 0.08f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier.size(202.dp),
+                    shape = CircleShape,
+                    color = Color(0xFF0B120D),
+                    border = BorderStroke(1.dp, Color(0xFFD5FF00).copy(alpha = glowAlpha.value))
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Image(
+                            painter = painterResource(R.drawable.korax_brand),
+                            contentDescription = "شعار كوراكس",
+                            modifier = Modifier.size(150.dp).scale(logoScale.value),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                        )
+                    }
+                }
+            }
+            Column(
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("كرة القدم بين يديك", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(7.dp))
-                Text(
-                    "مباريات مباشرة • أخبار • بطولات",
+                Text("مباريات مباشرة  •  أخبار  •  بطولات", color = Color(0xFFD5FF00), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(20.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(19.dp),
                     color = Color(0xFFD5FF00),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.1.sp
-                )
-                Spacer(Modifier.height(28.dp))
-                Box(
-                    Modifier.width(44.dp).height(3.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFD5FF00))
+                    strokeWidth = 2.dp
                 )
             }
         }
@@ -547,7 +559,7 @@ private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
         }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(if (selectedArticle == null && selectedProfile == null && selectedMatchId == null) padding else PaddingValues(0.dp))) {
-            if (!networkAvailable) KoraxConnectionBanner("لا يوجد اتصال بالإنترنت • ستظهر البيانات المحفوظة لحين عودة الاتصال")
+            if (!networkAvailable) KoraxConnectionBanner("لا يوجد اتصال بالإنترنت • قد لا تتحدث البيانات حتى يعود الاتصال")
             Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 selectedArticle != null -> KoraxNewsDetailScreen(selectedArticle!!) { selectedArticle = null }
@@ -860,7 +872,7 @@ private fun NewsCard(article: NewsItem, onOpen: () -> Unit, onComment: () -> Uni
                 coil.compose.AsyncImage(model = article.image, contentDescription = article.title,
                     modifier = Modifier.fillMaxWidth().height(172.dp).clickable(onClick = onOpen), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
             } else Box(Modifier.fillMaxWidth().height(102.dp).background(Brush.horizontalGradient(listOf(Color(0xFF1B2508), Color(0xFF151B24)))).clickable(onClick = onOpen), contentAlignment = Alignment.Center) {
-                Text("KORAX", color = KLime, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Text("أخبار كرة القدم", color = KLime, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1147,9 +1159,7 @@ private fun MatchesScreen(
                 )
             }
         }
-        if (!isOnline) {
-            KoraxConnectionBanner(if (matches.isNotEmpty()) "أنت غير متصل • نعرض آخر مباريات محفوظة على جهازك" else "لا يوجد اتصال • اتصل بالإنترنت لتحميل المباريات")
-        } else if (error.isNotBlank() && matches.isNotEmpty()) {
+        if (isOnline && error.isNotBlank() && matches.isNotEmpty()) {
             KoraxConnectionBanner("تعذر التحديث • نعرض آخر نسخة محفوظة من المباريات")
         } else if (slowConnection) {
             KoraxConnectionBanner("الاتصال بطيء • قد يستغرق تحديث المباريات بعض الوقت")
@@ -1274,14 +1284,6 @@ private fun MatchesScreen(
                 }
             }
         }
-        Text(
-            "Powered by SportScore",
-            color = KMuted,
-            fontSize = 8.sp,
-            modifier = Modifier.align(Alignment.CenterHorizontally).clickable {
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://sportscore.com/"))) }
-            }.padding(vertical = 5.dp)
-        )
     }
 
     selectedSummary?.let { match ->
