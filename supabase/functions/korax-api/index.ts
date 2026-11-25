@@ -993,6 +993,90 @@ async function listCanonicalEntities(types, limit, offset) {
   }).filter(Boolean);
 }
 
+async function getWikimediaPlayerPortrait(metadata) {
+  const wikidataId = String(metadata?.wikidataId || metadata?.externalIds?.wikidata || "").trim();
+  if (!/^Q[1-9][0-9]*$/.test(wikidataId)) return null;
+  const cacheKey = "wikimedia-player-portrait:v1:" + wikidataId;
+  const cached = cacheRead(cacheKey);
+  if (cached !== null) return cached || null;
+
+  try {
+    const wikidataUrl = new URL("https://www.wikidata.org/w/api.php");
+    wikidataUrl.search = new URLSearchParams({
+      action: "wbgetclaims",
+      entity: wikidataId,
+      property: "P18",
+      format: "json",
+    }).toString();
+    const wikidataResponse = await fetch(wikidataUrl, {
+      headers: { "User-Agent": "KORAX football app/1.0 (Wikidata and Wikimedia Commons image attribution)" },
+      signal: AbortSignal.timeout(3500),
+    });
+    if (!wikidataResponse.ok) throw new Error("Wikidata image lookup HTTP " + wikidataResponse.status);
+    const wikidata = await wikidataResponse.json();
+    const claims = Array.isArray(wikidata?.claims?.P18) ? wikidata.claims.P18 : [];
+    const claim = claims.find(item =>
+      item?.rank !== "deprecated" && typeof item?.mainsnak?.datavalue?.value === "string"
+    );
+    const fileName = String(claim?.mainsnak?.datavalue?.value || "").trim();
+    if (!fileName) {
+      cacheWrite(cacheKey, false, 86400);
+      return null;
+    }
+
+    const commonsUrl = new URL("https://commons.wikimedia.org/w/api.php");
+    commonsUrl.search = new URLSearchParams({
+      action: "query",
+      format: "json",
+      formatversion: "2",
+      prop: "imageinfo",
+      iiprop: "url|extmetadata",
+      iiurlwidth: "480",
+      titles: "File:" + fileName,
+    }).toString();
+    const commonsResponse = await fetch(commonsUrl, {
+      headers: { "User-Agent": "KORAX football app/1.0 (Wikimedia Commons license verification)" },
+      signal: AbortSignal.timeout(3500),
+    });
+    if (!commonsResponse.ok) throw new Error("Wikimedia Commons image lookup HTTP " + commonsResponse.status);
+    const commons = await commonsResponse.json();
+    const page = Array.isArray(commons?.query?.pages) ? commons.query.pages[0] : null;
+    const info = Array.isArray(page?.imageinfo) ? page.imageinfo[0] : null;
+    const metadataFields = info?.extmetadata || {};
+    const license = htmlText(metadataFields?.LicenseShortName?.value || "").trim();
+    const licenseUrl = String(metadataFields?.LicenseUrl?.value || "").trim();
+    const artist = htmlText(metadataFields?.Artist?.value || metadataFields?.Creator?.value || "").trim();
+    const imageUrl = String(info?.thumburl || info?.url || "").trim();
+    const sourcePageUrl = String(info?.descriptionurl || "").trim();
+    const isAllowedLicense =
+      /^CC BY(?:-SA)? [0-9]+(?:\.[0-9]+)?$/i.test(license) ||
+      /^CC0(?: 1\.0)?$/i.test(license) ||
+      /^public domain$/i.test(license);
+    const needsCredit = /^CC BY/i.test(license);
+    if (!isAllowedLicense || !/^https:\/\//i.test(imageUrl) ||
+        !/^https:\/\//i.test(sourcePageUrl) || !/^https:\/\//i.test(licenseUrl) ||
+        (needsCredit && !artist)) {
+      cacheWrite(cacheKey, false, 86400);
+      return null;
+    }
+    const result = {
+      imageUrl,
+      imageAttribution: artist || "Wikimedia Commons",
+      imageLicense: license,
+      imageLicenseUrl: licenseUrl,
+      imageSourceUrl: sourcePageUrl,
+      imageSource: "Wikimedia Commons",
+      imageFileName: fileName,
+    };
+    cacheWrite(cacheKey, result, 7 * 86400);
+    return result;
+  } catch (error) {
+    console.warn("[korax-wikimedia-portrait] lookup skipped", wikidataId, String(error).slice(0, 180));
+    cacheWrite(cacheKey, false, 1800);
+    return null;
+  }
+}
+
 async function getCanonicalEntityProfile(id) {
   const safeId = String(id || "");
   if (!/^[0-9a-f-]{36}$/i.test(safeId)) return null;
@@ -1013,6 +1097,8 @@ async function getCanonicalEntityProfile(id) {
   const verifiedAssets = (Array.isArray(assetRows) ? assetRows : []).filter(isDisplayableEntityAsset);
   const preferredImage = verifiedAssets.find(asset => asset.is_primary) || verifiedAssets[0] || null;
   const metadata = entity.metadata && typeof entity.metadata === "object" ? entity.metadata : {};
+  const wikimediaPortrait = !preferredImage && (entity.entity_type === "player" || entity.entity_type === "coach")
+    ? await getWikimediaPlayerPortrait(metadata) : null;
   const root = {
     id: entity.id,
     slug: entity.id,
@@ -1022,13 +1108,14 @@ async function getCanonicalEntityProfile(id) {
     country: entity.country_name || entity.country_code || "",
     country_name: entity.country_name || "",
     country_code: entity.country_code || "",
-    imageUrl: preferredImage?.asset_url || "",
-    image_path: preferredImage?.asset_url || "",
-    logoUrl: preferredImage?.asset_url || "",
-    imageAttribution: preferredImage?.attribution_text || preferredImage?.creator || "",
-    imageLicense: preferredImage?.license_code || "",
-    imageLicenseUrl: preferredImage?.license_url || "",
-    imageSourceUrl: preferredImage?.source_page_url || "",
+    imageUrl: preferredImage?.asset_url || wikimediaPortrait?.imageUrl || "",
+    image_path: preferredImage?.asset_url || wikimediaPortrait?.imageUrl || "",
+    logoUrl: preferredImage?.asset_url || wikimediaPortrait?.imageUrl || "",
+    imageAttribution: preferredImage?.attribution_text || preferredImage?.creator || wikimediaPortrait?.imageAttribution || "",
+    imageLicense: preferredImage?.license_code || wikimediaPortrait?.imageLicense || "",
+    imageLicenseUrl: preferredImage?.license_url || wikimediaPortrait?.imageLicenseUrl || "",
+    imageSourceUrl: preferredImage?.source_page_url || wikimediaPortrait?.imageSourceUrl || "",
+    imageSource: preferredImage ? preferredImage.source_key : wikimediaPortrait?.imageSource || "",
     position: facts.playing_position || metadata.position || "",
     position_name: facts.playing_position || metadata.position || "",
     team_name: facts.current_team?.name || facts.current_team || metadata.teamName || "",
