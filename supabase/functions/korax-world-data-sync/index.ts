@@ -142,7 +142,7 @@ Deno.serve(async request => {
       if (!run?.source_key) continue;
       const current = healthBySource.get(run.source_key) || {};
       healthBySource.set(run.source_key, {
-        health_status: run.status === "success" ? "healthy" : run.status === "partial" ? "degraded" : run.status === "failed" ? "offline" : "unknown",
+        health_status: run.status === "success" ? "healthy" : run.status === "partial" ? "degraded" : run.status === "failed" ? "offline" : run.status === "skipped" ? "disabled" : "unknown",
         last_success_at: run.status === "success" ? run.finished_at || new Date().toISOString() : current.last_success_at,
         last_error_at: run.status === "failed" || run.status === "partial" ? run.finished_at || new Date().toISOString() : null,
         last_error: run.error_summary || null,
