@@ -1100,10 +1100,10 @@ private fun readMatchCache(context: Context, status: String, date: String): List
         val away = item.optString("away")
         if (id.isBlank() || home.isBlank() || away.isBlank()) return@mapNotNull null
         MatchItem(
-            id = id, home = home, away = away,
+            id = id, home = arabicFootballName(home), away = arabicFootballName(away),
             homeLogo = item.optString("homeLogo"), awayLogo = item.optString("awayLogo"),
             score = item.optString("score", "VS"), status = item.optString("status"),
-            kickoff = item.optString("kickoff"), league = item.optString("league"),
+            kickoff = item.optString("kickoff"), league = arabicFootballName(item.optString("league")),
             detailsAvailable = item.optBoolean("detailsAvailable"),
             sourceName = item.optString("sourceName"), sourceLicense = item.optString("sourceLicense"),
             sourceUrl = item.optString("sourceUrl")
@@ -1306,15 +1306,7 @@ private fun MatchesScreen(
                         border = BorderStroke(1.dp, KBorder)
                     ) {
                         Column(Modifier.padding(horizontal = 11.dp, vertical = 10.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    if (match.detailsAvailable) "التفاصيل متاحة" else " ",
-                                    color = KMuted, fontSize = 8.sp, fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.weight(1f), maxLines = 1
-                                )
-                                Text(displayKickoff(match.kickoff), color = KMuted, fontSize = 9.sp)
-                            }
-                            Spacer(Modifier.height(10.dp))
+                            Spacer(Modifier.height(4.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                                     if (showImages && match.homeLogo.isNotBlank()) {
