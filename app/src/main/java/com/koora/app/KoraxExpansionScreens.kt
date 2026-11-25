@@ -1663,11 +1663,17 @@ private fun MatchLineupSide(
                                                     .background(Color(0xFF0A4C39).copy(alpha = .92f)).padding(5.dp),
                                                 horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
-                                                if (image.startsWith("https://")) {
-                                                    coil.compose.AsyncImage(image, name, Modifier.size(26.dp).clip(CircleShape), contentScale = ContentScale.Crop)
-                                                } else {
-                                                    Box(Modifier.size(26.dp).clip(CircleShape).background(Color.White.copy(alpha = .16f)), contentAlignment = Alignment.Center) {
-                                                        Text(number.ifBlank { name.take(1) }, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                Box(
+                                                    Modifier.size(26.dp).clip(CircleShape).background(Color.White.copy(alpha = .16f)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(number.ifBlank { name.take(1) }, color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                    if (image.startsWith("https://")) {
+                                                        coil.compose.AsyncImage(
+                                                            image, name,
+                                                            Modifier.fillMaxSize().clip(CircleShape),
+                                                            contentScale = ContentScale.Crop
+                                                        )
                                                     }
                                                 }
                                                 Spacer(Modifier.height(3.dp))
