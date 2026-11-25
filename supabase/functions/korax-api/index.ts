@@ -1472,7 +1472,33 @@ async function route(request, env) {
       "uefa-champions-league": "uefa-champions-league",
       "egyptian-premier-league": "egyptian-premier-league",
     };
-    const providerSlug = providerSlugs[requestedSlug] || requestedSlug;
+    const providerNameSlugs: Record<string, string> = {
+      "english premier league": "premier-league",
+      "premier league": "premier-league",
+      "spanish la liga": "la-liga",
+      "la liga": "la-liga",
+      "french ligue 1": "ligue-1",
+      "ligue 1": "ligue-1",
+      "italian serie a": "serie-a",
+      "serie a": "serie-a",
+      "bundesliga": "bundesliga",
+      "saudi professional league": "saudi-pro-league",
+      "saudi pro league": "saudi-pro-league",
+      "uefa champions league": "uefa-champions-league",
+      "uefa europa league": "uefa-europa-league",
+      "uefa europa conference league": "uefa-conference-league",
+      "egyptian premier league": "egyptian-premier-league",
+      "eredivisie": "eredivisie",
+      "primeira liga": "primeira-liga",
+      "turkish super lig": "super-lig",
+    };
+    const requestedName = (url.searchParams.get("name") || "").trim();
+    const normalizedProviderName = normalizeSearchText(requestedName);
+    const generatedSlug = normalizedProviderName
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const providerSlug = providerSlugs[requestedSlug] ||
+      providerNameSlugs[normalizedProviderName] ||
+      (requestedSlug.startsWith("cached-competition-") && generatedSlug ? generatedSlug : requestedSlug);
     const endpoint = path === "/api/standings" ? "/api/widget/standings/" :
       path === "/api/topscorers" ? "/api/widget/topscorers/" : "/api/widget/bracket/";
     const params: Record<string, string | number> = { sport: "football", slug: providerSlug, src: "korax-android" };
