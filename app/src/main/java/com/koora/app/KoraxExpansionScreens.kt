@@ -1336,7 +1336,7 @@ private fun MatchDetailContent(match: JSONObject) {
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(score, color = XText, fontSize = 29.sp, fontWeight = FontWeight.Black)
-                        Text(match.optString("status").ifBlank { "الحالة غير متاحة" }, color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(localizeMatchStatus(match.optString("status")), color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         if (awayLogo.isNotBlank()) {
@@ -1406,11 +1406,22 @@ private fun MatchDetailContent(match: JSONObject) {
                     repeat(events.length()) { index ->
                         val row = events.optJSONObject(index) ?: return@repeat
                         val minute = row.readText("minute").ifBlank { "—" }
-                        val type = row.readText("type_name", "type").ifBlank { "حدث" }
+                        val rawType = row.readText("type_name", "type").lowercase(Locale.ROOT)
+                        val type = when {
+                            rawType.contains("goal") || rawType.contains("هدف") -> "هدف"
+                            rawType.contains("yellow") || rawType.contains("أصفر") || rawType.contains("اصفر") -> "بطاقة صفراء"
+                            rawType.contains("red card") || rawType.contains("أحمر") || rawType.contains("احمر") -> "بطاقة حمراء"
+                            rawType.contains("substitution") || rawType.contains("sub ") || rawType.contains("تبديل") -> "تبديل"
+                            rawType.contains("penalty") || rawType.contains("جزاء") -> "ركلة جزاء"
+                            rawType.contains("offside") || rawType.contains("تسلل") -> "تسلل"
+                            rawType.contains("var") -> "مراجعة تقنية الفيديو"
+                            rawType.isBlank() -> "حدث"
+                            else -> row.readText("type_name", "type")
+                        }
                         val player = row.readText("player_name", "player")
                         val playerImage = row.readImage("player_image_url", "player_image", "playerImage", "imageUrl", "photo_url", "avatar_url")
                         val detail = row.readText("detail")
-                        val kind = type.lowercase(Locale.ROOT)
+                        val kind = rawType
                         val eventSymbol = when {
                             kind.contains("goal") || kind.contains("هدف") -> "⚽"
                             kind.contains("yellow") || kind.contains("أصفر") || kind.contains("اصفر") -> "🟨"
@@ -1510,7 +1521,7 @@ private fun MatchDetailContent(match: JSONObject) {
                 val referee = match.optJSONObject("referee")?.optString("name").orEmpty()
                 val details = listOf(
                     "البطولة" to competitionName,
-                    "الحالة" to match.optString("status"),
+                    "الحالة" to localizeMatchStatus(match.optString("status")),
                     "الموعد" to match.readText("startTime", "kickoff", "date"),
                     "الملعب" to venue,
                     "الحكم" to referee
