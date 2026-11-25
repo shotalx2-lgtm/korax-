@@ -1540,17 +1540,18 @@ async function route(request, env) {
     if (!canonicalId && !/^[a-z0-9-]{2,80}$/.test(requestedSlug)) {
       return json({ error: "A valid competition slug is required", data: [] }, 400);
     }
-    const canonicalCompetition = canonicalId ? await getCanonicalEntityProfile(requestedSlug) : null;
-    if (canonicalId && !canonicalCompetition) {
+    const canonicalCompetitionResponse = canonicalId ? await getCanonicalEntityProfile(requestedSlug) : null;
+    if (canonicalId && !canonicalCompetitionResponse) {
       return json({ error: "Competition is not in the KORAX catalogue", data: [] }, 404);
     }
+    const canonicalCompetition = canonicalCompetitionResponse?.competition ||
+      canonicalCompetitionResponse?.league || canonicalCompetitionResponse || null;
     const requestedName = (url.searchParams.get("name") ||
       canonicalCompetition?.name_en || canonicalCompetition?.canonical_name ||
       canonicalCompetition?.name || "").trim();
     const normalizedCompetitionNames = [
       requestedName, canonicalCompetition?.name, canonicalCompetition?.name_en,
       canonicalCompetition?.canonical_name,
-      ...(Array.isArray(canonicalCompetition?.aliases) ? canonicalCompetition.aliases : []),
     ].map(normalizeSearchText).filter(Boolean);
     const storedCompetitions = await dbRows(
       "/rest/v1/korax_sportscore_competitions?select=slug,name,country,standings,updated_at&limit=100"
@@ -1657,10 +1658,12 @@ async function route(request, env) {
     if (!["goals", "assists"].includes(stat)) {
       return json({ error: "stat must be goals or assists", data: [] }, 400);
     }
-    const canonicalCompetition = canonicalId ? await getCanonicalEntityProfile(requestedSlug) : null;
-    if (canonicalId && !canonicalCompetition) {
+    const canonicalCompetitionResponse = canonicalId ? await getCanonicalEntityProfile(requestedSlug) : null;
+    if (canonicalId && !canonicalCompetitionResponse) {
       return json({ error: "Competition is not in the KORAX catalogue", data: [] }, 404);
     }
+    const canonicalCompetition = canonicalCompetitionResponse?.competition ||
+      canonicalCompetitionResponse?.league || canonicalCompetitionResponse || null;
     const requestedName = normalizeSearchText(url.searchParams.get("name") ||
       canonicalCompetition?.name_en || canonicalCompetition?.canonical_name ||
       canonicalCompetition?.name || requestedSlug.replace(/-/g, " "));
