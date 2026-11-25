@@ -32,6 +32,7 @@ jobs:
         run: |
           deno check supabase/functions/korax-world-data-sync/index.ts
           deno check supabase/functions/korax-sportscore-sync/index.ts
+          deno check supabase/functions/korax-api/index.ts
 
       - name: Test football data worker
         working-directory: worker
