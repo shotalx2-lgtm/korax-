@@ -9,6 +9,16 @@ const SOURCE_INFO = {
     license: "CC0-1.0",
     url: "https://github.com/openfootball/football.json",
   },
+  football_data_org: {
+    name: "Football-Data.org",
+    license: "Free-tier API terms; attribution required",
+    url: "https://www.football-data.org/",
+  },
+  api_football: {
+    name: "API-Football",
+    license: "API-Football terms; separate publication rights required",
+    url: "https://www.api-football.com/terms",
+  },
 };
 
 const MAIN_COMPETITIONS = new Set([
@@ -50,11 +60,21 @@ function dateOf(value) {
     .slice(0, 10);
 }
 
+function normalizeCompetition(value) {
+  return normalizeText(value)
+    .replace(/\b20\d{2}\s*[/-]\s*\d{2,4}\b/g, " ")
+    .replace(/\b20\d{2}\b/g, " ")
+    .replace(/\b(english|german|italian|french|spanish)\s+(premier league|bundesliga|serie a|ligue 1|la liga)\b/g, "$2")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function fixtureKey(value) {
   const date = dateOf(value);
+  const competition = normalizeCompetition(value?.competitionName || value?.competition?.name || value?.competition_name || value?.league);
   const home = normalizeTeam(value?.home || value?.home_team || value?.home_team_name || value?.homeTeam?.name);
   const away = normalizeTeam(value?.away || value?.away_team || value?.away_team_name || value?.awayTeam?.name);
-  return date && home && away ? date + "|" + home + "|" + away : "";
+  return date && competition && home && away ? date + "|" + competition + "|" + home + "|" + away : "";
 }
 
 function isMainCompetition(value) {
@@ -134,7 +154,7 @@ export function mergeSupplementalMatchFeed(primaryMatches, supplementalRows, opt
         : row?.is_live !== true)
     .slice()
     .sort((a, b) => {
-      const rank = value => value?.source_key === "openligadb" ? 0 : 1;
+      const rank = value => value?.source_key === "openligadb" ? 0 : value?.source_key === "football_data_org" ? 1 : value?.source_key === "openfootball" ? 2 : 3;
       return rank(a) - rank(b);
     })
     .map(mapSupplementalMatch)
@@ -153,6 +173,7 @@ export function mergeSupplementalMatchFeed(primaryMatches, supplementalRows, opt
 export const supplementalMatchInternals = {
   normalizeText,
   normalizeTeam,
+  normalizeCompetition,
   fixtureKey,
   isMainCompetition,
   mapSupplementalMatch,
