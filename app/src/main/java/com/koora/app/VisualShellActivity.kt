@@ -1147,23 +1147,26 @@ private fun MatchesScreen(
                 )
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("تاريخ المباريات", color = KMuted, fontSize = 10.sp, modifier = Modifier.weight(1f))
-            TextButton(onClick = {
-                onChooseDate(runCatching { LocalDate.parse(selectedDate).minusDays(1).toString() }.getOrDefault(todayIso()))
-            }) { Text("‹ السابق", color = KLime, fontSize = 10.sp) }
-            TextButton(onClick = {
-                onChooseDate(runCatching { LocalDate.parse(selectedDate).plusDays(1).toString() }.getOrDefault(todayIso()))
-            }) { Text("التالي ›", color = KLime, fontSize = 10.sp) }
+        if (!isOnline) {
+            KoraxConnectionBanner(if (matches.isNotEmpty()) "أنت غير متصل • نعرض آخر مباريات محفوظة على جهازك" else "لا يوجد اتصال • اتصل بالإنترنت لتحميل المباريات")
+        } else if (error.isNotBlank() && matches.isNotEmpty()) {
+            KoraxConnectionBanner("تعذر التحديث • نعرض آخر نسخة محفوظة من المباريات")
+        } else if (slowConnection) {
+            KoraxConnectionBanner("الاتصال بطيء • قد يستغرق تحديث المباريات بعض الوقت")
         }
         when {
-            loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            loading && matches.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = KLime)
             }
-            error.isNotBlank() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                StateCard("تعذر تحميل المباريات", "$error\nحاول التحديث مرة أخرى.", "⚽")
+            matches.isEmpty() && error.isNotBlank() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                StateCard(
+                    if (!isOnline) "أنت غير متصل بالإنترنت" else "تعذر تحميل المباريات",
+                    if (!isOnline) "عند عودة الاتصال ستُحمّل المباريات تلقائيًا. اضغط زر التحديث بعد الاتصال."
+                    else "تعذر الوصول إلى خدمة المباريات. حاول مرة أخرى بعد قليل.",
+                    "⚽"
+                )
             }
-            matches.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+            matches.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 val emptyTitle = when (statusTab) {
                     "live" -> "لا توجد مباريات مباشرة الآن"
                     "finished" -> "لا توجد مباريات منتهية في هذا التاريخ"
@@ -1228,9 +1231,10 @@ private fun MatchesScreen(
                                 }
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
-                                        match.score,
+                                        if (statusTab == "upcoming") displayKickoffTime(match.kickoff) else match.score,
                                         color = if (statusTab == "live") Color(0xFFFF596D) else KLime,
-                                        fontSize = 20.sp, fontWeight = FontWeight.Black,
+                                        fontSize = if (statusTab == "upcoming") 14.sp else 20.sp,
+                                        fontWeight = FontWeight.Black,
                                         modifier = Modifier.padding(horizontal = 8.dp)
                                     )
                                     Text(match.status, color = KMuted, fontSize = 9.sp)
@@ -1298,6 +1302,15 @@ private fun MatchesScreen(
             },
             confirmButton = { TextButton(onClick = { selectedSummary = null }) { Text("إغلاق", color = KLime) } },
             containerColor = KCard
+        )
+    }
+    if (showDatePicker) {
+        KoraxDatePickerDialog(
+            onDismiss = { showDatePicker = false },
+            onSelect = { date ->
+                showDatePicker = false
+                onChooseDate(date)
+            }
         )
     }
 }
