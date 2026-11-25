@@ -388,7 +388,7 @@ internal fun KoraxStatisticsHubPage(
                             trailingIcon = {
                                 if (competitionQuery.isNotBlank()) {
                                     IconButton(onClick = { competitionQuery = "" }) {
-                                        Icon(Icons.Filled.Close, contentDescription = "مسح", tint = XMuted)
+                                        Text("×", color = XMuted, fontSize = 22.sp)
                                     }
                                 }
                             }
@@ -420,7 +420,7 @@ internal fun KoraxStatisticsHubPage(
                                             Text(suggestion.name, color = XText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                             Text(suggestion.country.ifBlank { "بطولة أو دوري" }, color = XMuted, fontSize = 8.sp)
                                         }
-                                        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = XAccent)
+                                        Text("›", color = XAccent, fontSize = 20.sp)
                                     }
                                 }
                             }
