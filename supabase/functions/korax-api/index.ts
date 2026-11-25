@@ -1482,7 +1482,7 @@ async function route(request, env) {
       const imageUrl = badges.get(item.slug) || "";
       return { ...item, kind: item.slug === "uefa-champions-league" ? "tournament" : "league", imageUrl, logoUrl: imageUrl };
     });
-    if (search.length >= 2) {
+    if (search.length >= 1) {
       const [canonical, cached] = await Promise.all([
         searchCanonicalEntities(search, ["league", "tournament"], perPage),
         searchCachedCompetitions(search, perPage),
