@@ -1463,7 +1463,7 @@ async function route(request, env) {
     if (!/^[a-z0-9-]{2,80}$/.test(requestedSlug)) {
       return json({ error: "A valid competition slug is required", data: [] }, 400);
     }
-    const providerSlugs = {
+    const providerSlugs: Record<string, string> = {
       "english-premier-league": "premier-league",
       "spanish-la-liga": "la-liga",
       "french-ligue-1": "ligue-1",
@@ -1475,7 +1475,7 @@ async function route(request, env) {
     const providerSlug = providerSlugs[requestedSlug] || requestedSlug;
     const endpoint = path === "/api/standings" ? "/api/widget/standings/" :
       path === "/api/topscorers" ? "/api/widget/topscorers/" : "/api/widget/bracket/";
-    const params = { sport: "football", slug: providerSlug, src: "korax-android" };
+    const params: Record<string, string | number> = { sport: "football", slug: providerSlug, src: "korax-android" };
     if (path === "/api/topscorers") {
       const stat = (url.searchParams.get("stat") || "goals").toLowerCase();
       if (!["goals", "assists"].includes(stat)) {
