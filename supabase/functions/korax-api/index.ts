@@ -128,11 +128,17 @@ function participantLocation(participant) {
 }
 
 function normalizeParticipant(participant) {
+  const crest = httpsImage(
+    participant, participant?.image_path, participant?.image_url, participant?.imageUrl,
+    participant?.logoUrl, participant?.logo_url, participant?.logo,
+    participant?.crest, participant?.crestUrl, participant?.badge, participant?.emblem
+  );
   return {
     id: String(participant?.id ?? ""),
     name: participant?.name || "اسم غير متاح",
-    crest: participant?.image_path || participant?.logoUrl || "",
-    logoUrl: participant?.image_path || participant?.logoUrl || "",
+    crest,
+    logoUrl: crest,
+    imageUrl: crest,
     country: nestedName(participant?.country),
     venue: nestedName(participant?.venue),
   };
@@ -173,6 +179,7 @@ function httpsImage(...values) {
     "url", "src", "original", "large", "medium", "small",
     "imageUrl", "image_url", "image_path", "image", "photo_url", "photo", "picture", "avatar_url",
     "profile_image", "profileImage", "portrait", "headshot",
+    "logoUrl", "logo_url", "logo", "crest", "crestUrl", "badge", "emblem",
   ];
   for (const candidate of values) {
     const value = typeof candidate === "string"
