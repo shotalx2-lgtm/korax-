@@ -812,6 +812,22 @@ private fun rosterItems(value: JSONObject): List<KoraxFavorite> {
     return emptyList()
 }
 
+private fun profileTrophyNames(root: JSONObject): List<String> {
+    val keys = listOf("trophies", "honours", "honors", "titles", "awards")
+    for (key in keys) {
+        val array = root.optJSONArray(key) ?: continue
+        val values = (0 until array.length()).mapNotNull { index ->
+            when (val item = array.opt(index)) {
+                is JSONObject -> item.firstString("name", "title", "trophy_name", "competition_name", "competition", "label")
+                is String -> item.trim()
+                else -> ""
+            }.takeIf { it.isNotBlank() }
+        }.distinct().take(40)
+        if (values.isNotEmpty()) return values
+    }
+    return emptyList()
+}
+
 @Composable
 internal fun KoraxEntityProfileScreen(
     favorite: KoraxFavorite,
@@ -846,6 +862,7 @@ internal fun KoraxEntityProfileScreen(
     val root = profile
     val image = root?.let(::findProfileImage).orEmpty().ifBlank { favorite.imageUrl }
     val facts = root?.let(::collectProfileFacts).orEmpty()
+    val trophies = root?.let(::profileTrophyNames).orEmpty()
     val roster = root?.let(::rosterItems).orEmpty()
 
     Column(Modifier.fillMaxSize().background(DBg)) {
@@ -980,6 +997,26 @@ internal fun KoraxEntityProfileScreen(
                             ) {
                                 Text(fact.label, color = DMuted, fontSize = 10.sp, modifier = Modifier.weight(1f))
                                 Text(fact.value, color = DText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+                if (trophies.isNotEmpty()) {
+                    Text("الألقاب والإنجازات", color = DText, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DCard),
+                        border = BorderStroke(1.dp, DBorder),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 7.dp)) {
+                            trophies.forEachIndexed { index, trophy ->
+                                Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("🏆", fontSize = 14.sp)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(trophy, color = DText, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                                }
+                                if (index < trophies.lastIndex) Divider(color = DBorder)
                             }
                         }
                     }
