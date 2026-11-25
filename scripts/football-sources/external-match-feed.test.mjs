@@ -111,3 +111,37 @@ test("suppresses explicit canonical source links even when provider naming diffe
   assert.equal(result.length, 1);
   assert.equal(result[0].id, "sportscore-main-id");
 });
+
+test("maps Football-Data.org supplemental fixtures with visible source attribution", () => {
+  const row = baseRow({
+    source_key: "football_data_org",
+    external_id: "fd-991",
+    competition_name: "Premier League",
+    home_team_name: "Arsenal",
+    away_team_name: "Chelsea",
+    home_score: 2,
+    away_score: 1,
+    raw_payload: {},
+  });
+  const [match] = mergeSupplementalMatchFeed([], [row], { mode: "finished", scope: "main" });
+  assert.equal(match.sourceName, "Football-Data.org");
+  assert.match(match.sourceLicense, /attribution required/i);
+  assert.equal(match.detailAvailable, false);
+});
+
+test("keeps competitions distinct when the same clubs meet on the same date", () => {
+  const league = baseRow({
+    external_id: "league",
+    competition_name: "Premier League",
+    home_team_name: "Arsenal",
+    away_team_name: "Chelsea",
+  });
+  const cup = baseRow({
+    external_id: "cup",
+    competition_name: "FA Cup",
+    home_team_name: "Arsenal",
+    away_team_name: "Chelsea",
+  });
+  const result = mergeSupplementalMatchFeed([], [league, cup], { mode: "finished", scope: "all" });
+  assert.equal(result.length, 2);
+});
