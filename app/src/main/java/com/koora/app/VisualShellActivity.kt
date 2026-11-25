@@ -314,7 +314,7 @@ private suspend fun loadTransfers(): List<TransferItem> {
     }
 }
 
-private fun localizeMatchStatus(raw: String): String {
+internal fun localizeMatchStatus(raw: String): String {
     val value = raw.lowercase(Locale.ROOT).replace("_", " ").trim()
     return when {
         value.contains("live") || value.contains("in play") || value.contains("inplay") -> "مباشر"
