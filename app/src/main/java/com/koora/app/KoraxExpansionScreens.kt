@@ -249,6 +249,7 @@ internal fun KoraxStatisticsHubPage(
         var loadingCompetitions by remember { mutableStateOf(true) }
         var loadingRows by remember { mutableStateOf(false) }
         var error by remember { mutableStateOf("") }
+        var sourceNote by remember { mutableStateOf("") }
         var competitionQuery by rememberSaveable { mutableStateOf("") }
         var searchingCompetitions by remember { mutableStateOf(false) }
         var refreshKey by rememberSaveable { mutableIntStateOf(0) }
@@ -300,8 +301,17 @@ internal fun KoraxStatisticsHubPage(
                 "assists" -> "/api/topscorers?slug=${selectedSlug.urlEncoded()}&name=$providerNameQuery&stat=assists&limit=30"
                 else -> "/api/standings?slug=${selectedSlug.urlEncoded()}&name=$providerNameQuery"
             }
+            sourceNote = ""
             val result = runCatching {
                 val payload = apiJson(path)
+                sourceNote = payload.optJSONObject("meta")?.optString("note").orEmpty().ifBlank {
+                    when (payload.optString("source")) {
+                        "sportscore-supabase-cache" -> "جدول محفوظ من بيانات مزود النتائج."
+                        "korax-match-cache-derived" -> "ترتيب محسوب من النتائج المنتهية المحفوظة، وليس جدول الموسم الرسمي الكامل."
+                        "korax-player-index-cache" -> "الإحصاءات مستخرجة من أحداث المباريات التي تتوفر تفاصيلها في قاعدة KORAX."
+                        else -> ""
+                    }
+                }
                 val root = payload.opt("data") ?: payload
                 val candidates = when (metric) {
                     "goals", "assists" -> setOf("players", "topscorers", "top_scorers", "scorers", "leaders", "data", "results", "items")
@@ -316,8 +326,8 @@ internal fun KoraxStatisticsHubPage(
 
         Column(Modifier.fillMaxSize().background(XBg)) {
             ToolHeader(
-                "مركز الإحصائيات",
-                "ترتيب الدوريات والهدافون وصنّاع الأهداف",
+                "ترتيب الدوريات",
+                "جداول البطولات والهدافون وصنّاع الأهداف",
                 onBack = onBack,
                 onRefresh = { refreshKey += 1 }
             )
@@ -423,15 +433,25 @@ internal fun KoraxStatisticsHubPage(
                     }
                 }
 
-                Spacer(Modifier.height(10.dp))
+                if (sourceNote.isNotBlank()) {
+                    Card(
+                        Modifier.fillMaxWidth().padding(bottom = 9.dp),
+                        colors = CardDefaults.cardColors(containerColor = XCard),
+                        border = BorderStroke(1.dp, XBorder),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(sourceNote, color = XMuted, fontSize = 9.sp, lineHeight = 15.sp, modifier = Modifier.padding(10.dp))
+                    }
+                }
+                Spacer(Modifier.height(3.dp))
                 when {
                     loadingRows -> Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = XAccent)
                     }
                     error.isNotBlank() -> InfoPanel("تعذر تحميل الأرقام", error)
                     rows.isEmpty() -> InfoPanel(
-                        "لا توجد بيانات متاحة لهذه البطولة الآن",
-                        "قد لا يوفر المصدر جدولًا أو قائمة هدافين لهذه المسابقة في الوقت الحالي. جرّب بطولة أخرى أو حدّث الصفحة."
+                        "لم يكتمل سجل هذه البطولة في قاعدة البيانات",
+                        "لا نعرض ترتيبًا أو قائمة هدافين من أرقام مخمّنة. جرّب بطولة أخرى أو افتح ملف النادي أو اللاعب للاطلاع على المعلومات المتاحة."
                     )
                     metric == "standings" -> {
                         Text("جدول الترتيب", color = XText, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
@@ -457,12 +477,12 @@ internal fun KoraxStatisticsHubPage(
                                         Modifier.fillMaxWidth().padding(vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(row.koraxStatText("position", "rank", "place").ifBlank { (index + 1).toString() }, color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                                        Text(row.koraxStatText("position", "rank", "place", "pos").ifBlank { (index + 1).toString() }, color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
                                         Text(row.koraxStatText("team_name", "teamName", "name", "participant_name", "team", "participant").ifBlank { "فريق غير محدد" }, color = XText, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(row.koraxStatText("played", "matches", "played_matches", "games").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(30.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                        Text(row.koraxStatText("won", "wins", "won_matches").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                        Text(row.koraxStatText("draw", "draws", "drawn").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                        Text(row.koraxStatText("lost", "losses", "lost_matches").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                        Text(row.koraxStatText("played", "matches", "played_matches", "games", "p").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(30.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                        Text(row.koraxStatText("won", "wins", "won_matches", "w").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                        Text(row.koraxStatText("draw", "draws", "drawn", "d").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                                        Text(row.koraxStatText("lost", "losses", "lost_matches", "l").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                                         Text(row.koraxStatText("points", "pts").ifBlank { "—" }, color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(42.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
                                     }
                                     Divider(color = XBorder.copy(alpha = .65f))
