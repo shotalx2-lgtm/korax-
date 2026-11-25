@@ -314,7 +314,7 @@ private suspend fun loadTransfers(): List<TransferItem> {
     }
 }
 
-internal fun localizeMatchStatus(raw: String): String {
+internal fun localizeVisualMatchStatus(raw: String): String {
     val value = raw.lowercase(Locale.ROOT).replace("_", " ").trim()
     return when {
         value.contains("live") || value.contains("in play") || value.contains("inplay") -> "مباشر"
@@ -440,7 +440,7 @@ private suspend fun loadMatches(mode: String, selectedDate: String): List<MatchI
             h?.firstHttps("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
             a?.firstHttps("crest", "logoUrl", "imageUrl", "image_path", "image_url", "logo", "logo_url", "badge").orEmpty(),
             score,
-            localizeMatchStatus(x.optString("status", "غير متاحة")),
+            localizeVisualMatchStatus(x.optString("status", "غير متاحة")),
             x.optString("startTime"),
             arabicFootballName(x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") }),
             detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false),
