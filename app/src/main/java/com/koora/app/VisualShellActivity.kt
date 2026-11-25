@@ -166,51 +166,63 @@ class VisualShellActivity : ComponentActivity() {
     }
 }
 
+
 @Composable
 private fun KoraxSplash(initialNotificationRoute: KoraxNotificationRoute?) {
     var intro by rememberSaveable { mutableStateOf(true) }
     val logoScale = remember { Animatable(0.88f) }
+    val glowAlpha = remember { Animatable(0.22f) }
     LaunchedEffect(Unit) {
-        logoScale.animateTo(1f, animationSpec = tween(520))
-        kotlinx.coroutines.delay(380)
+        kotlinx.coroutines.coroutineScope {
+            launch { logoScale.animateTo(1f, animationSpec = tween(620)) }
+            launch {
+                glowAlpha.animateTo(0.60f, animationSpec = tween(850))
+                glowAlpha.animateTo(0.28f, animationSpec = tween(850))
+            }
+        }
+        delay(420L)
         intro = false
     }
     if (intro) {
         Box(
             Modifier.fillMaxSize().background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF101A12), Color(0xFF050807), Color(0xFF000000))
-                )
+                Brush.verticalGradient(listOf(Color(0xFF121B13), Color(0xFF080C09), Color(0xFF020303)))
             ),
             contentAlignment = Alignment.Center
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Image(
-                    painter = painterResource(R.drawable.korax_brand),
-                    contentDescription = "KORAX",
-                    modifier = Modifier.size(184.dp).scale(logoScale.value),
-                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
-                )
-                Spacer(Modifier.height(18.dp))
-                Text(
-                    "كرة القدم بين يديك",
-                    color = Color.White,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.ExtraBold
-                )
+            Box(
+                Modifier.size(258.dp).clip(CircleShape)
+                    .background(Color(0xFFD5FF00).copy(alpha = glowAlpha.value * 0.08f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    modifier = Modifier.size(202.dp),
+                    shape = CircleShape,
+                    color = Color(0xFF0B120D),
+                    border = BorderStroke(1.dp, Color(0xFFD5FF00).copy(alpha = glowAlpha.value))
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Image(
+                            painter = painterResource(R.drawable.korax_brand),
+                            contentDescription = "شعار كوراكس",
+                            modifier = Modifier.size(150.dp).scale(logoScale.value),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                        )
+                    }
+                }
+            }
+            Column(
+                Modifier.align(Alignment.BottomCenter).padding(bottom = 110.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("كرة القدم بين يديك", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(7.dp))
-                Text(
-                    "مباريات مباشرة • أخبار • بطولات",
+                Text("مباريات مباشرة  •  أخبار  •  بطولات", color = Color(0xFFD5FF00), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(20.dp))
+                CircularProgressIndicator(
+                    modifier = Modifier.size(19.dp),
                     color = Color(0xFFD5FF00),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.1.sp
-                )
-                Spacer(Modifier.height(28.dp))
-                Box(
-                    Modifier.width(44.dp).height(3.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFD5FF00))
+                    strokeWidth = 2.dp
                 )
             }
         }
@@ -325,14 +337,95 @@ private fun displayKickoff(raw: String): String {
     return parsed ?: raw
 }
 
+
+private val arabicFootballNameOverrides = mapOf(
+    "arsenal" to "أرسنال", "fc arsenal" to "أرسنال",
+    "manchester city" to "مانشستر سيتي", "manchester city fc" to "مانشستر سيتي",
+    "manchester united" to "مانشستر يونايتد", "manchester united fc" to "مانشستر يونايتد",
+    "liverpool" to "ليفربول", "liverpool fc" to "ليفربول", "fc liverpool" to "ليفربول",
+    "chelsea" to "تشيلسي", "chelsea fc" to "تشيلسي",
+    "tottenham" to "توتنهام", "tottenham hotspur" to "توتنهام",
+    "aston villa" to "أستون فيلا", "newcastle united" to "نيوكاسل يونايتد",
+    "real madrid" to "ريال مدريد", "real betis" to "ريال بيتيس",
+    "barcelona" to "برشلونة", "fc barcelona" to "برشلونة",
+    "atletico madrid" to "أتلتيكو مدريد", "atlético madrid" to "أتلتيكو مدريد",
+    "athletic bilbao" to "أتلتيك بلباو", "villarreal" to "فياريال", "villarreal cf" to "فياريال",
+    "bayern munich" to "بايرن ميونخ", "fc bayern munchen" to "بايرن ميونخ",
+    "borussia dortmund" to "بوروسيا دورتموند", "bayer leverkusen" to "باير ليفركوزن",
+    "bayer 04 leverkusen" to "باير ليفركوزن", "rb leipzig" to "لايبزيغ",
+    "inter milan" to "إنتر ميلان", "inter mailand" to "إنتر ميلان",
+    "ac milan" to "ميلان", "juventus" to "يوفنتوس", "juventus fc" to "يوفنتوس",
+    "napoli" to "نابولي", "ssc napoli" to "نابولي", "roma" to "روما", "as roma" to "روما",
+    "paris saint germain" to "باريس سان جيرمان", "paris st germain" to "باريس سان جيرمان", "psg" to "باريس سان جيرمان",
+    "ajax" to "أياكس", "afc ajax" to "أياكس", "benfica" to "بنفيكا", "fc porto" to "بورتو",
+    "sporting cp" to "سبورتينغ لشبونة", "feyenoord rotterdam" to "فينورد",
+    "fenerbahce sk" to "فنربخشة", "galatasaray istanbul" to "غلطة سراي",
+    "al ahly" to "الأهلي", "al-ahly" to "الأهلي", "zamalek" to "الزمالك",
+    "pyramids" to "بيراميدز", "al ittihad" to "الاتحاد", "al hilal" to "الهلال",
+    "al nassr" to "النصر", "al shabab" to "الشباب", "al ettifaq" to "الاتفاق",
+    "premier league" to "الدوري الإنجليزي الممتاز", "english premier league" to "الدوري الإنجليزي الممتاز",
+    "la liga" to "الدوري الإسباني", "spanish la liga" to "الدوري الإسباني",
+    "bundesliga" to "الدوري الألماني", "german bundesliga" to "الدوري الألماني",
+    "serie a" to "الدوري الإيطالي", "italian serie a" to "الدوري الإيطالي",
+    "ligue 1" to "الدوري الفرنسي", "french ligue 1" to "الدوري الفرنسي",
+    "saudi professional league" to "دوري روشن السعودي", "saudi arabian pro league" to "دوري روشن السعودي",
+    "egyptian premier league" to "الدوري المصري الممتاز", "eredivisie" to "الدوري الهولندي",
+    "uefa champions league" to "دوري أبطال أوروبا", "champions league" to "دوري أبطال أوروبا",
+    "uefa europa league" to "الدوري الأوروبي", "uefa europa conference league" to "دوري المؤتمر الأوروبي",
+    "english championship" to "دوري البطولة الإنجليزية", "brasileiro serie a" to "الدوري البرازيلي",
+    "copa del rey" to "كأس ملك إسبانيا", "coppa italia" to "كأس إيطاليا",
+    "dfb pokal" to "كأس ألمانيا", "coupe de france" to "كأس فرنسا",
+    "saudi king cup" to "كأس الملك السعودي", "saudi super cup" to "كأس السوبر السعودي"
+)
+
+private fun arabicFootballName(raw: String): String {
+    val value = raw.trim()
+    if (value.isBlank() || value.any { it in '\u0600'..'\u06FF' }) return value
+    val key = value.lowercase(Locale.ROOT)
+        .replace("ä", "a").replace("ö", "o").replace("ü", "u")
+        .replace("ß", "ss")
+        .replace(Regex("[^a-z0-9]+"), " ").trim().replace(Regex("\\s+"), " ")
+    arabicFootballNameOverrides[key]?.let { return it }
+
+    val pairs = listOf(
+        "sch" to "ش", "sh" to "ش", "ch" to "تش", "th" to "ث", "ph" to "ف",
+        "kh" to "خ", "gh" to "غ", "zh" to "ژ", "oo" to "و", "ee" to "ي",
+        "ou" to "و", "ow" to "او", "ck" to "ك", "qu" to "ك", "tion" to "شن"
+    )
+    val single = mapOf(
+        'a' to "ا", 'b' to "ب", 'c' to "ك", 'd' to "د", 'e' to "ي",
+        'f' to "ف", 'g' to "ج", 'h' to "ه", 'i' to "ي", 'j' to "ج",
+        'k' to "ك", 'l' to "ل", 'm' to "م", 'n' to "ن", 'o' to "و",
+        'p' to "ب", 'q' to "ك", 'r' to "ر", 's' to "س", 't' to "ت",
+        'u' to "و", 'v' to "ف", 'w' to "و", 'x' to "كس", 'y' to "ي", 'z' to "ز"
+    )
+    val result = StringBuilder()
+    var index = 0
+    while (index < value.length) {
+        val remaining = value.substring(index).lowercase(Locale.ROOT)
+        val pair = pairs.firstOrNull { remaining.startsWith(it.first) }
+        if (pair != null) {
+            result.append(pair.second)
+            index += pair.first.length
+        } else {
+            val ch = value[index]
+            result.append(single[ch.lowercaseChar()] ?: if (ch.isDigit() || ch.isWhitespace()) ch else "")
+            index++
+        }
+    }
+    return result.toString().replace(Regex("\\s+"), " ").trim().ifBlank { value }
+}
+
 private suspend fun loadMatches(mode: String, selectedDate: String): List<MatchItem> {
     val data = apiJson("/api/matches?mode=$mode&scope=main&date=$selectedDate").rows()
     return (0 until data.length()).mapNotNull { i ->
         val x = data.optJSONObject(i) ?: return@mapNotNull null
         val h = x.optJSONObject("homeTeam")
         val a = x.optJSONObject("awayTeam")
-        val home = h?.optString("name").orEmpty().ifBlank { x.optString("home") }
-        val away = a?.optString("name").orEmpty().ifBlank { x.optString("away") }
+        val homeRaw = h?.optString("name_ar").orEmpty().ifBlank { h?.optString("name").orEmpty().ifBlank { x.optString("home") } }
+        val awayRaw = a?.optString("name_ar").orEmpty().ifBlank { a?.optString("name").orEmpty().ifBlank { x.optString("away") } }
+        val home = arabicFootballName(homeRaw)
+        val away = arabicFootballName(awayRaw)
         if (home.isBlank() || away.isBlank()) return@mapNotNull null
         val hs = x.opt("homeScore")
         val ascore = x.opt("awayScore")
@@ -348,7 +441,7 @@ private suspend fun loadMatches(mode: String, selectedDate: String): List<MatchI
             score,
             localizeMatchStatus(x.optString("status", "غير متاحة")),
             x.optString("startTime"),
-            x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") },
+            arabicFootballName(x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") }),
             detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false),
             sourceName = x.optString("sourceName"),
             sourceLicense = x.optString("sourceLicense"),
@@ -400,9 +493,62 @@ private class LocalComments(context: Context) {
     }
 }
 
+
+@Composable
+private fun rememberKoraxNetworkAvailable(): Boolean {
+    val context = LocalContext.current
+    var available by remember { mutableStateOf(koraxHasValidatedInternet(context)) }
+    DisposableEffect(context) {
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) { available = koraxHasValidatedInternet(context) }
+            override fun onLost(network: android.net.Network) { available = koraxHasValidatedInternet(context) }
+            override fun onCapabilitiesChanged(network: android.net.Network, capabilities: android.net.NetworkCapabilities) {
+                available = capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+        }
+        runCatching { manager.registerDefaultNetworkCallback(callback) }
+        onDispose { runCatching { manager.unregisterNetworkCallback(callback) } }
+    }
+    return available
+}
+
+private fun koraxHasValidatedInternet(context: Context): Boolean = runCatching {
+    val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+    val network = manager.activeNetwork ?: return@runCatching false
+    val capabilities = manager.getNetworkCapabilities(network) ?: return@runCatching false
+    capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+        capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+}.getOrDefault(false)
+
+@Composable
+private fun KoraxConnectionBanner(message: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp),
+        color = Color(0xFF231D12), shape = RoundedCornerShape(13.dp),
+        border = BorderStroke(1.dp, Color(0xFF594324))
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("◌", color = Color(0xFFFFC66D), fontSize = 15.sp, fontWeight = FontWeight.Black)
+            Spacer(Modifier.width(8.dp))
+            Text(message, color = Color(0xFFFFD89A), fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+private fun displayKickoffTime(raw: String): String {
+    if (raw.isBlank()) return "—"
+    return runCatching {
+        DateTimeFormatter.ofPattern("hh:mm a", Locale("ar"))
+            .withZone(ZoneId.systemDefault()).format(Instant.parse(raw))
+    }.getOrElse { displayKickoff(raw) }
+}
+
 @Composable
 private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
     val context = LocalContext.current
+    val networkAvailable = rememberKoraxNetworkAvailable()
     val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val themeMode = KoraxSettingsStore.theme(context)
     KoraxThemePalette.applyLightMode(when (themeMode) {
@@ -493,7 +639,9 @@ private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
             }
         }
     }) { padding ->
-        Box(Modifier.fillMaxSize().padding(if (selectedArticle == null && selectedProfile == null && selectedMatchId == null) padding else PaddingValues(0.dp))) {
+        Column(Modifier.fillMaxSize().padding(if (selectedArticle == null && selectedProfile == null && selectedMatchId == null) padding else PaddingValues(0.dp))) {
+            if (!networkAvailable) KoraxConnectionBanner("لا يوجد اتصال بالإنترنت • قد لا تتحدث البيانات حتى يعود الاتصال")
+            Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 selectedArticle != null -> KoraxNewsDetailScreen(selectedArticle!!) { selectedArticle = null }
                 selectedProfile != null -> KoraxEntityProfileScreen(
@@ -519,6 +667,7 @@ private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
                 )
                         activeTab == "transfers" -> KoraxTopicPage(onBack = { tab = "more" }, onOpenArticle = { selectedArticle = it })
                         activeTab == "matches" -> MatchesScreen(
+                    isOnline = networkAvailable,
                     initialLive = matchLiveRequested,
                     selectedDate = matchDate,
                     onOpenMatch = { selectedMatchId = it },
@@ -572,6 +721,7 @@ private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
                 )
                     }
                 }
+            }
             }
         }
     }
@@ -803,7 +953,7 @@ private fun NewsCard(article: NewsItem, onOpen: () -> Unit, onComment: () -> Uni
                 coil.compose.AsyncImage(model = article.image, contentDescription = article.title,
                     modifier = Modifier.fillMaxWidth().height(172.dp).clickable(onClick = onOpen), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
             } else Box(Modifier.fillMaxWidth().height(102.dp).background(Brush.horizontalGradient(listOf(Color(0xFF1B2508), Color(0xFF151B24)))).clickable(onClick = onOpen), contentAlignment = Alignment.Center) {
-                Text("KORAX", color = KLime, fontSize = 22.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                Text("أخبار كرة القدم", color = KLime, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             }
             Column(Modifier.padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -937,8 +1087,50 @@ private fun TransfersScreen() {
     }
 }
 
+
+private fun matchCacheKey(status: String, date: String) = "matches_" + status + "_" + date
+
+private fun readMatchCache(context: Context, status: String, date: String): List<MatchItem> = runCatching {
+    val prefs = context.getSharedPreferences("korax_match_cache_v1", Context.MODE_PRIVATE)
+    val array = org.json.JSONArray(prefs.getString(matchCacheKey(status, date), "[]"))
+    (0 until array.length()).mapNotNull { index ->
+        val item = array.optJSONObject(index) ?: return@mapNotNull null
+        val id = item.optString("id")
+        val home = item.optString("home")
+        val away = item.optString("away")
+        if (id.isBlank() || home.isBlank() || away.isBlank()) return@mapNotNull null
+        MatchItem(
+            id = id, home = arabicFootballName(home), away = arabicFootballName(away),
+            homeLogo = item.optString("homeLogo"), awayLogo = item.optString("awayLogo"),
+            score = item.optString("score", "VS"), status = item.optString("status"),
+            kickoff = item.optString("kickoff"), league = arabicFootballName(item.optString("league")),
+            detailsAvailable = item.optBoolean("detailsAvailable"),
+            sourceName = item.optString("sourceName"), sourceLicense = item.optString("sourceLicense"),
+            sourceUrl = item.optString("sourceUrl")
+        )
+    }
+}.getOrDefault(emptyList())
+
+private fun saveMatchCache(context: Context, status: String, date: String, matches: List<MatchItem>) {
+    val array = org.json.JSONArray()
+    matches.forEach { match ->
+        array.put(org.json.JSONObject()
+            .put("id", match.id).put("home", match.home).put("away", match.away)
+            .put("homeLogo", match.homeLogo).put("awayLogo", match.awayLogo)
+            .put("score", match.score).put("status", match.status).put("kickoff", match.kickoff)
+            .put("league", match.league).put("detailsAvailable", match.detailsAvailable)
+            .put("sourceName", match.sourceName).put("sourceLicense", match.sourceLicense)
+            .put("sourceUrl", match.sourceUrl))
+    }
+    context.getSharedPreferences("korax_match_cache_v1", Context.MODE_PRIVATE).edit()
+        .putString(matchCacheKey(status, date), array.toString())
+        .putLong(matchCacheKey(status, date) + "_saved_at", System.currentTimeMillis())
+        .apply()
+}
+
 @Composable
 private fun MatchesScreen(
+    isOnline: Boolean,
     initialLive: Boolean,
     selectedDate: String,
     onOpenMatch: (String) -> Unit,
@@ -952,6 +1144,8 @@ private fun MatchesScreen(
     var matches by remember { mutableStateOf<List<MatchItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
+    var slowConnection by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
     var selectedSummary by remember { mutableStateOf<MatchItem?>(null) }
     val scope = rememberCoroutineScope()
     val sectionTitle = when (statusTab) {
@@ -961,16 +1155,31 @@ private fun MatchesScreen(
     }
 
     suspend fun refresh() {
-        loading = true
+        if (matches.isEmpty()) loading = true
         error = ""
+        if (!isOnline) {
+            matches = readMatchCache(context, statusTab, selectedDate)
+            error = "offline"
+            slowConnection = false
+            loading = false
+            return
+        }
+        val startedAt = System.currentTimeMillis()
         val result = runCatching { loadMatches(statusTab, selectedDate) }
-        matches = result.getOrDefault(emptyList())
-        error = result.exceptionOrNull()?.message.orEmpty()
+        slowConnection = System.currentTimeMillis() - startedAt >= 5_000L
+        result.onSuccess { fresh ->
+            matches = fresh
+            saveMatchCache(context, statusTab, selectedDate, fresh)
+        }.onFailure {
+            matches = readMatchCache(context, statusTab, selectedDate)
+            error = it.message.orEmpty()
+            slowConnection = true
+        }
         loading = false
     }
-    LaunchedEffect(statusTab, selectedDate) { refresh() }
-    LaunchedEffect(statusTab, selectedDate) {
-        if (statusTab == "live") {
+    LaunchedEffect(statusTab, selectedDate, isOnline) { refresh() }
+    LaunchedEffect(statusTab, selectedDate, isOnline) {
+        if (statusTab == "live" && isOnline) {
             while (true) {
                 delay(30_000L)
                 refresh()
@@ -979,12 +1188,38 @@ private fun MatchesScreen(
     }
 
     Column(Modifier.fillMaxSize().background(KBg)) {
-        KoraxHeader(
-            "المباريات",
-            "$sectionTitle • $selectedDate",
-            refresh = { scope.launch { refresh() } },
-            search = onSearchEntities
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = painterResource(R.drawable.korax_brand),
+                contentDescription = "شعار كوراكس",
+                modifier = Modifier.size(42.dp),
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit
+            )
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = {
+                onChooseDate(runCatching { LocalDate.parse(selectedDate).minusDays(1).toString() }.getOrDefault(todayIso()))
+            }) { Text("‹", color = KMuted, fontSize = 28.sp) }
+            IconButton(onClick = { showDatePicker = true }) {
+                Icon(Icons.Filled.CalendarMonth, contentDescription = "اختيار التاريخ", tint = KText)
+            }
+            IconButton(onClick = {
+                onChooseDate(runCatching { LocalDate.parse(selectedDate).plusDays(1).toString() }.getOrDefault(todayIso()))
+            }) { Text("›", color = KMuted, fontSize = 28.sp) }
+            IconButton(onClick = onSearchEntities) { Icon(Icons.Filled.Search, contentDescription = "بحث", tint = KText) }
+            IconButton(onClick = { scope.launch { refresh() } }) { Icon(Icons.Filled.Refresh, contentDescription = "تحديث", tint = KLime) }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("$sectionTitle • $selectedDate", color = KMuted, fontSize = 9.sp, modifier = Modifier.weight(1f))
+            Text(
+                "البيانات: SportScore", color = KMuted.copy(alpha = .78f), fontSize = 7.sp,
+                modifier = Modifier.clickable {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://sportscore.com/"))) }
+                }
+            )
+        }
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1005,23 +1240,24 @@ private fun MatchesScreen(
                 )
             }
         }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("تاريخ المباريات", color = KMuted, fontSize = 10.sp, modifier = Modifier.weight(1f))
-            TextButton(onClick = {
-                onChooseDate(runCatching { LocalDate.parse(selectedDate).minusDays(1).toString() }.getOrDefault(todayIso()))
-            }) { Text("‹ السابق", color = KLime, fontSize = 10.sp) }
-            TextButton(onClick = {
-                onChooseDate(runCatching { LocalDate.parse(selectedDate).plusDays(1).toString() }.getOrDefault(todayIso()))
-            }) { Text("التالي ›", color = KLime, fontSize = 10.sp) }
+        if (isOnline && error.isNotBlank() && matches.isNotEmpty()) {
+            KoraxConnectionBanner("تعذر التحديث • نعرض آخر نسخة محفوظة من المباريات")
+        } else if (slowConnection) {
+            KoraxConnectionBanner("الاتصال بطيء • قد يستغرق تحديث المباريات بعض الوقت")
         }
         when {
-            loading -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+            loading && matches.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = KLime)
             }
-            error.isNotBlank() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
-                StateCard("تعذر تحميل المباريات", "$error\nحاول التحديث مرة أخرى.", "⚽")
+            matches.isEmpty() && error.isNotBlank() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                StateCard(
+                    if (!isOnline) "أنت غير متصل بالإنترنت" else "تعذر تحميل المباريات",
+                    if (!isOnline) "عند عودة الاتصال ستُحمّل المباريات تلقائيًا. اضغط زر التحديث بعد الاتصال."
+                    else "تعذر الوصول إلى خدمة المباريات. حاول مرة أخرى بعد قليل.",
+                    "⚽"
+                )
             }
-            matches.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+            matches.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 val emptyTitle = when (statusTab) {
                     "live" -> "لا توجد مباريات مباشرة الآن"
                     "finished" -> "لا توجد مباريات منتهية في هذا التاريخ"
@@ -1045,7 +1281,18 @@ private fun MatchesScreen(
                         Text(matches.size.toString() + " مباراة", color = KMuted, fontSize = 10.sp)
                     }
                 }
-                items(matches, key = { it.id }) { match ->
+                items(
+                    matches.groupBy { it.league.ifBlank { "بطولة غير محددة" } }.entries.toList(),
+                    key = { it.key }
+                ) { leagueGroup ->
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Surface(Modifier.fillMaxWidth(), color = KCard2, shape = RoundedCornerShape(13.dp)) {
+                            Row(Modifier.padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(leagueGroup.key, color = KText, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                Text("•••", color = KMuted, fontSize = 10.sp)
+                            }
+                        }
+                        leagueGroup.value.forEach { match ->
                     val context = LocalContext.current
                     val showImages = KoraxSettingsStore.getBoolean(context, "show_images", true) &&
                         !KoraxSettingsStore.getBoolean(context, "data_saver", false)
@@ -1059,15 +1306,7 @@ private fun MatchesScreen(
                         border = BorderStroke(1.dp, KBorder)
                     ) {
                         Column(Modifier.padding(horizontal = 11.dp, vertical = 10.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    match.league.ifBlank { "بطولة غير محددة" },
-                                    color = KLime, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
-                                )
-                                Text(displayKickoff(match.kickoff), color = KMuted, fontSize = 9.sp)
-                            }
-                            Spacer(Modifier.height(10.dp))
+                            Spacer(Modifier.height(4.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                                     if (showImages && match.homeLogo.isNotBlank()) {
@@ -1086,9 +1325,10 @@ private fun MatchesScreen(
                                 }
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
-                                        match.score,
+                                        if (statusTab == "upcoming") displayKickoffTime(match.kickoff) else match.score,
                                         color = if (statusTab == "live") Color(0xFFFF596D) else KLime,
-                                        fontSize = 20.sp, fontWeight = FontWeight.Black,
+                                        fontSize = if (statusTab == "upcoming") 14.sp else 20.sp,
+                                        fontWeight = FontWeight.Black,
                                         modifier = Modifier.padding(horizontal = 8.dp)
                                     )
                                     Text(match.status, color = KMuted, fontSize = 9.sp)
@@ -1125,17 +1365,11 @@ private fun MatchesScreen(
                             }
                         }
                     }
+                        }
+                    }
                 }
             }
         }
-        Text(
-            "Powered by SportScore",
-            color = KMuted,
-            fontSize = 8.sp,
-            modifier = Modifier.align(Alignment.CenterHorizontally).clickable {
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://sportscore.com/"))) }
-            }.padding(vertical = 5.dp)
-        )
     }
 
     selectedSummary?.let { match ->
@@ -1156,6 +1390,15 @@ private fun MatchesScreen(
             },
             confirmButton = { TextButton(onClick = { selectedSummary = null }) { Text("إغلاق", color = KLime) } },
             containerColor = KCard
+        )
+    }
+    if (showDatePicker) {
+        KoraxDatePickerDialog(
+            onDismiss = { showDatePicker = false },
+            onSelect = { date ->
+                showDatePicker = false
+                onChooseDate(date)
+            }
         )
     }
 }
