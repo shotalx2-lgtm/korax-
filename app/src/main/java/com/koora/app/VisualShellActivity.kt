@@ -1200,7 +1200,18 @@ private fun MatchesScreen(
                         Text(matches.size.toString() + " مباراة", color = KMuted, fontSize = 10.sp)
                     }
                 }
-                items(matches, key = { it.id }) { match ->
+                items(
+                    matches.groupBy { it.league.ifBlank { "بطولة غير محددة" } }.entries.toList(),
+                    key = { it.key }
+                ) { leagueGroup ->
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        Surface(Modifier.fillMaxWidth(), color = KCard2, shape = RoundedCornerShape(13.dp)) {
+                            Row(Modifier.padding(horizontal = 13.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(leagueGroup.key, color = KText, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                Text("•••", color = KMuted, fontSize = 10.sp)
+                            }
+                        }
+                        leagueGroup.value.forEach { match ->
                     val context = LocalContext.current
                     val showImages = KoraxSettingsStore.getBoolean(context, "show_images", true) &&
                         !KoraxSettingsStore.getBoolean(context, "data_saver", false)
@@ -1216,9 +1227,9 @@ private fun MatchesScreen(
                         Column(Modifier.padding(horizontal = 11.dp, vertical = 10.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    match.league.ifBlank { "بطولة غير محددة" },
-                                    color = KLime, fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis
+                                    if (match.detailsAvailable) "التفاصيل متاحة" else " ",
+                                    color = KMuted, fontSize = 8.sp, fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(1f), maxLines = 1
                                 )
                                 Text(displayKickoff(match.kickoff), color = KMuted, fontSize = 9.sp)
                             }
@@ -1279,6 +1290,8 @@ private fun MatchesScreen(
                                 )
                                 Text(if (match.detailsAvailable) "التفاصيل ←" else "الملخص ←", color = KLime, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                             }
+                        }
+                    }
                         }
                     }
                 }
