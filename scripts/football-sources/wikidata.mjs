@@ -1,7 +1,7 @@
 import { createJsonClient } from "./http.mjs";
 
 // Migrate to WDQS v2 before the v1 service degradation/deprecation window.
-export const WIKIDATA_SPARQL_ENDPOINT = "https://query-next.wikidata.org/sparql";
+export const WIKIDATA_SPARQL_ENDPOINT = "https://query.wikidata.org/sparql";
 const COUNTRY_QIDS = [
   "Q145", "Q29", "Q183", "Q38", "Q142", "Q851", "Q79", "Q155",
   "Q414", "Q45", "Q55", "Q31", "Q43", "Q1028", "Q17", "Q30",
@@ -190,7 +190,7 @@ export function createWikidataClient(options = {}) {
     source: "wikidata",
     minIntervalMs: 15_000,
     maxRequests: 30,
-    timeoutMs: 20_000,
+    timeoutMs: 55_000,
     maxRetries: 0,
     defaultHeaders: {
       accept: "application/sparql-results+json",
@@ -203,7 +203,7 @@ export function createWikidataClient(options = {}) {
     async fetchFootballEntities(queryOptions = {}) {
       const query = buildFootballEntitiesQuery(queryOptions);
       const url = `${WIKIDATA_SPARQL_ENDPOINT}?query=${encodeURIComponent(query)}&format=json`;
-      const payload = await getJson(url, { timeoutMs: 20_000 });
+      const payload = await getJson(url, { timeoutMs: 55_000 });
       const bindings = payload?.results?.bindings;
       return Array.isArray(bindings) ? bindings.map(normalizeWikidataBinding).filter(Boolean) : [];
     },
