@@ -1536,16 +1536,28 @@ async function route(request, env) {
 
   if (path === "/api/standings") {
     const requestedSlug = (url.searchParams.get("slug") || "").trim().toLowerCase();
-    if (!/^[a-z0-9-]{2,80}$/.test(requestedSlug)) {
+    const canonicalId = /^[0-9a-f-]{36}$/i.test(requestedSlug);
+    if (!canonicalId && !/^[a-z0-9-]{2,80}$/.test(requestedSlug)) {
       return json({ error: "A valid competition slug is required", data: [] }, 400);
     }
-    const requestedName = (url.searchParams.get("name") || "").trim();
+    const canonicalCompetition = canonicalId ? await getCanonicalEntityProfile(requestedSlug) : null;
+    if (canonicalId && !canonicalCompetition) {
+      return json({ error: "Competition is not in the KORAX catalogue", data: [] }, 404);
+    }
+    const requestedName = (url.searchParams.get("name") ||
+      canonicalCompetition?.name_en || canonicalCompetition?.canonical_name ||
+      canonicalCompetition?.name || "").trim();
+    const normalizedCompetitionNames = [
+      requestedName, canonicalCompetition?.name, canonicalCompetition?.name_en,
+      canonicalCompetition?.canonical_name,
+      ...(Array.isArray(canonicalCompetition?.aliases) ? canonicalCompetition.aliases : []),
+    ].map(normalizeSearchText).filter(Boolean);
     const storedCompetitions = await dbRows(
       "/rest/v1/korax_sportscore_competitions?select=slug,name,country,standings,updated_at&limit=100"
     );
     const stored = (Array.isArray(storedCompetitions) ? storedCompetitions : []).find((row) =>
       String(row.slug || "").toLowerCase() === requestedSlug ||
-      (requestedName && normalizeSearchText(row.name) === normalizeSearchText(requestedName))
+      normalizedCompetitionNames.includes(normalizeSearchText(row.name))
     );
     const storedTables = stored?.standings?.tables;
     if (Array.isArray(storedTables) && storedTables.some((table) => Array.isArray(table?.rows) && table.rows.length)) {
@@ -1637,14 +1649,21 @@ async function route(request, env) {
 
   if (path === "/api/topscorers") {
     const requestedSlug = (url.searchParams.get("slug") || "").trim().toLowerCase();
-    if (requestedSlug && !/^[a-z0-9-]{2,80}$/.test(requestedSlug)) {
+    const canonicalId = /^[0-9a-f-]{36}$/i.test(requestedSlug);
+    if (requestedSlug && !canonicalId && !/^[a-z0-9-]{2,80}$/.test(requestedSlug)) {
       return json({ error: "A valid competition slug is required", data: [] }, 400);
     }
     const stat = (url.searchParams.get("stat") || "goals").toLowerCase();
     if (!["goals", "assists"].includes(stat)) {
       return json({ error: "stat must be goals or assists", data: [] }, 400);
     }
-    const requestedName = normalizeSearchText(url.searchParams.get("name") || requestedSlug.replace(/-/g, " "));
+    const canonicalCompetition = canonicalId ? await getCanonicalEntityProfile(requestedSlug) : null;
+    if (canonicalId && !canonicalCompetition) {
+      return json({ error: "Competition is not in the KORAX catalogue", data: [] }, 404);
+    }
+    const requestedName = normalizeSearchText(url.searchParams.get("name") ||
+      canonicalCompetition?.name_en || canonicalCompetition?.canonical_name ||
+      canonicalCompetition?.name || requestedSlug.replace(/-/g, " "));
     const requestedLimit = Number(url.searchParams.get("limit") || 30);
     const limit = Number.isFinite(requestedLimit) ? Math.min(50, Math.max(1, Math.floor(requestedLimit))) : 30;
     const allPlayers = await getCachedPlayerIndex();
