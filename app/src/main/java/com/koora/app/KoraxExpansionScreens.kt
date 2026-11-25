@@ -178,7 +178,8 @@ private data class ToolMatch(
 private data class KoraxStatsCompetition(
     val slug: String,
     val name: String,
-    val country: String
+    val country: String,
+    val providerName: String
 )
 
 private fun findKoraxStatsRows(
@@ -242,21 +243,39 @@ internal fun KoraxStatisticsHubPage(
         var loadingCompetitions by remember { mutableStateOf(true) }
         var loadingRows by remember { mutableStateOf(false) }
         var error by remember { mutableStateOf("") }
+        var competitionQuery by rememberSaveable { mutableStateOf("") }
+        var searchingCompetitions by remember { mutableStateOf(false) }
         var refreshKey by rememberSaveable { mutableIntStateOf(0) }
         val context = LocalContext.current
+        val scope = rememberCoroutineScope()
         val selectedCompetition = competitions.firstOrNull { it.slug == selectedSlug }
 
         LaunchedEffect(Unit) {
             loadingCompetitions = true
             val result = runCatching {
-                val array = apiJson("/api/competitions?per_page=50").rows()
-                (0 until array.length()).mapNotNull { index ->
-                    val row = array.optJSONObject(index) ?: return@mapNotNull null
+                val curated = apiJson("/api/competitions?per_page=50").rows()
+                val curatedItems = (0 until curated.length()).mapNotNull { index ->
+                    val row = curated.optJSONObject(index) ?: return@mapNotNull null
                     val slug = row.koraxStatText("slug", "id")
                     val name = row.koraxStatText("name", "providerName", "title")
                     if (slug.isBlank() || name.isBlank()) return@mapNotNull null
-                    KoraxStatsCompetition(slug, name, row.koraxStatText("country"))
-                }.distinctBy { it.slug }
+                    KoraxStatsCompetition(
+                        slug, name, row.koraxStatText("country"),
+                        row.koraxStatText("providerName", "name_en").ifBlank { name }
+                    )
+                }
+                val catalogueItems = runCatching {
+                    val catalogue = apiJson("/api/entities/catalogue?types=league,tournament&per_page=50").rows()
+                    (0 until catalogue.length()).mapNotNull { index ->
+                        val row = catalogue.optJSONObject(index) ?: return@mapNotNull null
+                        val slug = row.koraxStatText("slug", "id")
+                        val name = row.koraxStatText("name", "name_en", "canonical_name")
+                        val providerName = row.koraxStatText("name_en", "canonical_name", "providerName")
+                        if (slug.isBlank() || name.isBlank()) return@mapNotNull null
+                        KoraxStatsCompetition(slug, name, row.koraxStatText("country"), providerName.ifBlank { name })
+                    }
+                }.getOrDefault(emptyList())
+                (curatedItems + catalogueItems).distinctBy { it.providerName.lowercase(Locale.ROOT) }
             }
             competitions = result.getOrDefault(emptyList())
             if (selectedSlug.isBlank()) selectedSlug = competitions.firstOrNull()?.slug.orEmpty()
@@ -269,10 +288,11 @@ internal fun KoraxStatisticsHubPage(
             loadingRows = true
             error = ""
             rows = emptyList()
+            val providerNameQuery = selectedCompetition?.providerName?.urlEncoded().orEmpty()
             val path = when (metric) {
-                "goals" -> "/api/topscorers?slug=${selectedSlug.urlEncoded()}&stat=goals&limit=30"
-                "assists" -> "/api/topscorers?slug=${selectedSlug.urlEncoded()}&stat=assists&limit=30"
-                else -> "/api/standings?slug=${selectedSlug.urlEncoded()}"
+                "goals" -> "/api/topscorers?slug=${selectedSlug.urlEncoded()}&name=$providerNameQuery&stat=goals&limit=30"
+                "assists" -> "/api/topscorers?slug=${selectedSlug.urlEncoded()}&name=$providerNameQuery&stat=assists&limit=30"
+                else -> "/api/standings?slug=${selectedSlug.urlEncoded()}&name=$providerNameQuery"
             }
             val result = runCatching {
                 val payload = apiJson(path)
@@ -309,6 +329,50 @@ internal fun KoraxStatisticsHubPage(
                         Text("اختر البطولة", color = XText, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                         Text("تتغير الجداول والهدافون حسب المسابقة التي تختارها", color = XMuted, fontSize = 9.sp)
                         Spacer(Modifier.height(9.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedTextField(
+                                value = competitionQuery,
+                                onValueChange = { competitionQuery = it },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                placeholder = { Text("ابحث عن دوري أو بطولة", fontSize = 10.sp) },
+                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp)
+                            )
+                            IconButton(
+                                enabled = competitionQuery.trim().length >= 2 && !searchingCompetitions,
+                                onClick = {
+                                    scope.launch {
+                                        searchingCompetitions = true
+                                        val searchResult = runCatching {
+                                            val found = apiJson("/api/competitions?search=${competitionQuery.trim().urlEncoded()}&per_page=50").rows()
+                                            (0 until found.length()).mapNotNull { index ->
+                                                val row = found.optJSONObject(index) ?: return@mapNotNull null
+                                                val slug = row.koraxStatText("slug", "id")
+                                                val name = row.koraxStatText("name", "providerName", "title")
+                                                if (slug.isBlank() || name.isBlank()) return@mapNotNull null
+                                                KoraxStatsCompetition(
+                                                    slug, name, row.koraxStatText("country"),
+                                                    row.koraxStatText("providerName", "name_en", "canonical_name").ifBlank { name }
+                                                )
+                                            }
+                                        }
+                                        val found = searchResult.getOrDefault(emptyList())
+                                        if (found.isNotEmpty()) {
+                                            competitions = (found + competitions).distinctBy { it.providerName.lowercase(Locale.ROOT) }
+                                            selectedSlug = found.first().slug
+                                        } else if (searchResult.isFailure) {
+                                            error = searchResult.exceptionOrNull()?.message.orEmpty()
+                                        } else {
+                                            error = "لم نجد بطولة بهذا الاسم في فهرس البيانات الحالي."
+                                        }
+                                        searchingCompetitions = false
+                                    }
+                                }
+                            ) {
+                                if (searchingCompetitions) CircularProgressIndicator(Modifier.size(19.dp), strokeWidth = 2.dp, color = XAccent)
+                                else Icon(Icons.Filled.Search, contentDescription = "بحث", tint = XAccent)
+                            }
+                        }
                         if (loadingCompetitions) {
                             LinearProgressIndicator(Modifier.fillMaxWidth(), color = XAccent)
                         } else if (competitions.isEmpty()) {
