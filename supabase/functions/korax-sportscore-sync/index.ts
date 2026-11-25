@@ -51,6 +51,62 @@ async function rest(path: string, init: RequestInit = {}) {
   return body ? JSON.parse(body) : null;
 }
 
+
+const MATCH_UPSERT_BATCH_SIZE = 100;
+const DETAIL_PATCH_CONCURRENCY = 4;
+
+async function upsertMatchesInBatches(rows: any[]) {
+  let processed = 0;
+  for (let offset = 0; offset < rows.length; offset += MATCH_UPSERT_BATCH_SIZE) {
+    const batch = rows.slice(offset, offset + MATCH_UPSERT_BATCH_SIZE);
+    try {
+      await rest("/rest/v1/korax_sportscore_matches?on_conflict=match_slug", {
+        method: "POST",
+        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(batch),
+      });
+      processed += batch.length;
+    } catch (error) {
+      console.error(
+        "[korax-sportscore-sync] match upsert batch failed",
+        JSON.stringify({ offset, batchSize: batch.length, totalRows: rows.length }),
+        error instanceof Error ? error.message : String(error),
+      );
+      throw error;
+    }
+  }
+  return processed;
+}
+
+async function patchDetailsWithConcurrency(rows: any[], concurrency = DETAIL_PATCH_CONCURRENCY) {
+  let next = 0;
+  let firstError: unknown = null;
+  const workerCount = Math.min(Math.max(1, concurrency), rows.length);
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (firstError === null) {
+      const index = next++;
+      if (index >= rows.length) return;
+      const row = rows[index];
+      try {
+        await rest("/rest/v1/korax_sportscore_matches?match_slug=eq." + encodeURIComponent(row.match_slug), {
+          method: "PATCH",
+          headers: { Prefer: "return=minimal" },
+          body: JSON.stringify({
+            detail: row.detail,
+            detail_updated_at: row.detail_updated_at,
+            updated_at: row.updated_at,
+          }),
+        });
+      } catch (error) {
+        firstError = error;
+      }
+    }
+  });
+  await Promise.all(workers);
+  if (firstError) throw firstError;
+  return rows.length;
+}
+
 function parseIntOrNull(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
@@ -154,32 +210,16 @@ Deno.serve(async (req: Request) => {
       if (row) deduped.set(row.match_slug, row);
     }
     const rows = [...deduped.values()];
-    if (rows.length) {
-      await rest("/rest/v1/korax_sportscore_matches?on_conflict=match_slug", {
-        method: "POST",
-        headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-        body: JSON.stringify(rows),
-      });
-    }
+    const matchesUpserted = rows.length ? await upsertMatchesInBatches(rows) : 0;
 
     const detailRows = detailsIn.flatMap((entry: any) => {
       const slug = String(entry?.slug || matchSlug(entry?.detail || {}));
       if (!slug || !entry?.detail || typeof entry.detail !== "object") return [];
       return [{ match_slug: slug, detail: entry.detail, detail_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() }];
     });
-    if (detailRows.length) {
-      await Promise.all(detailRows.map((row: any) =>
-        rest("/rest/v1/korax_sportscore_matches?match_slug=eq." + encodeURIComponent(row.match_slug), {
-          method: "PATCH",
-          headers: { Prefer: "return=minimal" },
-          body: JSON.stringify({
-            detail: row.detail,
-            detail_updated_at: row.detail_updated_at,
-            updated_at: row.updated_at,
-          }),
-        })
-      ));
-    }
+    const detailsPatched = detailRows.length
+      ? await patchDetailsWithConcurrency(detailRows)
+      : 0;
 
     const competitionRows = competitionsIn.flatMap((item: any) => {
       const slug = String(item?.slug || "").trim();
@@ -202,8 +242,8 @@ Deno.serve(async (req: Request) => {
 
     const finishedAt = new Date().toISOString();
     const syncMetadata = {
-      matches_upserted: rows.length,
-      details_patched: detailRows.length,
+      matches_upserted: matchesUpserted,
+      details_patched: detailsPatched,
       standings_upserted: competitionRows.length,
       received_matches: matchesIn.length,
       received_details: detailsIn.length,
@@ -235,7 +275,7 @@ Deno.serve(async (req: Request) => {
     return json({
       ok: true,
       received: { matches: matchesIn.length, details: detailsIn.length, competitions: competitionsIn.length },
-      stored: { matches: rows.length, details: detailRows.length, competitions: competitionRows.length },
+      stored: { matches: matchesUpserted, details: detailsPatched, competitions: competitionRows.length },
       requestCount: syncRequestCount,
       syncRunKey,
       updatedAt: finishedAt,
