@@ -1540,7 +1540,8 @@ async function route(request, env) {
     if (!canonicalId && !/^[a-z0-9-]{2,80}$/.test(requestedSlug)) {
       return json({ error: "A valid competition slug is required", data: [] }, 400);
     }
-    const canonicalCompetitionResponse = canonicalId ? await getCanonicalEntityProfile(requestedSlug) : null;
+    const canonicalCompetitionResponse: Record<string, any> | null = canonicalId
+      ? await getCanonicalEntityProfile(requestedSlug) as Record<string, any> | null : null;
     if (canonicalId && !canonicalCompetitionResponse) {
       return json({ error: "Competition is not in the KORAX catalogue", data: [] }, 404);
     }
@@ -1576,7 +1577,7 @@ async function route(request, env) {
       });
     }
 
-    const aliases = {
+    const aliases: Record<string, string> = {
       "english-premier-league": "English Premier League",
       "spanish-la-liga": "Spanish La Liga",
       "french-ligue-1": "French Ligue 1",
@@ -1596,7 +1597,7 @@ async function route(request, env) {
     });
     const matchRows = await dbRows("/rest/v1/korax_sportscore_matches?" + matchQuery.toString());
     const clubs = new Map();
-    const ensureClub = (name) => {
+    const ensureClub = (name: string) => {
       const key = normalizeSearchText(name);
       if (!key) return null;
       if (!clubs.has(key)) clubs.set(key, {
@@ -1658,7 +1659,8 @@ async function route(request, env) {
     if (!["goals", "assists"].includes(stat)) {
       return json({ error: "stat must be goals or assists", data: [] }, 400);
     }
-    const canonicalCompetitionResponse = canonicalId ? await getCanonicalEntityProfile(requestedSlug) : null;
+    const canonicalCompetitionResponse: Record<string, any> | null = canonicalId
+      ? await getCanonicalEntityProfile(requestedSlug) as Record<string, any> | null : null;
     if (canonicalId && !canonicalCompetitionResponse) {
       return json({ error: "Competition is not in the KORAX catalogue", data: [] }, 404);
     }
@@ -1669,12 +1671,12 @@ async function route(request, env) {
       canonicalCompetition?.name || requestedSlug.replace(/-/g, " "));
     const requestedLimit = Number(url.searchParams.get("limit") || 30);
     const limit = Number.isFinite(requestedLimit) ? Math.min(50, Math.max(1, Math.floor(requestedLimit))) : 30;
-    const allPlayers = await getCachedPlayerIndex();
-    const competitionPlayers = requestedName ? allPlayers.filter((player) => {
+    const allPlayers = await getCachedPlayerIndex() as Array<Record<string, any>>;
+    const competitionPlayers = requestedName ? allPlayers.filter((player: Record<string, any>) => {
       const names = Array.isArray(player.competition_names) ? player.competition_names : [];
       const slugs = Array.isArray(player.competition_slugs) ? player.competition_slugs : [];
-      return slugs.some((slug) => String(slug).toLowerCase() === requestedSlug) ||
-        names.some((name) => {
+      return slugs.some((slug: unknown) => String(slug).toLowerCase() === requestedSlug) ||
+        names.some((name: unknown) => {
           const normalized = normalizeSearchText(name);
           return normalized && (normalized.includes(requestedName) || requestedName.includes(normalized));
         });
@@ -1682,11 +1684,11 @@ async function route(request, env) {
     const hasCompetitionScope = !requestedName || competitionPlayers.length > 0;
     const scopedPlayers = hasCompetitionScope ? competitionPlayers : allPlayers;
     const data = scopedPlayers
-      .filter((player) => Number(player[stat] || 0) > 0)
-      .sort((a, b) => Number(b[stat] || 0) - Number(a[stat] || 0) ||
+      .filter((player: Record<string, any>) => Number(player[stat] || 0) > 0)
+      .sort((a: Record<string, any>, b: Record<string, any>) => Number(b[stat] || 0) - Number(a[stat] || 0) ||
         Number(b.matches_with_lineup || 0) - Number(a.matches_with_lineup || 0))
       .slice(0, limit)
-      .map((player, index) => ({
+      .map((player: Record<string, any>, index: number) => ({
         ...player,
         player_name: player.name,
         value: Number(player[stat] || 0),
