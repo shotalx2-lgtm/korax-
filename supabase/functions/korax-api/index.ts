@@ -831,7 +831,7 @@ function isDisplayableEntityAsset(asset) {
 
 async function searchCanonicalEntities(query, types, limit) {
   const normalizedQuery = String(query || "").trim();
-  if (normalizedQuery.length < 2) return [];
+  if (normalizedQuery.length < 1) return [];
   const rows = await dbRpc("search_korax_entities", {
     p_query: normalizedQuery,
     p_types: types,
