@@ -513,7 +513,9 @@ internal fun KoraxStatisticsHubPage(
                                 rows.take(40).forEachIndexed { index, row ->
                                     val rank = row.koraxStatText("position", "rank", "place", "pos").toIntOrNull() ?: index + 1
                                     val teamName = row.koraxStatText("team_name", "teamName", "name", "participant_name", "team", "participant").ifBlank { "فريق غير محدد" }
-                                    val teamImage = row.readImage("team_logo", "teamLogo", "team_image", "teamImage", "participant_logo", "participant_image", "crest")
+                                    val teamObject = row.optJSONObject("team") ?: row.optJSONObject("participant")
+                                    val teamImage = row.readImage("team_logo", "teamLogo", "team_image", "teamImage", "team_logo_url", "participant_logo", "participant_image", "crest")
+                                        .ifBlank { teamObject?.readImage().orEmpty() }
                                     val accent = when {
                                         rank <= 4 -> Color(0xFF20C978)
                                         rank > rows.size - 3 -> Color(0xFFEF5350)
@@ -570,19 +572,36 @@ internal fun KoraxStatisticsHubPage(
                         ) {
                             Column(Modifier.padding(horizontal = 12.dp, vertical = 5.dp)) {
                                 rows.take(30).forEachIndexed { index, row ->
+                                    val playerName = row.koraxStatText("player_name", "name", "player", "participant", "title").ifBlank { "لاعب غير محدد" }
+                                    val playerImage = row.readImage("player_image", "playerImage", "player_photo", "photo_url", "avatar", "image_url")
+                                        .ifBlank { row.optJSONObject("player")?.readImage().orEmpty() }
+                                    val playerTeamImage = row.readImage("team_logo", "team_image", "team_logo_url", "club_logo")
+                                        .ifBlank { row.optJSONObject("team")?.readImage().orEmpty() }
                                     Row(
                                         Modifier.fillMaxWidth().padding(vertical = 9.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(row.koraxStatText("position", "rank").ifBlank { (index + 1).toString() }, color = XAccent, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.width(25.dp))
-                                        Column(Modifier.weight(1f)) {
-                                            Text(row.koraxStatText("player_name", "name", "player", "participant", "title").ifBlank { "لاعب غير محدد" }, color = XText, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                            Text(row.koraxStatText("team_name", "team", "club_name", "teamName").ifBlank { "النادي غير متاح" }, color = XMuted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(row.koraxStatText("position", "rank").ifBlank { (index + 1).toString() }, color = XAccent, fontWeight = FontWeight.Bold, fontSize = 11.sp, modifier = Modifier.width(22.dp))
+                                        Box(Modifier.size(42.dp).clip(CircleShape).background(XCard2), contentAlignment = Alignment.Center) {
+                                            if (playerImage.isNotBlank()) coil.compose.AsyncImage(model = playerImage, contentDescription = playerName,
+                                                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                            else Text(playerName.take(1), color = XAccent, fontSize = 17.sp, fontWeight = FontWeight.Black)
                                         }
-                                        Text(
-                                            row.koraxStatText(if (metric == "goals") "goals" else "assists", "value", "total", "count", "stat_value").ifBlank { "—" },
-                                            color = XAccent, fontSize = 17.sp, fontWeight = FontWeight.Black
-                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(playerName, color = XText, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                if (playerTeamImage.isNotBlank()) coil.compose.AsyncImage(model = playerTeamImage, contentDescription = null,
+                                                    modifier = Modifier.size(13.dp), contentScale = ContentScale.Fit)
+                                                Text(row.koraxStatText("team_name", "team", "club_name", "teamName").ifBlank { "النادي غير متاح" },
+                                                    color = XMuted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            }
+                                        }
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(row.koraxStatText(if (metric == "goals") "goals" else "assists", "value", "total", "count", "stat_value").ifBlank { "—" },
+                                                color = XAccent, fontSize = 17.sp, fontWeight = FontWeight.Black)
+                                            Text(if (metric == "goals") "هدف" else "صناعة", color = XMuted, fontSize = 8.sp)
+                                        }
                                     }
                                     Divider(color = XBorder.copy(alpha = .65f))
                                 }
