@@ -1336,7 +1336,7 @@ private fun MatchDetailContent(match: JSONObject) {
                     }
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(score, color = XText, fontSize = 29.sp, fontWeight = FontWeight.Black)
-                        Text(localizeMatchStatus(match.optString("status")), color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        Text(localizeVisualMatchStatus(match.optString("status")), color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         if (awayLogo.isNotBlank()) {
@@ -1521,7 +1521,7 @@ private fun MatchDetailContent(match: JSONObject) {
                 val referee = match.optJSONObject("referee")?.optString("name").orEmpty()
                 val details = listOf(
                     "البطولة" to competitionName,
-                    "الحالة" to localizeMatchStatus(match.optString("status")),
+                    "الحالة" to localizeVisualMatchStatus(match.optString("status")),
                     "الموعد" to match.readText("startTime", "kickoff", "date"),
                     "الملعب" to venue,
                     "الحكم" to referee
