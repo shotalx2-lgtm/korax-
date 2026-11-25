@@ -280,7 +280,7 @@ internal fun KoraxStatisticsHubPage(
                     KoraxStatsCompetition(
                         slug, name, row.koraxStatText("country"),
                         row.koraxStatText("providerName", "name_en").ifBlank { name },
-                        row.koraxStatText("imageUrl", "logoUrl", "competition_logo", "image", "logo")
+                        row.readImage("imageUrl", "logoUrl", "competition_logo", "image", "logo", "image_path", "image_url", "logo_url", "crest")
                     )
                 }
                 val catalogueItems = runCatching {
@@ -292,7 +292,7 @@ internal fun KoraxStatisticsHubPage(
                         val providerName = row.koraxStatText("name_en", "canonical_name", "providerName")
                         if (slug.isBlank() || name.isBlank()) return@mapNotNull null
                         KoraxStatsCompetition(slug, name, row.koraxStatText("country"), providerName.ifBlank { name },
-                             row.koraxStatText("imageUrl", "logoUrl", "competition_logo", "image", "logo"))
+                             row.readImage("imageUrl", "logoUrl", "competition_logo", "image", "logo", "image_path", "image_url", "logo_url", "crest"))
                     }
                 }.getOrDefault(emptyList())
                 (curatedItems + catalogueItems).distinctBy { it.providerName.lowercase(Locale.ROOT) }
@@ -324,7 +324,7 @@ internal fun KoraxStatisticsHubPage(
                         KoraxStatsCompetition(
                             slug, name, row.koraxStatText("country"),
                             row.koraxStatText("providerName", "name_en", "canonical_name").ifBlank { name },
-                            row.koraxStatText("imageUrl", "logoUrl", "competition_logo", "image", "logo")
+                            row.readImage("imageUrl", "logoUrl", "competition_logo", "image", "logo", "image_path", "image_url", "logo_url", "crest")
                         )
                     }
                 }
