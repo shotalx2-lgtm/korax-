@@ -455,6 +455,7 @@ private fun displayKickoffTime(raw: String): String {
 @Composable
 private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
     val context = LocalContext.current
+    val networkAvailable = rememberKoraxNetworkAvailable()
     val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
     val themeMode = KoraxSettingsStore.theme(context)
     KoraxThemePalette.applyLightMode(when (themeMode) {
@@ -545,7 +546,9 @@ private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
             }
         }
     }) { padding ->
-        Box(Modifier.fillMaxSize().padding(if (selectedArticle == null && selectedProfile == null && selectedMatchId == null) padding else PaddingValues(0.dp))) {
+        Column(Modifier.fillMaxSize().padding(if (selectedArticle == null && selectedProfile == null && selectedMatchId == null) padding else PaddingValues(0.dp))) {
+            if (!networkAvailable) KoraxConnectionBanner("لا يوجد اتصال بالإنترنت • ستظهر البيانات المحفوظة لحين عودة الاتصال")
+            Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
                 selectedArticle != null -> KoraxNewsDetailScreen(selectedArticle!!) { selectedArticle = null }
                 selectedProfile != null -> KoraxEntityProfileScreen(
@@ -571,6 +574,7 @@ private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
                 )
                         activeTab == "transfers" -> KoraxTopicPage(onBack = { tab = "more" }, onOpenArticle = { selectedArticle = it })
                         activeTab == "matches" -> MatchesScreen(
+                    isOnline = networkAvailable,
                     initialLive = matchLiveRequested,
                     selectedDate = matchDate,
                     onOpenMatch = { selectedMatchId = it },
@@ -624,6 +628,7 @@ private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
                 )
                     }
                 }
+            }
             }
         }
     }
