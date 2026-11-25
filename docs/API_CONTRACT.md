@@ -7,7 +7,7 @@ The Android client talks to the KORAX HTTPS backend. The active default is the S
 - `GET /api/news?per_page=40`
 - Optional filters: `language=ar|en`, `category=transfers|premier-league|la-liga|serie-a|bundesliga|ligue-1|saudi|egypt|football`
 
-Returns Arabic and English football news only. General news RSS feeds are not included; mixed-sports feeds pass a football-specific allowlist. Non-football sport markers reject basketball, tennis, handball and other sports. Each item retains publisher name, date, summary and original link; image is included only if the feed supplies one. The in-app article page displays the available RSS excerpt and links to the publisher's full article.
+Returns Arabic and English football news only. Arabic feeds include Batolat, Hesport, Kooora and Youm7 Sports alongside international English football publishers. General news RSS feeds are not included; mixed-sports feeds pass a football-specific allowlist. Non-football sport markers reject basketball, tennis, handball and other sports. Each item retains publisher name, date, summary and original link; image is included only if the feed supplies one. The in-app article page displays the available RSS excerpt and links to the publisher's full article.
 
 ## Matches
 
@@ -24,12 +24,16 @@ Optional `scope=main` restricts the response to the curated main competitions. D
 - `GET /api/competitions`
 - `GET /api/competitions?search=name`
 - `GET /api/competitions/{slug}` — standings where cached.
+- `GET /api/standings?slug={competitionSlug}&name={providerName}` — live provider standings, cached for five minutes.
+- `GET /api/topscorers?slug={competitionSlug}&stat=goals|assists&limit=20&name={providerName}` — top scorers or assists, cached for five minutes.
+- `GET /api/bracket?slug={competitionSlug}&name={providerName}` — knockout bracket where supported.
+- `GET /api/entities/catalogue?types=league,tournament&per_page=50` — searchable provider-imported competition catalogue.
 - `GET /api/teams?search=name`
 - `GET /api/teams/{slug}`
 - `GET /api/players?search=name`
 - `GET /api/players/{slug}`
 
-Search/profile coverage is limited by teams and players seen in cached fixtures and detailed lineups/events. Team profile rosters are the players observed in cached lineups, not an official complete squad. Player statistics reflect supplied events and cached lineups only. Missing fields remain unavailable.
+The Android statistics hub combines the competition catalogue with SportScore standings, top scorers and assists. Competition search can surface additional provider-imported or cached competitions; SportScore coverage and the provider's own competition slug support still apply. Search/profile coverage is limited by teams and players seen in cached fixtures and detailed lineups/events. Team profile rosters are the players observed in cached lineups, not an official complete squad. Player statistics reflect supplied events and cached lineups only. Missing fields remain unavailable.
 
 ## Transfers
 
