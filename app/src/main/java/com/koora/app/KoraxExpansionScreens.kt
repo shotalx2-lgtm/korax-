@@ -1213,6 +1213,32 @@ private fun MatchDetailContent(match: JSONObject) {
     val matchId = match.optString("id")
     var watching by remember(matchId) { mutableStateOf(KoraxMatchWatchStore.isWatching(context, matchId)) }
     var detailTab by rememberSaveable(matchId) { mutableStateOf("events") }
+    var relatedNews by remember(matchId) { mutableStateOf<List<NewsItem>>(emptyList()) }
+    var relatedNewsLoading by remember(matchId) { mutableStateOf(true) }
+    val kickoffValue = match.readText("startTime", "kickoff", "date")
+    LaunchedEffect(matchId, homeName, awayName, kickoffValue) {
+        relatedNewsLoading = true
+        val result = runCatching {
+            val normalize = { value: String ->
+                value.lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+            }
+            val names = listOf(homeName, awayName).flatMap { name ->
+                listOf(name, arabicFootballName(name))
+            }.map(::normalize).filter { it.length >= 4 }.distinct()
+            val kickoffInstant = runCatching { java.time.Instant.parse(kickoffValue) }.getOrNull()
+            val limitToPreMatch = kickoffInstant?.isAfter(java.time.Instant.now()) == true
+            loadNews().filter { article ->
+                val articleText = normalize(article.title + " " + article.summary)
+                val mentionsTeam = names.any { term -> articleText.contains(term) }
+                val published = runCatching { java.time.Instant.parse(article.date) }.getOrNull()
+                val beforeKickoff = !limitToPreMatch || published == null ||
+                    kickoffInstant == null || !published.isAfter(kickoffInstant)
+                mentionsTeam && beforeKickoff
+            }.take(5)
+        }
+        relatedNews = result.getOrDefault(emptyList())
+        relatedNewsLoading = false
+    }
 
     fun belongsTo(row: JSONObject, side: String, teamId: String, teamName: String): Boolean {
         val rowSide = row.readText("side")
@@ -1448,6 +1474,55 @@ private fun MatchDetailContent(match: JSONObject) {
                 }
             }
         }
+        Spacer(Modifier.height(14.dp))
+        Card(
+            Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = XCard),
+            border = BorderStroke(1.dp, XBorder),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                Text(
+                    if (runCatching { java.time.Instant.parse(kickoffValue).isAfter(java.time.Instant.now()) }.getOrDefault(false))
+                        "أخبار ما قبل المواجهة" else "آخر أخبار الفريقين",
+                    color = XText, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold
+                )
+                Text("أخبار منشورة من مصادر KORAX الحالية وتذكر أحد الناديين", color = XMuted, fontSize = 9.sp,
+                    modifier = Modifier.padding(top = 3.dp, bottom = 8.dp))
+                when {
+                    relatedNewsLoading -> Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(color = XAccent, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(8.dp))
+                        Text("جارٍ البحث عن آخر الأخبار...", color = XMuted, fontSize = 9.sp)
+                    }
+                    relatedNews.isEmpty() -> Text(
+                        "لا توجد أخبار حديثة مطابقة للفريقين في المصادر المتاحة حاليًا.",
+                        color = XMuted, fontSize = 10.sp, lineHeight = 15.sp
+                    )
+                    else -> relatedNews.forEachIndexed { index, article ->
+                        Column(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(11.dp))
+                                .clickable {
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(article.url)))
+                                    }
+                                }.padding(vertical = 8.dp, horizontal = 5.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(article.source, color = XAccent, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.weight(1f))
+                                Text(article.date.take(10), color = XMuted, fontSize = 8.sp)
+                            }
+                            Text(article.title, color = XText, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                                lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 4.dp))
+                        }
+                        if (index < relatedNews.lastIndex) Divider(color = XBorder.copy(alpha = .7f))
+                    }
+                }
+            }
+        }
+
         if (!match.optBoolean("detailAvailable")) {
             Text("يعرض هذا اللقاء البيانات الأساسية فقط؛ لم تصل تفاصيل إضافية من SportScore بعد.", color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(vertical = 12.dp))
         } else {
