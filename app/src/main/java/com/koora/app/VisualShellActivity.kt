@@ -1281,6 +1281,15 @@ private fun MatchesScreen(
     var slowConnection by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
     var selectedSummary by remember { mutableStateOf<MatchItem?>(null) }
+    var favouriteMatchesOnly by rememberSaveable { mutableStateOf(false) }
+    val followedTeams = KoraxFavoriteStore.all(context).filter { it.kind == "club" || it.kind == "national" }
+    val followedTeamNames = followedTeams.flatMap { listOf(it.name, arabicFootballName(it.name)) }
+        .map { it.trim().lowercase(Locale.ROOT) }.filter { it.length >= 3 }.distinct()
+    val visibleMatches = if (!favouriteMatchesOnly) matches else matches.filter { match ->
+        followedTeamNames.any { name ->
+            match.home.lowercase(Locale.ROOT).contains(name) || match.away.lowercase(Locale.ROOT).contains(name)
+        }
+    }
     val scope = rememberCoroutineScope()
     val sectionTitle = when (statusTab) {
         "live" -> "المباريات المباشرة"
@@ -1371,6 +1380,21 @@ private fun MatchesScreen(
                 )
             }
         }
+        if (followedTeams.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(
+                    selected = favouriteMatchesOnly,
+                    onClick = { favouriteMatchesOnly = !favouriteMatchesOnly },
+                    label = { Text("مباريات أنديتي المفضلة", fontSize = 9.sp) },
+                    leadingIcon = { Icon(Icons.Filled.Favorite, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = KLime, selectedLabelColor = Color.Black, labelColor = KMuted
+                    )
+                )
+                Spacer(Modifier.width(7.dp))
+                Text("تصفية سريعة حسب الأندية التي تتابعها", color = KMuted, fontSize = 8.sp)
+            }
+        }
         if (isOnline && error.isNotBlank() && matches.isNotEmpty()) {
             KoraxConnectionBanner("تعذر التحديث • نعرض آخر نسخة محفوظة من المباريات")
         } else if (slowConnection) {
@@ -1400,6 +1424,9 @@ private fun MatchesScreen(
                     "📅"
                 )
             }
+            visibleMatches.isEmpty() -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                StateCard("لا توجد مباريات لأنديتك المفضلة", "غيّر اليوم أو ألغِ تصفية المفضلة لعرض كل مباريات البطولات.", "♡")
+            }
             else -> LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
@@ -1409,11 +1436,11 @@ private fun MatchesScreen(
                     Row(Modifier.fillMaxWidth().padding(horizontal = 3.dp, vertical = 2.dp)) {
                         Text(sectionTitle, color = KText, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                         Spacer(Modifier.weight(1f))
-                        Text(matches.size.toString() + " مباراة", color = KMuted, fontSize = 10.sp)
+                        Text(visibleMatches.size.toString() + " مباراة", color = KMuted, fontSize = 10.sp)
                     }
                 }
                 items(
-                    matches.groupBy { it.league.ifBlank { "بطولة غير محددة" } }.entries.toList(),
+                    visibleMatches.groupBy { it.league.ifBlank { "بطولة غير محددة" } }.entries.toList(),
                     key = { it.key }
                 ) { leagueGroup ->
                     Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
