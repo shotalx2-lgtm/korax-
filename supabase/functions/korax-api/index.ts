@@ -1189,7 +1189,27 @@ async function getCachedTeamProfile(slug) {
 async function getCachedPlayerProfile(slug) {
   const players = await getCachedPlayerIndex();
   const player = players.find((item) => item.slug === slug);
-  return player ? { player } : null;
+  if (!player) return null;
+  if (player.imageUrl) return { player };
+
+  // Cached match identities can be linked to a canonical player record by exact name.
+  // Only a verified Commons portrait from the canonical profile is used as a fallback.
+  try {
+    const matches = await searchCanonicalEntities(player.name, ["player"], 3);
+    const exact = matches.find(item =>
+      normalizeSearchText(item.name_en || item.canonical_name || item.name) === normalizeSearchText(player.name)
+    ) || matches[0];
+    if (exact?.id && /^[0-9a-f-]{36}$/i.test(exact.id)) {
+      const profile = await getCanonicalEntityProfile(exact.id);
+      const canonicalPlayer = profile?.player;
+      if (canonicalPlayer?.imageUrl) {
+        return { player: { ...player, ...canonicalPlayer, id: player.id, slug, name: player.name } };
+      }
+    }
+  } catch (error) {
+    console.warn("[korax-player-profile] canonical portrait fallback skipped", String(error).slice(0, 160));
+  }
+  return { player };
 }
 
 async function getCachedCompetitionProfile(slug) {
