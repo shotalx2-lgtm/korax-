@@ -1,6 +1,6 @@
 import { createJsonClient } from "./http.mjs";
 
-const API = "https://www.thesportsdb.com/api/v1/json/123";
+
 
 function text(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -164,7 +164,10 @@ function leagueRecord(league) {
   };
 }
 
-export function createTheSportsDbClient(options = {}) {
+export function createTheSportsDbClient({ apiKey, ...options } = {}) {
+  const key = String(apiKey || process.env.THESPORTSDB_API_KEY || "").trim();
+  if (!key || key === "123") throw new Error("Paid THESPORTSDB_API_KEY is required for public-app synchronization");
+  const API = "https://www.thesportsdb.com/api/v1/json/" + encodeURIComponent(key);
   const getJson = createJsonClient({
     source: "thesportsdb",
     // The shared free endpoint is also used by other projects. Keep this well
