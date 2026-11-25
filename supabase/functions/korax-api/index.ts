@@ -1112,6 +1112,7 @@ const NEWS_FEEDS = [
   { id: "btolat-pyramids", source: "بطولات - بيراميدز", language: "ar", url: "https://www.btolat.com/rss/newsfeed?teamid=23165" },
   { id: "hesport", source: "هسبورت", language: "ar", url: "https://www.hesport.com/feed" },
   { id: "kooora", source: "كووورة", language: "ar", url: "https://feeds.footballco.com/kooora/feed/6p5bsxot7te8yick" },
+  { id: "youm7-sport", source: "اليوم السابع - رياضة", language: "ar", url: "https://www.youm7.com/rss/SectionRss?SectionID=298" },
   { id: "bbc-football", source: "BBC Sport", language: "en", url: "https://feeds.bbci.co.uk/sport/football/rss.xml" },
   { id: "bbc-premier", source: "BBC Sport - Premier League", language: "en", url: "https://feeds.bbci.co.uk/sport/football/premier-league/rss.xml" },
   { id: "bbc-champions", source: "BBC Sport - Champions League", language: "en", url: "https://feeds.bbci.co.uk/sport/football/champions-league/rss.xml" },
@@ -1455,6 +1456,44 @@ async function route(request, env) {
     return row
       ? json({ data: cachedMatchPayload(row), source: "sportscore-supabase-cache" })
       : json({ error: "Match is not in the current SportScore cache yet", retryable: true }, 404);
+  }
+
+  if (path === "/api/standings" || path === "/api/topscorers" || path === "/api/bracket") {
+    const requestedSlug = (url.searchParams.get("slug") || "").trim().toLowerCase();
+    if (!/^[a-z0-9-]{2,80}$/.test(requestedSlug)) {
+      return json({ error: "A valid competition slug is required", data: [] }, 400);
+    }
+    const providerSlugs = {
+      "english-premier-league": "premier-league",
+      "spanish-la-liga": "la-liga",
+      "french-ligue-1": "ligue-1",
+      "italian-serie-a": "serie-a",
+      "saudi-professional-league": "saudi-pro-league",
+      "uefa-champions-league": "uefa-champions-league",
+      "egyptian-premier-league": "egyptian-premier-league",
+    };
+    const providerSlug = providerSlugs[requestedSlug] || requestedSlug;
+    const endpoint = path === "/api/standings" ? "/api/widget/standings/" :
+      path === "/api/topscorers" ? "/api/widget/topscorers/" : "/api/widget/bracket/";
+    const params = { sport: "football", slug: providerSlug, src: "korax-android" };
+    if (path === "/api/topscorers") {
+      const stat = (url.searchParams.get("stat") || "goals").toLowerCase();
+      if (!["goals", "assists"].includes(stat)) {
+        return json({ error: "stat must be goals or assists", data: [] }, 400);
+      }
+      const requestedLimit = Number(url.searchParams.get("limit") || 20);
+      params.limit = Number.isFinite(requestedLimit) ? Math.min(50, Math.max(1, Math.floor(requestedLimit))) : 20;
+      params.stat = stat;
+    }
+    const payload = await cachedProviderRequest(endpoint, params, env, 300);
+    return json({
+      data: unwrap(payload),
+      competitionSlug: requestedSlug,
+      providerSlug,
+      source: "sportscore-widget",
+      provider: "SportScore",
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   if (path === "/api/competitions") {
