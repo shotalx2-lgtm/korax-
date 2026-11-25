@@ -261,7 +261,7 @@ internal fun JSONObject.https(name: String) = optString(name).takeIf { it.starts
 internal fun JSONObject.firstHttps(vararg names: String): String =
     names.firstNotNullOfOrNull { name -> https(name).takeIf { it.isNotBlank() } }.orEmpty()
 
-private suspend fun loadNews(): List<NewsItem> {
+internal suspend fun loadNews(): List<NewsItem> {
     // The endpoint already filters Arabic. Keep older Worker responses that omit
     // the language field, but never mix explicitly English-only items into the feed.
     val primary = apiJson("/api/news?language=ar&per_page=100")
@@ -379,7 +379,7 @@ private val arabicFootballNameOverrides = mapOf(
     "saudi king cup" to "كأس الملك السعودي", "saudi super cup" to "كأس السوبر السعودي"
 )
 
-private fun arabicFootballName(raw: String): String {
+internal fun arabicFootballName(raw: String): String {
     val value = raw.trim()
     if (value.isBlank() || value.any { it in '\u0600'..'\u06FF' }) return value
     val key = value.lowercase(Locale.ROOT)
@@ -617,10 +617,11 @@ private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
                 tonalElevation = 10.dp
             ) {
                 val tabs = listOf(
+                    Triple("matches", "المباريات", Icons.Filled.CalendarMonth),
                     Triple("news", "الأخبار", Icons.Filled.Search),
                     Triple("standings", "الترتيب", Icons.Filled.Explore),
-                    Triple("statistics", "الإحصائيات", Icons.Filled.Favorite),
-                    Triple("settings", "الإعدادات", Icons.Filled.Settings)
+                    Triple("favorites", "المفضلة", Icons.Filled.Favorite),
+                    Triple("more", "المزيد", Icons.Filled.Settings)
                 )
                 tabs.forEach { (key, label, icon) ->
                     NavigationBarItem(
@@ -1322,16 +1323,13 @@ private fun MatchesScreen(
 
     Column(Modifier.fillMaxSize().background(KBg)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Image(
-                painter = painterResource(R.drawable.korax_brand),
-                contentDescription = "شعار كوراكس",
-                modifier = Modifier.size(42.dp),
-                contentScale = androidx.compose.ui.layout.ContentScale.Fit
-            )
-            Spacer(Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                Text("المباريات", color = KText, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
+                Text("مواعيد اليوم والنتائج المباشرة", color = KMuted, fontSize = 9.sp)
+            }
             IconButton(onClick = {
                 onChooseDate(runCatching { LocalDate.parse(selectedDate).minusDays(1).toString() }.getOrDefault(todayIso()))
             }) { Text("‹", color = KMuted, fontSize = 28.sp) }
