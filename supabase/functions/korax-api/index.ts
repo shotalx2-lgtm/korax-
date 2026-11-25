@@ -1713,7 +1713,7 @@ async function route(request, env) {
 
   if (path === "/api/entities/search") {
     const search = (url.searchParams.get("search") || "").trim();
-    if (search.length < 2) return json({ data: [], meta: { requiresSearch: true }, source: "korax-world-entity-index" });
+    if (search.length < 1) return json({ data: [], meta: { requiresSearch: true }, source: "korax-world-entity-index" });
     const types = ["club", "national", "player", "coach", "league", "tournament"];
     const [canonical, teamRows, playerRows, competitionRows] = await Promise.all([
       searchCanonicalEntities(search, types, perPage),
