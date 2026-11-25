@@ -837,6 +837,13 @@ private fun findProfileImage(value: JSONObject, depth: Int = 0): String {
                 val found = findProfileImage(child, depth + 1)
                 if (found.isNotBlank()) return found
             }
+            is JSONArray -> {
+                for (index in 0 until child.length()) {
+                    val nested = child.optJSONObject(index) ?: continue
+                    val found = findProfileImage(nested, depth + 1)
+                    if (found.isNotBlank()) return found
+                }
+            }
             else -> Unit
         }
     }
