@@ -1002,13 +1002,15 @@ internal fun KoraxEntityProfileScreen(
                                 Modifier.size(104.dp).clip(RoundedCornerShape(18.dp)).background(DCard2),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (image.isNotBlank() && KoraxSettingsStore.getBoolean(context, "show_images", true)) {
+                                Text(profileName.take(1), color = DAccent, fontSize = 42.sp, fontWeight = FontWeight.Black)
+                                if (image.isNotBlank() && KoraxSettingsStore.getBoolean(context, "show_images", true) &&
+                                    !KoraxSettingsStore.getBoolean(context, "data_saver", false)
+                                ) {
                                     coil.compose.AsyncImage(
                                         model = image, contentDescription = profileName,
-                                        modifier = Modifier.fillMaxSize().padding(5.dp), contentScale = ContentScale.Fit
+                                        modifier = Modifier.fillMaxSize().padding(5.dp),
+                                        contentScale = if (favorite.kind == "player") ContentScale.Crop else ContentScale.Fit
                                     )
-                                } else {
-                                    Text(profileName.take(1), color = DAccent, fontSize = 42.sp, fontWeight = FontWeight.Black)
                                 }
                             }
                             Spacer(Modifier.width(13.dp))
@@ -1160,8 +1162,11 @@ internal fun KoraxEntityProfileScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(Modifier.size(38.dp).clip(CircleShape).background(DCard2), contentAlignment = Alignment.Center) {
-                                if (player.imageUrl.isNotBlank()) coil.compose.AsyncImage(model = player.imageUrl, contentDescription = player.name, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                else Text(player.name.take(1), color = DAccent, fontWeight = FontWeight.Bold)
+                                Text(player.name.take(1), color = DAccent, fontWeight = FontWeight.Bold)
+                                if (player.imageUrl.isNotBlank()) coil.compose.AsyncImage(
+                                    model = player.imageUrl, contentDescription = player.name,
+                                    modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop
+                                )
                             }
                             Spacer(Modifier.width(9.dp))
                             Text(player.name, color = DText, fontWeight = FontWeight.SemiBold, fontSize = 11.sp, modifier = Modifier.weight(1f))
