@@ -1429,7 +1429,7 @@ private fun MatchesScreen(
                         !KoraxSettingsStore.getBoolean(context, "data_saver", false)
                     Card(
                         Modifier.fillMaxWidth().clickable {
-                            if (match.detailsAvailable && match.id.matches(Regex("[A-Za-z0-9_-]{8,}"))) onOpenMatch(match.id)
+                            if (match.id.matches(Regex("[A-Za-z0-9_-]{8,}"))) onOpenMatch(match.id)
                             else selectedSummary = match
                         },
                         shape = RoundedCornerShape(15.dp),
@@ -1446,7 +1446,10 @@ private fun MatchesScreen(
                                             modifier = Modifier.size(42.dp),
                                             contentScale = androidx.compose.ui.layout.ContentScale.Fit
                                         )
-                                    } else Text("⚽", fontSize = 25.sp)
+                                    } else Box(
+                                        Modifier.size(42.dp).clip(CircleShape).background(KCard2),
+                                        contentAlignment = Alignment.Center
+                                    ) { Text(match.home.take(1), color = KLime, fontSize = 15.sp, fontWeight = FontWeight.Black) }
                                     Spacer(Modifier.height(4.dp))
                                     Text(
                                         match.home, color = KText, fontSize = 10.sp, fontWeight = FontWeight.Bold,
@@ -1471,7 +1474,10 @@ private fun MatchesScreen(
                                             modifier = Modifier.size(42.dp),
                                             contentScale = androidx.compose.ui.layout.ContentScale.Fit
                                         )
-                                    } else Text("⚽", fontSize = 25.sp)
+                                    } else Box(
+                                        Modifier.size(42.dp).clip(CircleShape).background(KCard2),
+                                        contentAlignment = Alignment.Center
+                                    ) { Text(match.away.take(1), color = KLime, fontSize = 15.sp, fontWeight = FontWeight.Black) }
                                     Spacer(Modifier.height(4.dp))
                                     Text(
                                         match.away, color = KText, fontSize = 10.sp, fontWeight = FontWeight.Bold,
