@@ -679,6 +679,10 @@ private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
                     onFinish = { tab = "matches" },
                     onOpenProfile = { selectedProfile = it }
                 )
+                        activeTab == "statistics" -> KoraxStatisticsHubPage(
+                    onBack = { tab = "more" },
+                    onExplore = { tab = "explore" }
+                )
                         activeTab == "competitions" -> KoraxCompetitionsHubPage(
                     onBack = { tab = "more" },
                     onOpenProfile = { selectedProfile = it }
@@ -717,7 +721,8 @@ private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
                     competitions = { tab = "competitions" },
                     settings = { tab = "settings" },
                     transfers = { tab = "transfers" },
-                    tools = { tab = "tools" }
+                    tools = { tab = "tools" },
+                    statistics = { tab = "statistics" }
                 )
                     }
                 }
@@ -1404,7 +1409,7 @@ private fun MatchesScreen(
 }
 
 @Composable
-private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit, explore: () -> Unit, competitions: () -> Unit, settings: () -> Unit, transfers: () -> Unit, tools: () -> Unit) {
+private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: () -> Unit, explore: () -> Unit, competitions: () -> Unit, settings: () -> Unit, transfers: () -> Unit, tools: () -> Unit, statistics: () -> Unit) {
     val context = LocalContext.current
     val followedCount = KoraxFavoriteStore.all(context).size
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
@@ -1442,6 +1447,7 @@ private fun MoreScreen(home: () -> Unit, favorites: () -> Unit, notifications: (
             MoreSectionLabel("كرة القدم")
             MoreRow("الأخبار", "آخر أخبار كرة القدم من المصادر المتاحة", "⌂", home)
             MoreRow("البطولات والدوريات", "المباريات والجداول وترتيب الفرق", "🏆", competitions)
+            MoreRow("مركز الإحصائيات", "جداول الترتيب والهدافون وصنّاع الأهداف وإحصاءات الأندية", "📊", statistics)
             MoreRow("استكشف", "الأندية والمنتخبات واللاعبون", "⌕", explore)
             MoreRow("مركز الإشعارات", "تنبيهات المباريات والأخبار على جهازك", "♧", notifications)
             MoreSectionLabel("التطبيق")
