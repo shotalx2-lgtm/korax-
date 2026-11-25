@@ -400,6 +400,58 @@ private class LocalComments(context: Context) {
     }
 }
 
+
+@Composable
+private fun rememberKoraxNetworkAvailable(): Boolean {
+    val context = LocalContext.current
+    var available by remember { mutableStateOf(koraxHasValidatedInternet(context)) }
+    DisposableEffect(context) {
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) { available = koraxHasValidatedInternet(context) }
+            override fun onLost(network: android.net.Network) { available = koraxHasValidatedInternet(context) }
+            override fun onCapabilitiesChanged(network: android.net.Network, capabilities: android.net.NetworkCapabilities) {
+                available = capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+        }
+        runCatching { manager.registerDefaultNetworkCallback(callback) }
+        onDispose { runCatching { manager.unregisterNetworkCallback(callback) } }
+    }
+    return available
+}
+
+private fun koraxHasValidatedInternet(context: Context): Boolean = runCatching {
+    val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+    val network = manager.activeNetwork ?: return@runCatching false
+    val capabilities = manager.getNetworkCapabilities(network) ?: return@runCatching false
+    capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+        capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+}.getOrDefault(false)
+
+@Composable
+private fun KoraxConnectionBanner(message: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp),
+        color = Color(0xFF231D12), shape = RoundedCornerShape(13.dp),
+        border = BorderStroke(1.dp, Color(0xFF594324))
+    ) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("◌", color = Color(0xFFFFC66D), fontSize = 15.sp, fontWeight = FontWeight.Black)
+            Spacer(Modifier.width(8.dp))
+            Text(message, color = Color(0xFFFFD89A), fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+private fun displayKickoffTime(raw: String): String {
+    if (raw.isBlank()) return "—"
+    return runCatching {
+        DateTimeFormatter.ofPattern("hh:mm a", Locale("ar"))
+            .withZone(ZoneId.systemDefault()).format(Instant.parse(raw))
+    }.getOrElse { displayKickoff(raw) }
+}
+
 @Composable
 private fun KoraxApp(initialNotificationRoute: KoraxNotificationRoute? = null) {
     val context = LocalContext.current
