@@ -849,6 +849,7 @@ private fun NewsScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
     var category by rememberSaveable { mutableStateOf("الكل") }
+    var selectedFollowedName by rememberSaveable { mutableStateOf("كل متابعاتك") }
     var selected by remember { mutableStateOf<NewsItem?>(null) }
     var showDatePicker by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -869,13 +870,13 @@ private fun NewsScreen(
 
     LaunchedEffect(Unit) { refresh() }
     val followedNames = KoraxFavoriteStore.followed(context).map { it.name }.filter { it.isNotBlank() }
-    val filtered = articles.filter {
-        val categoryMatch = if (category == "لك") {
-            followedNames.isNotEmpty() && followedNames.any { name ->
-                (it.title + " " + it.summary).contains(name, ignoreCase = true)
+    val filtered = articles.filter { article ->
+        if (category == "لك") {
+            val namesToMatch = if (selectedFollowedName == "كل متابعاتك") followedNames else listOf(selectedFollowedName)
+            namesToMatch.any { name ->
+                (article.title + " " + article.summary).contains(name, ignoreCase = true)
             }
-        } else matchesCategory(it, category)
-        categoryMatch
+        } else matchesCategory(article, category)
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -905,12 +906,34 @@ private fun NewsScreen(
             items(newsCategories) { option ->
                 FilterChip(
                     selected = category == option,
-                    onClick = { category = option },
+                    onClick = {
+                        category = option
+                        if (option != "لك") selectedFollowedName = "كل متابعاتك"
+                    },
                     label = { Text(option, fontSize = 10.sp) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = KLime, selectedLabelColor = Color.Black, labelColor = KMuted
                     )
                 )
+            }
+        }
+        if (category == "لك" && followedNames.isNotEmpty()) {
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 13.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                items((listOf("كل متابعاتك") + followedNames).distinct()) { name ->
+                    FilterChip(
+                        selected = selectedFollowedName == name,
+                        onClick = { selectedFollowedName = name },
+                        label = { Text(name, fontSize = 9.sp, maxLines = 1) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = KCard2,
+                            selectedLabelColor = KLime,
+                            labelColor = KMuted
+                        )
+                    )
+                }
             }
         }
         Spacer(Modifier.height(9.dp))
