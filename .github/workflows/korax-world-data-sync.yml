@@ -48,6 +48,12 @@ jobs:
         run: node --test scripts/football-sources/*.test.mjs
 
       - name: Fetch and persist source data
+        env:
+          FOOTBALL_DATA_API_TOKEN: ${{ secrets.KORAX_FOOTBALL_DATA_API_TOKEN }}
+          API_FOOTBALL_KEY: ${{ secrets.KORAX_API_FOOTBALL_KEY }}
+          API_FOOTBALL_RIGHTS_CONFIRMED: ${{ vars.KORAX_API_FOOTBALL_RIGHTS_CONFIRMED }}
+          THESPORTSDB_API_KEY: ${{ secrets.KORAX_THESPORTSDB_API_KEY }}
+          THESPORTSDB_RIGHTS_CONFIRMED: ${{ vars.KORAX_THESPORTSDB_RIGHTS_CONFIRMED }}
         run: node scripts/sync-world-data.mjs
 
   openligadb:
