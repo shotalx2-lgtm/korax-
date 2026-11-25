@@ -191,7 +191,10 @@ private fun findKoraxStatsRows(
     when (value) {
         is JSONArray -> {
             val direct = (0 until value.length()).mapNotNull { value.optJSONObject(it) }
-            if (direct.isNotEmpty()) return direct
+            if (direct.isNotEmpty()) {
+                val nestedRows = direct.flatMap { findKoraxStatsRows(it, candidateKeys, depth + 1) }
+                return nestedRows.ifEmpty { direct }
+            }
             for (index in 0 until value.length()) {
                 val nested = findKoraxStatsRows(value.opt(index), candidateKeys, depth + 1)
                 if (nested.isNotEmpty()) return nested
@@ -203,7 +206,10 @@ private fun findKoraxStatsRows(
                 when (nestedValue) {
                     is JSONArray -> {
                         val direct = (0 until nestedValue.length()).mapNotNull { nestedValue.optJSONObject(it) }
-                        if (direct.isNotEmpty()) return direct
+                        if (direct.isNotEmpty()) {
+                            val nestedRows = direct.flatMap { findKoraxStatsRows(it, candidateKeys, depth + 1) }
+                            return nestedRows.ifEmpty { direct }
+                        }
                         val deep = findKoraxStatsRows(nestedValue, candidateKeys, depth + 1)
                         if (deep.isNotEmpty()) return deep
                     }
