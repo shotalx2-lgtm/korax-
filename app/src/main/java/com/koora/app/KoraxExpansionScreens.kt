@@ -429,23 +429,25 @@ internal fun KoraxStatisticsHubPage(
                             LinearProgressIndicator(Modifier.fillMaxWidth(), color = XAccent)
                         } else if (competitions.isEmpty()) {
                             Text("قائمة البطولات غير متاحة حاليًا. اسحب للتحديث.", color = XMuted, fontSize = 10.sp)
-                        } else {
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                                items(competitions, key = { it.slug }) { competition ->
-                                    FilterChip(
-                                        selected = selectedSlug == competition.slug,
-                                        onClick = { selectedSlug = competition.slug },
-                                        label = { Text(competition.name, fontSize = 10.sp, maxLines = 1) },
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = XAccent,
-                                            selectedLabelColor = Color.Black,
-                                            labelColor = XMuted
-                                        )
-                                    )
+                        } else if (competitionQuery.isBlank()) {
+                            Row(
+                                Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(13.dp))
+                                    .background(XCard2).clickable { competitionQuery = "" }.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.size(43.dp).clip(CircleShape).background(XCard), contentAlignment = Alignment.Center) {
+                                    if (!selectedCompetition?.imageUrl.isNullOrBlank()) {
+                                        coil.compose.AsyncImage(model = selectedCompetition!!.imageUrl, contentDescription = selectedCompetition.name,
+                                            modifier = Modifier.fillMaxSize().padding(4.dp), contentScale = ContentScale.Fit)
+                                    } else Text(selectedCompetition?.name?.take(1).orEmpty(), color = XAccent, fontSize = 20.sp, fontWeight = FontWeight.Black)
                                 }
-                            }
-                            selectedCompetition?.country?.takeIf { it.isNotBlank() }?.let {
-                                Text(it, color = XMuted, fontSize = 9.sp, modifier = Modifier.padding(top = 5.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text("البطولة المختارة", color = XMuted, fontSize = 8.sp)
+                                    Text(selectedCompetition?.name ?: "اختر بطولة", color = XText, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text(selectedCompetition?.country.orEmpty(), color = XMuted, fontSize = 9.sp)
+                                }
+                                Text("تغيير", color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -509,21 +511,52 @@ internal fun KoraxStatisticsHubPage(
                                 }
                                 Divider(color = XBorder)
                                 rows.take(40).forEachIndexed { index, row ->
+                                    val rank = row.koraxStatText("position", "rank", "place", "pos").toIntOrNull() ?: index + 1
+                                    val teamName = row.koraxStatText("team_name", "teamName", "name", "participant_name", "team", "participant").ifBlank { "فريق غير محدد" }
+                                    val teamImage = row.readImage("team_logo", "teamLogo", "team_image", "teamImage", "participant_logo", "participant_image", "crest")
+                                    val accent = when {
+                                        rank <= 4 -> Color(0xFF20C978)
+                                        rank > rows.size - 3 -> Color(0xFFEF5350)
+                                        else -> Color(0xFF3997F5)
+                                    }
                                     Row(
-                                        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                        Modifier.fillMaxWidth().padding(vertical = 7.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(row.koraxStatText("position", "rank", "place", "pos").ifBlank { (index + 1).toString() }, color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
-                                        Text(row.koraxStatText("team_name", "teamName", "name", "participant_name", "team", "participant").ifBlank { "فريق غير محدد" }, color = XText, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(row.koraxStatText("played", "matches", "played_matches", "games", "p").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(30.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                        Text(row.koraxStatText("won", "wins", "won_matches", "w").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                        Text(row.koraxStatText("draw", "draws", "drawn", "d").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                        Text(row.koraxStatText("lost", "losses", "lost_matches", "l").ifBlank { "—" }, color = XMuted, fontSize = 9.sp, modifier = Modifier.width(25.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-                                        Text(row.koraxStatText("points", "pts").ifBlank { "—" }, color = XAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(42.dp), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+                                        Box(Modifier.width(3.dp).height(42.dp).clip(RoundedCornerShape(4.dp)).background(accent))
+                                        Spacer(Modifier.width(7.dp))
+                                        Text(rank.toString(), color = accent, fontSize = 11.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(20.dp))
+                                        Box(Modifier.size(31.dp).clip(CircleShape).background(XCard2), contentAlignment = Alignment.Center) {
+                                            if (teamImage.isNotBlank()) {
+                                                coil.compose.AsyncImage(model = teamImage, contentDescription = teamName,
+                                                    modifier = Modifier.fillMaxSize().padding(3.dp), contentScale = ContentScale.Fit)
+                                            } else Text(teamName.take(1), color = XAccent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Spacer(Modifier.width(7.dp))
+                                        Column(Modifier.weight(1f)) {
+                                            Text(teamName, color = XText, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            val form = row.koraxStatText("form", "recent_form", "last_matches")
+                                            if (form.isNotBlank()) Text("آخر المباريات: $form", color = XMuted, fontSize = 8.sp, maxLines = 1)
+                                        }
+                                        Column(horizontalAlignment = Alignment.End) {
+                                            Text(row.koraxStatText("points", "pts").ifBlank { "—" }, color = XAccent, fontSize = 12.sp, fontWeight = FontWeight.Black)
+                                            Text("نقطة", color = XMuted, fontSize = 7.sp)
+                                        }
+                                    }
+                                    Row(Modifier.fillMaxWidth().padding(start = 37.dp, bottom = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        Text("لعب " + row.koraxStatText("played", "matches", "played_matches", "games", "p").ifBlank { "—" }, color = XMuted, fontSize = 8.sp)
+                                        Text("ف " + row.koraxStatText("won", "wins", "won_matches", "w").ifBlank { "—" }, color = XMuted, fontSize = 8.sp)
+                                        Text("ت " + row.koraxStatText("draw", "draws", "drawn", "d").ifBlank { "—" }, color = XMuted, fontSize = 8.sp)
+                                        Text("خ " + row.koraxStatText("lost", "losses", "lost_matches", "l").ifBlank { "—" }, color = XMuted, fontSize = 8.sp)
+                                        Text("فارق " + row.koraxStatText("goal_difference", "goalDifference", "gd").ifBlank { "—" }, color = XMuted, fontSize = 8.sp)
                                     }
                                     Divider(color = XBorder.copy(alpha = .65f))
                                 }
-                                Text("ف = فوز • ت = تعادل • خ = خسارة", color = XMuted, fontSize = 8.sp, modifier = Modifier.padding(top = 7.dp))
+                                Row(Modifier.fillMaxWidth().padding(top = 9.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("■ صعود / تأهل", color = Color(0xFF20C978), fontSize = 8.sp)
+                                    Text("■ مراكز وسط", color = Color(0xFF3997F5), fontSize = 8.sp)
+                                    Text("■ هبوط", color = Color(0xFFEF5350), fontSize = 8.sp)
+                                }
                             }
                         }
                     }
