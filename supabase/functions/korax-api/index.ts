@@ -169,16 +169,27 @@ function normalizeScores(scores, homeId, awayId, stateName) {
 }
 
 function httpsImage(...values) {
-  for (const value of values) {
-    if (typeof value === "string" && /^https:\/\//i.test(value)) return value;
+  const imageKeys = [
+    "url", "src", "original", "large", "medium", "small",
+    "imageUrl", "image_url", "image_path", "photo_url", "avatar_url",
+    "profile_image", "profileImage", "portrait", "headshot",
+  ];
+  for (const candidate of values) {
+    const value = typeof candidate === "string"
+      ? candidate
+      : candidate && typeof candidate === "object"
+        ? imageKeys.map(key => candidate[key]).find(item => typeof item === "string" && /^https:\/\//i.test(item.trim()))
+        : "";
+    if (typeof value === "string" && /^https:\/\//i.test(value.trim())) return value.trim();
   }
   return "";
 }
 
 function normalizeEvent(event) {
   const type = nestedName(event?.type) || event?.type_name || event?.name || "حدث";
-  const playerRaw = event?.player && typeof event.player === "object" ? event.player : {};
-  const player = nestedName(event?.player) || event?.player_name || "";
+  const playerRaw = event?.player && typeof event.player === "object" ? event.player
+    : event?.player_info && typeof event.player_info === "object" ? event.player_info : {};
+  const player = nestedName(event?.player) || event?.player_name || event?.athlete_name || "";
   const teamRaw = event?.participant || event?.team || {};
   const team = nestedName(teamRaw) || event?.team_name || "";
   const assistRaw = event?.assist || event?.assist_player || event?.assisted_by ||
@@ -194,27 +205,47 @@ function normalizeEvent(event) {
     type_name: type,
     player_id: playerRaw?.id ?? event?.player_id ?? null,
     player_name: player,
-    player_image_url: httpsImage(playerRaw?.image_path, playerRaw?.image_url, playerRaw?.photo_url),
+    player_image_url: httpsImage(
+      playerRaw, playerRaw?.image_path, playerRaw?.image_url, playerRaw?.photo_url,
+      playerRaw?.photo, playerRaw?.avatar_url, playerRaw?.profile_image,
+      event?.player_image_url, event?.player_image, event?.playerImage,
+      event?.photo_url, event?.avatar_url, event?.imageUrl, event?.image_url
+    ),
     team_id: teamRaw?.id ?? event?.participant_id ?? event?.team_id ?? null,
     team: team ? { id: teamRaw?.id ?? null, name: team, imageUrl: teamImage } : null,
     team_side: event?.side || "",
     team_image_url: teamImage,
     assist_player_id: assistRaw?.id ?? event?.assist_player_id ?? null,
     assist_player_name: assistName,
-    assist_player_image_url: httpsImage(assistRaw?.image_path, assistRaw?.image_url, assistRaw?.photo_url),
+    assist_player_image_url: httpsImage(
+      assistRaw, assistRaw?.image_path, assistRaw?.image_url, assistRaw?.photo_url,
+      assistRaw?.photo, assistRaw?.avatar_url, assistRaw?.profile_image,
+      event?.assist_player_image_url, event?.assist_player_image, event?.assistPlayerImage
+    ),
     detail: event?.addition || event?.info || event?.result || substitution || "",
     is_goal: Boolean(event?.is_goal),
   };
 }
 
 function normalizeLineup(item) {
-  const player = item?.player || {};
+  const player = item?.player && typeof item.player === "object" ? item.player
+    : item?.player_info && typeof item.player_info === "object" ? item.player_info
+    : item?.athlete && typeof item.athlete === "object" ? item.athlete : {};
   const team = item?.team || item?.participant || {};
   const teamName = nestedName(team) || item?.team_name || "";
+  const playerImage = httpsImage(
+    player, player?.image_path, player?.image_url, player?.photo_url, player?.photo,
+    player?.avatar_url, player?.profile_image, player?.profileImage, player?.portrait,
+    item?.imageUrl, item?.image_url, item?.image_path, item?.player_image_url,
+    item?.player_image, item?.playerImage, item?.photo_url, item?.avatar_url,
+    item?.profile_image, item?.portrait, item?.headshot
+  );
   return {
     player_id: player?.id ?? item?.player_id ?? item?.id ?? null,
-    player_name: nestedName(player) || item?.player_name || item?.name || "",
-    imageUrl: httpsImage(player?.image_path, player?.image_url, item?.imageUrl, item?.image_url),
+    player_name: nestedName(player) || item?.player_name || item?.name || item?.athlete_name || "",
+    imageUrl: playerImage,
+    image_path: playerImage,
+    player_image_url: playerImage,
     position_name: nestedName(item?.position) || item?.position_name || "",
     shirt_number: item?.jersey_number ?? item?.shirt_number ?? item?.number ?? null,
     team_id: team?.id ?? item?.team_id ?? null,
@@ -402,7 +433,8 @@ function normalizeTeam(team) {
       return {
         id: String(player?.id ?? entry?.player_id ?? ""),
         name: player?.name || entry?.player_name || "",
-        imageUrl: player?.image_path || "",
+        imageUrl: httpsImage(player, player?.image_path, player?.image_url, player?.photo_url, player?.photo, player?.avatar_url, player?.profile_image, entry?.imageUrl, entry?.image_url, entry?.player_image_url),
+        image_path: httpsImage(player, player?.image_path, player?.image_url, player?.photo_url, player?.photo, player?.avatar_url, player?.profile_image, entry?.imageUrl, entry?.image_url, entry?.player_image_url),
         position: nestedName(player?.position) || nestedName(entry?.position),
         shirt_number: entry?.jersey_number ?? entry?.shirt_number ?? player?.shirt_number ?? null,
       };
@@ -419,7 +451,8 @@ function normalizePlayer(player) {
   return {
     id: String(player?.id ?? ""),
     name: player?.name || "اسم غير متاح",
-    imageUrl: player?.image_path || "",
+    imageUrl: httpsImage(player, player?.image_path, player?.image_url, player?.photo_url, player?.photo, player?.avatar_url, player?.profile_image, player?.profileImage, player?.portrait, player?.headshot),
+    image_path: httpsImage(player, player?.image_path, player?.image_url, player?.photo_url, player?.photo, player?.avatar_url, player?.profile_image, player?.profileImage, player?.portrait, player?.headshot),
     position: nestedName(player?.position) || nestedName(player?.detailed_position),
     nationality: nestedName(player?.nationality) || nestedName(player?.country),
     date_of_birth: player?.date_of_birth || "",
@@ -645,8 +678,8 @@ async function getCachedPlayerIndex() {
         position: nestedName(details?.position) || details?.position_name || "",
         shirt_number: details?.number ?? details?.shirt_number ?? details?.jersey_number ?? null,
         team_name: teamName || "",
-        imageUrl: httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl),
-        image_path: httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl),
+        imageUrl: httpsImage(details, details?.image_path, details?.image_url, details?.photo_url, details?.photo, details?.avatar_url, details?.profile_image, details?.imageUrl, details?.player_image_url, details?.playerImage),
+        image_path: httpsImage(details, details?.image_path, details?.image_url, details?.photo_url, details?.photo, details?.avatar_url, details?.profile_image, details?.imageUrl, details?.player_image_url, details?.playerImage),
         matchesInCache: [],
         competitionNames: [],
         competitionSlugs: [],
@@ -674,7 +707,7 @@ async function getCachedPlayerIndex() {
       }
       if (!current.position) current.position = nestedName(details?.position) || details?.position_name || "";
       if (!current.imageUrl) {
-        current.imageUrl = httpsImage(details?.image_path, details?.image_url, details?.photo_url, details?.imageUrl);
+        current.imageUrl = httpsImage(details, details?.image_path, details?.image_url, details?.photo_url, details?.photo, details?.avatar_url, details?.profile_image, details?.imageUrl, details?.player_image_url, details?.playerImage);
         current.image_path = current.imageUrl;
       }
       if (involvement === "lineup" && !details?.is_substitute && row.match_slug &&
