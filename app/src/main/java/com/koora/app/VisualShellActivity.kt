@@ -994,8 +994,50 @@ private fun TransfersScreen() {
     }
 }
 
+
+private fun matchCacheKey(status: String, date: String) = "matches_" + status + "_" + date
+
+private fun readMatchCache(context: Context, status: String, date: String): List<MatchItem> = runCatching {
+    val prefs = context.getSharedPreferences("korax_match_cache_v1", Context.MODE_PRIVATE)
+    val array = org.json.JSONArray(prefs.getString(matchCacheKey(status, date), "[]"))
+    (0 until array.length()).mapNotNull { index ->
+        val item = array.optJSONObject(index) ?: return@mapNotNull null
+        val id = item.optString("id")
+        val home = item.optString("home")
+        val away = item.optString("away")
+        if (id.isBlank() || home.isBlank() || away.isBlank()) return@mapNotNull null
+        MatchItem(
+            id = id, home = home, away = away,
+            homeLogo = item.optString("homeLogo"), awayLogo = item.optString("awayLogo"),
+            score = item.optString("score", "VS"), status = item.optString("status"),
+            kickoff = item.optString("kickoff"), league = item.optString("league"),
+            detailsAvailable = item.optBoolean("detailsAvailable"),
+            sourceName = item.optString("sourceName"), sourceLicense = item.optString("sourceLicense"),
+            sourceUrl = item.optString("sourceUrl")
+        )
+    }
+}.getOrDefault(emptyList())
+
+private fun saveMatchCache(context: Context, status: String, date: String, matches: List<MatchItem>) {
+    val array = org.json.JSONArray()
+    matches.forEach { match ->
+        array.put(org.json.JSONObject()
+            .put("id", match.id).put("home", match.home).put("away", match.away)
+            .put("homeLogo", match.homeLogo).put("awayLogo", match.awayLogo)
+            .put("score", match.score).put("status", match.status).put("kickoff", match.kickoff)
+            .put("league", match.league).put("detailsAvailable", match.detailsAvailable)
+            .put("sourceName", match.sourceName).put("sourceLicense", match.sourceLicense)
+            .put("sourceUrl", match.sourceUrl))
+    }
+    context.getSharedPreferences("korax_match_cache_v1", Context.MODE_PRIVATE).edit()
+        .putString(matchCacheKey(status, date), array.toString())
+        .putLong(matchCacheKey(status, date) + "_saved_at", System.currentTimeMillis())
+        .apply()
+}
+
 @Composable
 private fun MatchesScreen(
+    isOnline: Boolean,
     initialLive: Boolean,
     selectedDate: String,
     onOpenMatch: (String) -> Unit,
@@ -1009,6 +1051,8 @@ private fun MatchesScreen(
     var matches by remember { mutableStateOf<List<MatchItem>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf("") }
+    var slowConnection by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
     var selectedSummary by remember { mutableStateOf<MatchItem?>(null) }
     val scope = rememberCoroutineScope()
     val sectionTitle = when (statusTab) {
@@ -1018,16 +1062,31 @@ private fun MatchesScreen(
     }
 
     suspend fun refresh() {
-        loading = true
+        if (matches.isEmpty()) loading = true
         error = ""
+        if (!isOnline) {
+            matches = readMatchCache(context, statusTab, selectedDate)
+            error = "offline"
+            slowConnection = false
+            loading = false
+            return
+        }
+        val startedAt = System.currentTimeMillis()
         val result = runCatching { loadMatches(statusTab, selectedDate) }
-        matches = result.getOrDefault(emptyList())
-        error = result.exceptionOrNull()?.message.orEmpty()
+        slowConnection = System.currentTimeMillis() - startedAt >= 5_000L
+        result.onSuccess { fresh ->
+            matches = fresh
+            saveMatchCache(context, statusTab, selectedDate, fresh)
+        }.onFailure {
+            matches = readMatchCache(context, statusTab, selectedDate)
+            error = it.message.orEmpty()
+            slowConnection = true
+        }
         loading = false
     }
-    LaunchedEffect(statusTab, selectedDate) { refresh() }
-    LaunchedEffect(statusTab, selectedDate) {
-        if (statusTab == "live") {
+    LaunchedEffect(statusTab, selectedDate, isOnline) { refresh() }
+    LaunchedEffect(statusTab, selectedDate, isOnline) {
+        if (statusTab == "live" && isOnline) {
             while (true) {
                 delay(30_000L)
                 refresh()
@@ -1036,12 +1095,38 @@ private fun MatchesScreen(
     }
 
     Column(Modifier.fillMaxSize().background(KBg)) {
-        KoraxHeader(
-            "المباريات",
-            "$sectionTitle • $selectedDate",
-            refresh = { scope.launch { refresh() } },
-            search = onSearchEntities
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = painterResource(R.drawable.korax_brand),
+                contentDescription = "شعار كوراكس",
+                modifier = Modifier.size(42.dp),
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit
+            )
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = {
+                onChooseDate(runCatching { LocalDate.parse(selectedDate).minusDays(1).toString() }.getOrDefault(todayIso()))
+            }) { Text("‹", color = KMuted, fontSize = 28.sp) }
+            IconButton(onClick = { showDatePicker = true }) {
+                Icon(Icons.Filled.CalendarMonth, contentDescription = "اختيار التاريخ", tint = KText)
+            }
+            IconButton(onClick = {
+                onChooseDate(runCatching { LocalDate.parse(selectedDate).plusDays(1).toString() }.getOrDefault(todayIso()))
+            }) { Text("›", color = KMuted, fontSize = 28.sp) }
+            IconButton(onClick = onSearchEntities) { Icon(Icons.Filled.Search, contentDescription = "بحث", tint = KText) }
+            IconButton(onClick = { scope.launch { refresh() } }) { Icon(Icons.Filled.Refresh, contentDescription = "تحديث", tint = KLime) }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("$sectionTitle • $selectedDate", color = KMuted, fontSize = 9.sp, modifier = Modifier.weight(1f))
+            Text(
+                "البيانات: SportScore", color = KMuted.copy(alpha = .78f), fontSize = 7.sp,
+                modifier = Modifier.clickable {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://sportscore.com/"))) }
+                }
+            )
+        }
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
