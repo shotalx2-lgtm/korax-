@@ -812,6 +812,64 @@ private fun rosterItems(value: JSONObject): List<KoraxFavorite> {
     return emptyList()
 }
 
+private fun profileTrophyNames(root: JSONObject): List<String> {
+    val keys = listOf("trophies", "honours", "honors", "titles", "awards")
+    for (key in keys) {
+        val array = root.optJSONArray(key) ?: continue
+        val values = (0 until array.length()).mapNotNull { index ->
+            when (val item = array.opt(index)) {
+                is JSONObject -> item.firstString("name", "title", "trophy_name", "competition_name", "competition", "label")
+                is String -> item.trim()
+                else -> ""
+            }.takeIf { it.isNotBlank() }
+        }.distinct().take(40)
+        if (values.isNotEmpty()) return values
+    }
+    return emptyList()
+}
+
+private data class ProfileStatLine(val label: String, val value: String, val context: String = "")
+
+private fun profileStatLines(root: JSONObject): List<ProfileStatLine> {
+    val array = root.optJSONArray("statistics") ?: root.optJSONArray("stats")
+        ?: root.optJSONArray("player_statistics") ?: root.optJSONArray("season_stats")
+        ?: return emptyList()
+    val labels = mapOf(
+        "appearances" to "المشاركات", "matches" to "المباريات", "played" to "المباريات",
+        "goals" to "الأهداف", "assists" to "التمريرات الحاسمة", "minutes" to "دقائق اللعب",
+        "yellow_cards" to "بطاقات صفراء", "red_cards" to "بطاقات حمراء",
+        "clean_sheets" to "الشباك النظيفة", "penalty_goals" to "أهداف من ركلات الجزاء",
+        "shots" to "التسديدات", "shots_on_target" to "تسديدات على المرمى",
+        "passes" to "التمريرات", "accurate_passes" to "التمريرات الصحيحة",
+        "duels_won" to "الالتحامات الناجحة", "tackles" to "التدخلات",
+        "saves" to "التصديات", "rating" to "التقييم"
+    )
+    val output = mutableListOf<ProfileStatLine>()
+    for (index in 0 until array.length()) {
+        val row = array.optJSONObject(index) ?: continue
+        val group = listOf(
+            row.firstString("season_name", "season"),
+            row.firstString("competition_name", "league_name"),
+            row.firstString("team_name")
+        ).filter { it.isNotBlank() }.distinct().joinToString(" • ")
+        val directLabel = row.firstString("stat_name", "name", "title", "label", "type", "key", "metric")
+        val directValue = row.firstString("value", "total", "count", "stat_value", "amount")
+        if (directLabel.isNotBlank() && directValue.isNotBlank()) {
+            val key = directLabel.lowercase(Locale.ROOT).replace(' ', '_').replace('-', '_')
+            output.add(ProfileStatLine(labels[key] ?: directLabel, directValue, group))
+        } else {
+            for ((key, label) in labels) {
+                val value = row.opt(key)
+                if (value != null && value != JSONObject.NULL && value !is JSONObject && value !is JSONArray) {
+                    val text = value.toString().trim()
+                    if (text.isNotBlank()) output.add(ProfileStatLine(label, text, group))
+                }
+            }
+        }
+    }
+    return output.distinctBy { it.label + "|" + it.value + "|" + it.context }.take(60)
+}
+
 @Composable
 internal fun KoraxEntityProfileScreen(
     favorite: KoraxFavorite,
@@ -846,6 +904,8 @@ internal fun KoraxEntityProfileScreen(
     val root = profile
     val image = root?.let(::findProfileImage).orEmpty().ifBlank { favorite.imageUrl }
     val facts = root?.let(::collectProfileFacts).orEmpty()
+    val trophies = root?.let(::profileTrophyNames).orEmpty()
+    val providerStats = root?.let(::profileStatLines).orEmpty()
     val roster = root?.let(::rosterItems).orEmpty()
 
     Column(Modifier.fillMaxSize().background(DBg)) {
@@ -980,6 +1040,48 @@ internal fun KoraxEntityProfileScreen(
                             ) {
                                 Text(fact.label, color = DMuted, fontSize = 10.sp, modifier = Modifier.weight(1f))
                                 Text(fact.value, color = DText, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
+                if (providerStats.isNotEmpty()) {
+                    Text("إحصائيات اللاعب", color = DText, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DCard),
+                        border = BorderStroke(1.dp, DBorder),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 7.dp)) {
+                            providerStats.forEachIndexed { index, stat ->
+                                Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(stat.label, color = DMuted, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                                        if (stat.context.isNotBlank()) Text(stat.context, color = DMuted, fontSize = 8.sp)
+                                    }
+                                    Text(stat.value, color = DAccent, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                                }
+                                if (index < providerStats.lastIndex) Divider(color = DBorder)
+                            }
+                        }
+                    }
+                }
+                if (trophies.isNotEmpty()) {
+                    Text("الألقاب والإنجازات", color = DText, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DCard),
+                        border = BorderStroke(1.dp, DBorder),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 7.dp)) {
+                            trophies.forEachIndexed { index, trophy ->
+                                Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("🏆", fontSize = 14.sp)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(trophy, color = DText, fontSize = 10.sp, modifier = Modifier.weight(1f))
+                                }
+                                if (index < trophies.lastIndex) Divider(color = DBorder)
                             }
                         }
                     }

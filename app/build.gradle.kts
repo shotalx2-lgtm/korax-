@@ -49,8 +49,8 @@ android {
         applicationId = "com.koora.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.7.3"
+        versionCode = 22
+        versionName = "0.7.4"
 
         val apiBase = providers.gradleProperty("KOORA_API_BASE_URL")
             .orElse("https://hwrsjmdcivdluztnhpxo.supabase.co/functions/v1/korax-api").get()

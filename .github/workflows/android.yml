@@ -343,6 +343,28 @@ jobs:
             });
           '
 
+          # Statistics endpoints must be deployed with the matching Android client.
+          for stats_path in \
+            "/api/standings?slug=bundesliga&name=Bundesliga" \
+            "/api/topscorers?slug=bundesliga&name=Bundesliga&stat=goals&limit=20" \
+            "/api/topscorers?slug=bundesliga&name=Bundesliga&stat=assists&limit=20"; do
+            stats_payload="$(api_curl --silent --show-error --fail --max-time 35 "$base$stats_path")"
+            printf '%s' "$stats_payload" | STATS_PATH="$stats_path" node -e '
+              let raw = "";
+              process.stdin.on("data", chunk => raw += chunk);
+              process.stdin.on("end", () => {
+                const value = JSON.parse(raw);
+                if (!Object.prototype.hasOwnProperty.call(value, "data") || !value.source || !value.meta) {
+                  throw new Error("KORAX statistics endpoint returned an invalid data/source contract for " + process.env.STATS_PATH + ": " + raw);
+                }
+                if (!Array.isArray(value.data) && typeof value.data !== "object") {
+                  throw new Error("KORAX statistics endpoint returned an unsupported data shape for " + process.env.STATS_PATH);
+                }
+                console.log("KORAX statistics endpoint passed:", process.env.STATS_PATH, "; source:", value.source);
+              });
+            '
+          done
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
