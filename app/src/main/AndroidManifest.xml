@@ -6,7 +6,7 @@
     <application
         android:hardwareAccelerated="true"
         android:allowBackup="true"
-        android:label="KORAX"
+        android:label="كورة إكس"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
