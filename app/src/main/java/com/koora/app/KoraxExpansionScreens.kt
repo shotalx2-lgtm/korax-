@@ -243,7 +243,7 @@ internal fun KoraxStatisticsHubPage(
         var loadingRows by remember { mutableStateOf(false) }
         var error by remember { mutableStateOf("") }
         var refreshKey by rememberSaveable { mutableIntStateOf(0) }
-        val scope = rememberCoroutineScope()
+        val context = LocalContext.current
         val selectedCompetition = competitions.firstOrNull { it.slug == selectedSlug }
 
         LaunchedEffect(Unit) {
@@ -464,7 +464,7 @@ internal fun KoraxStatisticsHubPage(
                     modifier = Modifier.fillMaxWidth().clickable {
                         runCatching {
                             val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://sportscore.com/"))
-                            LocalContext.current.startActivity(intent)
+                            context.startActivity(intent)
                         }
                     }.padding(vertical = 9.dp),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
