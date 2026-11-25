@@ -337,14 +337,95 @@ private fun displayKickoff(raw: String): String {
     return parsed ?: raw
 }
 
+
+private val arabicFootballNameOverrides = mapOf(
+    "arsenal" to "أرسنال", "fc arsenal" to "أرسنال",
+    "manchester city" to "مانشستر سيتي", "manchester city fc" to "مانشستر سيتي",
+    "manchester united" to "مانشستر يونايتد", "manchester united fc" to "مانشستر يونايتد",
+    "liverpool" to "ليفربول", "liverpool fc" to "ليفربول", "fc liverpool" to "ليفربول",
+    "chelsea" to "تشيلسي", "chelsea fc" to "تشيلسي",
+    "tottenham" to "توتنهام", "tottenham hotspur" to "توتنهام",
+    "aston villa" to "أستون فيلا", "newcastle united" to "نيوكاسل يونايتد",
+    "real madrid" to "ريال مدريد", "real betis" to "ريال بيتيس",
+    "barcelona" to "برشلونة", "fc barcelona" to "برشلونة",
+    "atletico madrid" to "أتلتيكو مدريد", "atlético madrid" to "أتلتيكو مدريد",
+    "athletic bilbao" to "أتلتيك بلباو", "villarreal" to "فياريال", "villarreal cf" to "فياريال",
+    "bayern munich" to "بايرن ميونخ", "fc bayern munchen" to "بايرن ميونخ",
+    "borussia dortmund" to "بوروسيا دورتموند", "bayer leverkusen" to "باير ليفركوزن",
+    "bayer 04 leverkusen" to "باير ليفركوزن", "rb leipzig" to "لايبزيغ",
+    "inter milan" to "إنتر ميلان", "inter mailand" to "إنتر ميلان",
+    "ac milan" to "ميلان", "juventus" to "يوفنتوس", "juventus fc" to "يوفنتوس",
+    "napoli" to "نابولي", "ssc napoli" to "نابولي", "roma" to "روما", "as roma" to "روما",
+    "paris saint germain" to "باريس سان جيرمان", "paris st germain" to "باريس سان جيرمان", "psg" to "باريس سان جيرمان",
+    "ajax" to "أياكس", "afc ajax" to "أياكس", "benfica" to "بنفيكا", "fc porto" to "بورتو",
+    "sporting cp" to "سبورتينغ لشبونة", "feyenoord rotterdam" to "فينورد",
+    "fenerbahce sk" to "فنربخشة", "galatasaray istanbul" to "غلطة سراي",
+    "al ahly" to "الأهلي", "al-ahly" to "الأهلي", "zamalek" to "الزمالك",
+    "pyramids" to "بيراميدز", "al ittihad" to "الاتحاد", "al hilal" to "الهلال",
+    "al nassr" to "النصر", "al shabab" to "الشباب", "al ettifaq" to "الاتفاق",
+    "premier league" to "الدوري الإنجليزي الممتاز", "english premier league" to "الدوري الإنجليزي الممتاز",
+    "la liga" to "الدوري الإسباني", "spanish la liga" to "الدوري الإسباني",
+    "bundesliga" to "الدوري الألماني", "german bundesliga" to "الدوري الألماني",
+    "serie a" to "الدوري الإيطالي", "italian serie a" to "الدوري الإيطالي",
+    "ligue 1" to "الدوري الفرنسي", "french ligue 1" to "الدوري الفرنسي",
+    "saudi professional league" to "دوري روشن السعودي", "saudi arabian pro league" to "دوري روشن السعودي",
+    "egyptian premier league" to "الدوري المصري الممتاز", "eredivisie" to "الدوري الهولندي",
+    "uefa champions league" to "دوري أبطال أوروبا", "champions league" to "دوري أبطال أوروبا",
+    "uefa europa league" to "الدوري الأوروبي", "uefa europa conference league" to "دوري المؤتمر الأوروبي",
+    "english championship" to "دوري البطولة الإنجليزية", "brasileiro serie a" to "الدوري البرازيلي",
+    "copa del rey" to "كأس ملك إسبانيا", "coppa italia" to "كأس إيطاليا",
+    "dfb pokal" to "كأس ألمانيا", "coupe de france" to "كأس فرنسا",
+    "saudi king cup" to "كأس الملك السعودي", "saudi super cup" to "كأس السوبر السعودي"
+)
+
+private fun arabicFootballName(raw: String): String {
+    val value = raw.trim()
+    if (value.isBlank() || value.any { it in '\u0600'..'\u06FF' }) return value
+    val key = value.lowercase(Locale.ROOT)
+        .replace("ä", "a").replace("ö", "o").replace("ü", "u")
+        .replace("ß", "ss")
+        .replace(Regex("[^a-z0-9]+"), " ").trim().replace(Regex("\\s+"), " ")
+    arabicFootballNameOverrides[key]?.let { return it }
+
+    val pairs = listOf(
+        "sch" to "ش", "sh" to "ش", "ch" to "تش", "th" to "ث", "ph" to "ف",
+        "kh" to "خ", "gh" to "غ", "zh" to "ژ", "oo" to "و", "ee" to "ي",
+        "ou" to "و", "ow" to "او", "ck" to "ك", "qu" to "ك", "tion" to "شن"
+    )
+    val single = mapOf(
+        'a' to "ا", 'b' to "ب", 'c' to "ك", 'd' to "د", 'e' to "ي",
+        'f' to "ف", 'g' to "ج", 'h' to "ه", 'i' to "ي", 'j' to "ج",
+        'k' to "ك", 'l' to "ل", 'm' to "م", 'n' to "ن", 'o' to "و",
+        'p' to "ب", 'q' to "ك", 'r' to "ر", 's' to "س", 't' to "ت",
+        'u' to "و", 'v' to "ف", 'w' to "و", 'x' to "كس", 'y' to "ي", 'z' to "ز"
+    )
+    val result = StringBuilder()
+    var index = 0
+    while (index < value.length) {
+        val remaining = value.substring(index).lowercase(Locale.ROOT)
+        val pair = pairs.firstOrNull { remaining.startsWith(it.first) }
+        if (pair != null) {
+            result.append(pair.second)
+            index += pair.first.length
+        } else {
+            val ch = value[index]
+            result.append(single[ch.lowercaseChar()] ?: if (ch.isDigit() || ch.isWhitespace()) ch else "")
+            index++
+        }
+    }
+    return result.toString().replace(Regex("\\s+"), " ").trim().ifBlank { value }
+}
+
 private suspend fun loadMatches(mode: String, selectedDate: String): List<MatchItem> {
     val data = apiJson("/api/matches?mode=$mode&scope=main&date=$selectedDate").rows()
     return (0 until data.length()).mapNotNull { i ->
         val x = data.optJSONObject(i) ?: return@mapNotNull null
         val h = x.optJSONObject("homeTeam")
         val a = x.optJSONObject("awayTeam")
-        val home = h?.optString("name").orEmpty().ifBlank { x.optString("home") }
-        val away = a?.optString("name").orEmpty().ifBlank { x.optString("away") }
+        val homeRaw = h?.optString("name_ar").orEmpty().ifBlank { h?.optString("name").orEmpty().ifBlank { x.optString("home") } }
+        val awayRaw = a?.optString("name_ar").orEmpty().ifBlank { a?.optString("name").orEmpty().ifBlank { x.optString("away") } }
+        val home = arabicFootballName(homeRaw)
+        val away = arabicFootballName(awayRaw)
         if (home.isBlank() || away.isBlank()) return@mapNotNull null
         val hs = x.opt("homeScore")
         val ascore = x.opt("awayScore")
@@ -360,7 +441,7 @@ private suspend fun loadMatches(mode: String, selectedDate: String): List<MatchI
             score,
             localizeMatchStatus(x.optString("status", "غير متاحة")),
             x.optString("startTime"),
-            x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") },
+            arabicFootballName(x.optJSONObject("competition")?.optString("name").orEmpty().ifBlank { x.optString("competitionName") }),
             detailsAvailable = stableMatchId != null && x.optBoolean("detailAvailable", false),
             sourceName = x.optString("sourceName"),
             sourceLicense = x.optString("sourceLicense"),
